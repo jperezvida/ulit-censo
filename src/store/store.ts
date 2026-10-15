@@ -140,7 +140,7 @@ export const useStore = create<Estado>((set, get) => ({
 
   avisar: (texto, tipo = 'info', deshacer = false) => {
     const id = ++nAviso;
-    set({ avisos: [...get().avisos.slice(-2), { id, texto, tipo, deshacer }] });
+    set({ avisos: [...get().avisos.slice(-1), { id, texto, tipo, deshacer }] });
     setTimeout(() => get().quitarAviso(id), tipo === 'error' ? 6000 : 4000);
   },
   quitarAviso: (id) => set({ avisos: get().avisos.filter((a) => a.id !== id) }),

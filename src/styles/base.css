@@ -573,3 +573,10 @@ table.tabla {
   background: #cfd6e0;
   border-radius: 4px;
 }
+
+@media (max-width: 640px) {
+  .toasts {
+    bottom: auto;
+    top: 52px;
+  }
+}
