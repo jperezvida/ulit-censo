@@ -40,7 +40,7 @@ export function CapturaCalle() {
 
   const previos = useMemo(() => (camp && calle ? localesPrevios(db, camp.campanaReferenciaId, calle.id) : []), [db, camp, calle]);
   const obsHoy = useMemo(
-    () => (camp && calle ? Object.values(db.observaciones).filter((o) => o.campanaId === camp.id && o.calleId === calle.id).sort((a, b) => b.fecha.localeCompare(a.fecha)) : []),
+    () => (camp && calle ? Object.values(db.observaciones).filter((o) => o.campanaId === camp.id && o.calleId === calle.id).sort((a, b) => (b.registrado ?? b.fecha ?? '').localeCompare(a.registrado ?? a.fecha ?? '')) : []),
     [db.observaciones, camp, calle],
   );
   const porLocal = useMemo(() => {
@@ -153,7 +153,7 @@ export function CapturaCalle() {
                 <span className="m-local-num s">{o.datos.numero ?? 's/n'}{o.datos.sufijo ? <small>{o.datos.sufijo}</small> : null}</span>
                 <span className="esp">
                   <b>{o.datos.vacio ? `Vacío${o.datos.metrosFachada ? ` · ${o.datos.metrosFachada} m` : ''}` : o.datos.nombre}</b>
-                  <span className="m-nota">{TIPO_OBS_TXT[o.tipo]} · {new Date(o.fecha).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })} · {db.personas[o.investigadorId ?? '']?.iniciales}{o.nota ? ` · “${o.nota}”` : ''}</span>
+                  <span className="m-nota">{TIPO_OBS_TXT[o.tipo]} · {o.fecha ? new Date(o.fecha).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : 'sin fecha'} · {db.personas[o.investigadorId ?? '']?.iniciales}{o.nota ? ` · “${o.nota}”` : ''}</span>
                 </span>
                 {o.sync === 'local' && <CloudBadge />}
               </div>

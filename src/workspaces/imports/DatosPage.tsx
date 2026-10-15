@@ -23,6 +23,7 @@ const CLASE_TXT: Record<ClaseDiff, { t: string; c: string }> = {
   nuevo: { t: 'Nuevo', c: 'azul' },
   'sin-cambios': { t: 'Sin cambios', c: 'ok' },
   modificado: { t: 'Modificado', c: 'aviso' },
+  ambiguo: { t: 'Ambiguo: conciliar', c: 'dudoso' },
   'fuera-ambito': { t: 'Fuera del itinerario', c: '' },
   'calle-desconocida': { t: 'Calle no reconocida', c: 'error' },
   'posible-duplicado': { t: 'Posible duplicado', c: 'dudoso' },
@@ -174,7 +175,7 @@ function Asistente({ onCerrar }: { onCerrar: () => void }) {
         paso === 3 && (
           <>
             <span className="muted esp">
-              {tipo === 'A-censo-historico' ? `Se creará la campaña «Censo ${anio} (importado)» con ${cuentas.nuevo ?? 0} locales.` : `Se aplicarán ${(cuentas.nuevo ?? 0) + (cuentas.modificado ?? 0) + (cuentas['sin-cambios'] ?? 0)} filas; ${(cuentas['fuera-ambito'] ?? 0) + (cuentas['calle-desconocida'] ?? 0) + (cuentas['posible-duplicado'] ?? 0)} quedan sin aplicar.`}
+              {tipo === 'A-censo-historico' ? `Se creará la campaña «Censo ${anio} (importado)» con ${cuentas.nuevo ?? 0} locales.` : `Se aplicarán ${(cuentas.nuevo ?? 0) + (cuentas.modificado ?? 0) + (cuentas['sin-cambios'] ?? 0)} filas${cuentas.ambiguo ? ` y ${cuentas.ambiguo} quedarán pendientes de conciliación` : ''}; ${(cuentas['fuera-ambito'] ?? 0) + (cuentas['calle-desconocida'] ?? 0) + (cuentas['posible-duplicado'] ?? 0)} quedan sin aplicar.`}
             </span>
             <button className="btn" onClick={() => setArchivo(null)}>Atrás</button>
             <button className="btn primario" onClick={confirmar} disabled={!diff.length || (tipo === 'C-excel-itinerario' && !itId)}>Confirmar incorporación</button>

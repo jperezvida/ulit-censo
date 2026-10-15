@@ -151,4 +151,4 @@ export function Metrica({ etq, valor, sub }: { etq: ReactNode; valor: ReactNode;
 }
 
 export const fmt = (n: number) => n.toLocaleString('es-ES');
-export const fmtFecha = (s?: string) => (s ? new Date(s).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
+export const fmtFecha = (s?: string) => (s ? new Date(s).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : 'fecha no disponible');

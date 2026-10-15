@@ -12,7 +12,8 @@ import type { Acera, Cobertura, EstadoCobertura, Id, LngLat, Observacion, TipoOb
 export interface Contexto {
   campanaId: Id;
   investigadorId: Id;
-  fecha: string;
+  /** Fecha real de la visita; omitida cuando no se conoce (p. ej. papel sin fecha). */
+  fecha?: string;
   fuente?: Observacion['fuente'];
   sinConexion?: boolean;
 }
@@ -31,6 +32,7 @@ function anadirObs(db: BaseDatos, ctx: Contexto, o: Omit<Observacion, 'id' | 'ca
     id: nuevoId('obs'),
     campanaId: ctx.campanaId,
     fecha: ctx.fecha,
+    registrado: new Date().toISOString(),
     fuente: ctx.fuente ?? 'campo-app',
     investigadorId: ctx.investigadorId,
     verificacion: 'pendiente',
@@ -39,7 +41,7 @@ function anadirObs(db: BaseDatos, ctx: Contexto, o: Omit<Observacion, 'id' | 'ca
   };
   db.observaciones = { ...db.observaciones, [obs.id]: obs };
   if (ctx.sinConexion) {
-    db.colaSync = [...db.colaSync, { id: nuevoId('sync'), descripcion: descripcionObs(db, obs), observacionId: obs.id, creado: ctx.fecha, estado: 'en-cola' }];
+    db.colaSync = [...db.colaSync, { id: nuevoId('sync'), descripcion: descripcionObs(db, obs), observacionId: obs.id, creado: obs.registrado!, estado: 'en-cola' }];
   }
   ponerCalleEnCurso(db, ctx, o.calleId);
   return obs;

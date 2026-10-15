@@ -23,7 +23,8 @@ function coordAproximada(db: BaseDatos, calleId: Id, numero: number | null): Lng
 export function aplicarResultadosPapel(db0: BaseDatos, campanaId: Id, filas: FilaDiff[], archivo: string, tipo: Importacion['tipo'], porId: Id): { db: BaseDatos; resumen: Record<string, number> } {
   let db = db0;
   const impId = nuevoId('imp');
-  const ctx: Contexto = { campanaId, investigadorId: porId, fecha: new Date().toISOString(), fuente: 'papel' };
+  // La fecha real de la visita en papel no consta en el archivo: no se inventa (queda sin fecha).
+  const ctx: Contexto = { campanaId, investigadorId: porId, fuente: 'papel' };
   const resumen: Record<string, number> = {};
   const registros = { ...db.registros };
   for (const f of filas) {
@@ -33,6 +34,7 @@ export function aplicarResultadosPapel(db0: BaseDatos, campanaId: Id, filas: Fil
     if (!f.calleId) continue;
     if (f.clase === 'sin-cambios' && f.localId) db = confirmarSinCambios(db, ctx, f.localId);
     else if (f.clase === 'modificado' && f.localId) db = f.vacio ? registrarVacio(db, ctx, f.localId, f.metros) : registrarNuevoNegocio(db, ctx, f.localId, f.nombre ?? '');
+    else if (f.clase === 'ambiguo') db = registrarAmbiguo(db, ctx, f);
     else if (f.clase === 'nuevo') db = registrarLocalNuevo(db, ctx, { calleId: f.calleId, numero: f.numero, sufijo: f.sufijo, vacio: f.vacio, nombre: f.nombre, metrosFachada: f.metros, coord: coordAproximada(db, f.calleId, f.numero) }).db;
   }
   db = { ...db, registros: { ...registros, ...db.registros } };
@@ -41,6 +43,29 @@ export function aplicarResultadosPapel(db0: BaseDatos, campanaId: Id, filas: Fil
     [impId]: { id: impId, municipioId: db.campanas[campanaId].municipioId, campanaId, tipo, archivo, huella: huella(archivo + filas.length), fecha: new Date().toISOString(), filas: filas.length, estado: 'confirmada', procedencia: 'importado', resumen },
   };
   return { db, resumen };
+}
+
+/**
+ * Fila que podría corresponder a varios locales de la misma dirección: se registra como alta
+ * con un vínculo «dudoso» y sus candidatos, para que la oficina decida en Conciliación.
+ * Nunca se elige automáticamente el primero.
+ */
+function registrarAmbiguo(db0: BaseDatos, ctx: Contexto, f: FilaDiff): BaseDatos {
+  const r = registrarLocalNuevo(db0, ctx, { calleId: f.calleId!, numero: f.numero, sufijo: f.sufijo, vacio: f.vacio, nombre: f.nombre, metrosFachada: f.metros, coord: coordAproximada(db0, f.calleId!, f.numero) });
+  const db = r.db;
+  const obs = Object.values(db.observaciones).find((o) => o.localId === r.localId)!;
+  const existente = Object.values(db.vinculos).find((v) => v.localId === r.localId);
+  const id = existente?.id ?? nuevoId('vin');
+  db.vinculos = {
+    ...db.vinculos,
+    [id]: {
+      id, origen: { tipo: 'observacion', id: obs.id }, localId: r.localId, confianza: 'dudosa',
+      criterio: 'Varios locales en la misma dirección: correspondencia ambigua, pendiente de conciliación',
+      candidatos: (f.candidatos ?? []).map((localId) => ({ localId, puntuacion: 0.5, motivo: 'misma dirección' })),
+    },
+  };
+  db.revisiones = { ...db.revisiones, [kRev(ctx.campanaId, r.localId)]: { ...db.revisiones[kRev(ctx.campanaId, r.localId)], pendienteComprobacion: true } };
+  return db;
 }
 
 /**
@@ -70,7 +95,7 @@ export function importarCensoHistorico(db0: BaseDatos, municipioId: Id, anio: nu
       db.negocios[negocioId] = { id: negocioId, nombre: f.nombre, actividadId: f.actividad ? buscarActividadPorNombre(f.actividad)?.id : undefined, procedencia: 'importado' };
     }
     db.ocupaciones[`ocu-${localId}`] = { id: `ocu-${localId}`, localId, negocioId, metrosFachada: f.metros, desdeCampanaId: campanaId };
-    db.observaciones[`obs-${regId}`] = { id: `obs-${regId}`, campanaId, localId, calleId: f.calleId, fecha: `${anio}-12-31`, fuente: 'importacion', tipo: 'confirmado', datos: { numero: f.numero, sufijo: f.sufijo, nombre: f.nombre, vacio: f.vacio, metrosFachada: f.metros }, verificacion: 'verificada' };
+    db.observaciones[`obs-${regId}`] = { id: `obs-${regId}`, campanaId, localId, calleId: f.calleId, registrado: new Date().toISOString(), fuente: 'importacion', tipo: 'confirmado', datos: { numero: f.numero, sufijo: f.sufijo, nombre: f.nombre, vacio: f.vacio, metrosFachada: f.metros }, verificacion: 'verificada' };
     db.vinculos[`vin-${regId}`] = { id: `vin-${regId}`, origen: { tipo: 'registro', id: regId }, localId, confianza: 'confirmada', criterio: 'Local físico creado a partir de esta fila' };
     db.revisiones[kRev(campanaId, localId)] = { campanaId, localId, campo: 'terminado', categorizacion: negocioId && db.negocios[negocioId].actividadId ? 'revisado' : 'pendiente', digital: 'pendiente', validacion: 'pendiente' };
     resumen['locales creados']++;

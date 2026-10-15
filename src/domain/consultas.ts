@@ -61,12 +61,12 @@ export function indiceObservaciones(db: BaseDatos): IndiceObservaciones {
     if (l) l.push(o);
     else m.set(o.localId, [o]);
   }
-  for (const l of m.values()) l.sort((a, b) => a.fecha.localeCompare(b.fecha));
+  for (const l of m.values()) l.sort((a, b) => (a.fecha ?? '').localeCompare(b.fecha ?? ''));
   return m;
 }
 
 export function observacionesDeLocal(db: BaseDatos, localId: Id): Observacion[] {
-  return Object.values(db.observaciones).filter((o) => o.localId === localId).sort((a, b) => a.fecha.localeCompare(b.fecha));
+  return Object.values(db.observaciones).filter((o) => o.localId === localId).sort((a, b) => (a.fecha ?? '').localeCompare(b.fecha ?? ''));
 }
 
 /** Observación del local en una campaña concreta (la más reciente). */

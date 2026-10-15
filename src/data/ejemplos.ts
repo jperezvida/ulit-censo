@@ -5,8 +5,13 @@ import type { Id, Itinerario } from '../domain/types';
 import { crearRng } from './rng';
 import { nombreNegocio } from './nombres';
 
-const CAB = ['Calle', 'Número', 'Nombre', 'Estado', 'Metros fachada', 'Grupo de actividad', 'Grupo de comercio', 'Subgrupo de actividad', 'Actividad'];
-const linea = (v: string[]) => v.map((x) => (/[;"]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x)).join(';');
+/** Cabeceras con la forma del censo original de Medina (indicador de vacío 0.0/1.0). */
+const CAB = ['Calle', 'Número', 'Nombre del negocio', 'Local Vacío', 'Long fachada', 'GrActividad', 'Gr Comercio', 'Subgrupo de actividad', 'Actividad'];
+const linea = (v: string[]): string =>
+  v
+    .map((x, i) => (i === 3 ? (x === 'Vacío' ? '1.0' : '0.0') : x))
+    .map((x) => (/[;"]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x))
+    .join(';');
 
 /**
  * CSV de EJEMPLO (simulado) de un Excel de itinerario pasado a limpio:
@@ -46,7 +51,7 @@ export function csvEjemploItinerario(db: BaseDatos, it: Itinerario): string {
   const ajena = Object.values(db.itinerarios).find((x) => x.campanaId === it.campanaId && x.id !== it.id)?.tramos[0];
   if (ajena) filas.push([db.calles[ajena.calleId].nombre, '1', 'Comercio de otra calle', 'Ocupado', '', '', '', '', '']);
   filas.push(['C/ Inexistente del Ejemplo', '4', 'Bar Desconocido', 'Ocupado', '', '', '', '', '']);
-  return '﻿' + [linea(CAB), ...filas.map(linea)].join('\r\n');
+  return '﻿' + [CAB.join(';'), ...filas.map(linea)].join('\r\n');
 }
 
 /** CSV de EJEMPLO (simulado) con la forma de un censo histórico completo. */
@@ -63,5 +68,5 @@ export function csvEjemploHistorico(db: BaseDatos, municipioId: Id): string {
     }
   }
   filas.push(['Pza. Inventada', '2', 'Tienda sin calle reconocida', 'Ocupado', '', '', '', '', '']);
-  return '﻿' + [linea(CAB), ...filas.map(linea)].join('\r\n');
+  return '﻿' + [CAB.join(';'), ...filas.map(linea)].join('\r\n');
 }

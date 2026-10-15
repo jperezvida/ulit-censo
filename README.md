@@ -71,10 +71,13 @@ npm run build        # compilación de producción
   La descarga «para trabajar sin cobertura» no guarda nada de verdad para usarlo sin conexión.
 - **Sin autenticación.** Los roles son un selector de demostración: el rol Coordinador es el que habilita la edición de itinerarios.
 - **Clasificación de actividades provisional.** Respeta los 4 niveles, pero la terminología es inventada; se sustituirá por la del censo original.
-- **Columnas del Excel provisionales.** El importador reconoce las columnas por nombre y permite reasignarlas. Falta validarlo con el CSV real.
+- **Importador preparado, pendiente de validar con el CSV real.** Reconoce las cabeceras originales de Medina
+  (`Nombre del negocio`, `Local Vacío` con 0/1 o 0.0/1.0, `Long fachada`, `GrActividad`, `Gr Comercio`) y permite
+  reasignar columnas. No inventa fechas: si el archivo no trae la fecha de la visita, la observación queda «sin fecha».
+  Si una dirección tiene varios locales posibles, la fila queda **pendiente de conciliación** en lugar de vincularse al primero.
 - **Itinerarios de demostración.** IT-A a IT-D son inventados. **No** corresponden a los mapas reales de My Maps, y el «campo terminado» de IT-C no se atribuye a ningún itinerario real.
 - **Valladolid es una demo de volumen**, con unos 5.000 locales ficticios y sin geometría. Sirve para probar Oficina y Análisis.
 - **Posiciones aproximadas.** Las coordenadas de los locales son ficticias o se aproximan sobre la calle.
 - **Pendiente para fases posteriores:** fotografías, geolocalización real, informes en PDF para ayuntamientos y exportación nativa a .xlsx.
 
-Más detalle sobre el diseño y el modelo de datos en [`docs/PROTOTIPO.md`](docs/PROTOTIPO.md).
+Más detalle sobre el diseño y el modelo de datos en [`docs/PROTOTIPO.md`](docs/PROTOTIPO.md). Capturas en [`docs/capturas/`](docs/capturas/).

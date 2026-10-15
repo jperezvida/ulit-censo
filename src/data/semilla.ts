@@ -117,7 +117,6 @@ function generarMedina(db0: BaseDatos, { calles, fuente, detalleFuente }: Semill
   const imp25 = 'imp-medina-2025';
   const archivo = 'censo_medina_2025.xlsx';
   let filaN = 1;
-  const fecha25 = '2025-11-20';
 
   conLocales.forEach((calle, ci) => {
     const n = Math.max(1, Math.round(brutos[ci] * escala));
@@ -160,7 +159,7 @@ function generarMedina(db0: BaseDatos, { calles, fuente, detalleFuente }: Semill
         },
       };
       const obs: Observacion = {
-        id: `obs-${regId}`, campanaId: c25.id, localId, calleId: calle.id, fecha: fecha25, fuente: 'importacion', tipo: 'confirmado',
+        id: `obs-${regId}`, campanaId: c25.id, localId, calleId: calle.id, registrado: '2026-02-10T10:00:00', fuente: 'importacion', tipo: 'confirmado',
         datos: { numero: u.numero, sufijo: u.sufijo, nombre: negocio?.nombre, vacio, metrosFachada: metros }, verificacion: 'verificada',
       };
       db.observaciones[obs.id] = obs;

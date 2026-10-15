@@ -21,7 +21,7 @@ export function EquipoPanel({ itinerarios, onIt }: { itinerarios: Itinerario[]; 
         const mias = obs.filter((o) => o.investigadorId === p.id);
         const completadas = cobs.filter((c) => c.porId === p.id && c.estado !== 'en-curso' && c.estado !== 'pendiente').length;
         const enCurso = cobs.filter((c) => c.porId === p.id && c.estado === 'en-curso').length;
-        const ultima = mias.map((o) => o.fecha).sort().pop();
+        const ultima = mias.map((o) => o.fecha).filter(Boolean).sort().pop();
         const pendientesSync = mias.filter((o) => o.sync === 'local').length;
         return { p, its, responsables: responsables.length, obs: mias.length, completadas, enCurso, ultima, pendientesSync, nuevos: mias.filter((o) => o.tipo === 'nuevo-local').length };
       });

@@ -186,7 +186,10 @@ export interface Observacion {
   campanaId: Id;
   localId: Id | null; // null = todavía sin vincular a un local físico
   calleId: Id;
-  fecha: string;
+  /** Fecha real de la comprobación. Ausente si la fuente no la aporta: nunca se inventa. */
+  fecha?: string;
+  /** Momento en que se incorporó al sistema (importación, transcripción…). */
+  registrado?: string;
   fuente: FuenteObservacion;
   investigadorId?: Id;
   tipo: TipoObservacion;

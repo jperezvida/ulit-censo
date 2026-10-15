@@ -47,11 +47,13 @@ export function parsearCSV(texto: string): { cabecera: string[]; filas: string[]
 export const CAMPOS = {
   calle: ['calle', 'via', 'direccion', 'nombre de la calle', 'nombre via'],
   numero: ['numero', 'num', 'n', 'nº', 'no', 'portal'],
-  nombre: ['nombre', 'nombre comercial', 'establecimiento', 'rotulo', 'negocio'],
-  estado: ['estado', 'ocupacion', 'situacion', 'ocupado/vacio', 'vacio'],
-  metros: ['metros', 'metros fachada', 'fachada', 'm fachada'],
-  grupoActividad: ['grupo de actividad', 'grupo actividad'],
-  grupoComercio: ['grupo de comercio', 'grupo comercio'],
+  nombre: ['nombre del negocio', 'nombre', 'nombre comercial', 'establecimiento', 'rotulo', 'negocio'],
+  estado: ['estado', 'ocupacion', 'situacion', 'ocupado/vacio'],
+  /** Indicador booleano del censo original: 0/1, 0.0/1.0, sí/no, x. */
+  vacio: ['local vacio', 'vacio', 'esta vacio', 'local vacío'],
+  metros: ['long fachada', 'longitud fachada', 'metros', 'metros fachada', 'fachada', 'm fachada'],
+  grupoActividad: ['gractividad', 'gr actividad', 'grupo de actividad', 'grupo actividad'],
+  grupoComercio: ['gr comercio', 'grcomercio', 'grupo de comercio', 'grupo comercio'],
   subgrupo: ['subgrupo de actividad', 'subgrupo', 'subgrupo actividad'],
   actividad: ['actividad', 'actividad comercial'],
   cadena: ['cadena', 'franquicia', 'cadena/franquicia'],
@@ -59,6 +61,21 @@ export const CAMPOS = {
   instagram: ['instagram', 'ig'],
 } as const;
 export type CampoCanonico = keyof typeof CAMPOS;
+
+/**
+ * Interpreta un indicador booleano tal como llega de Excel: «1», «1.0», «1,0», «sí», «x»… → true;
+ * «0», «0.0», «no», vacío → false. Devuelve undefined si el valor no es reconocible.
+ */
+export function valorBooleano(v: string): boolean | undefined {
+  const crudo = v.trim().replace(',', '.');
+  if (crudo === '') return false;
+  const num = Number(crudo);
+  const n = normalizar(v);
+  if (Number.isFinite(num)) return num !== 0;
+  if (['si', 's', 'x', 'true', 'verdadero', 'vacio', 'v'].includes(n)) return true;
+  if (['no', 'n', 'false', 'falso', 'ocupado', 'o'].includes(n)) return false;
+  return undefined;
+}
 
 export function mapearCabecera(cabecera: string[]): Partial<Record<CampoCanonico, number>> {
   const out: Partial<Record<CampoCanonico, number>> = {};
@@ -92,10 +109,12 @@ export function interpretarFilas(cab: string[], filas: string[][], mapa: Partial
     const calleTexto = get('calle') || ultimaCalle;
     ultimaCalle = calleTexto;
     const numTxt = get('numero');
-    const m = numTxt.match(/^(\d+)\s*(.*)$/);
+    // Admite «12», «12 B», «12B» y los números exportados como decimal («12.0», «12,0»).
+    const m = numTxt.match(/^(\d+)(?:[.,]0+)?\s*(.*)$/);
     const estado = normalizar(get('estado'));
     const nombre = get('nombre') || undefined;
-    const vacio = estado.startsWith('vac') || estado === 'v' || (!nombre && !!get('metros'));
+    const indicador = mapa.vacio !== undefined ? valorBooleano(get('vacio')) : undefined;
+    const vacio = indicador ?? (estado.startsWith('vac') || estado === 'v' || (!nombre && !!get('metros')));
     const metros = parseFloat(get('metros').replace(',', '.'));
     const bruto: Record<string, string> = {};
     cab.forEach((c, j) => (bruto[c] = f[j] ?? ''));
@@ -107,18 +126,20 @@ export function interpretarFilas(cab: string[], filas: string[][], mapa: Partial
       sufijo: m?.[2] || undefined,
       nombre,
       vacio,
-      metros: Number.isFinite(metros) ? metros : undefined,
+      metros: Number.isFinite(metros) && metros > 0 ? metros : undefined,
       actividad: get('actividad') || undefined,
       bruto,
     };
   });
 }
 
-export type ClaseDiff = 'nuevo' | 'sin-cambios' | 'modificado' | 'fuera-ambito' | 'calle-desconocida' | 'posible-duplicado';
+export type ClaseDiff = 'nuevo' | 'sin-cambios' | 'modificado' | 'ambiguo' | 'fuera-ambito' | 'calle-desconocida' | 'posible-duplicado';
 
 export interface FilaDiff extends FilaInterpretada {
   clase: ClaseDiff;
   localId?: Id;
+  /** Locales posibles cuando la correspondencia es ambigua (varios en la misma dirección). */
+  candidatos?: Id[];
   detalle: string;
 }
 
@@ -152,8 +173,13 @@ export function compararImportacion(
     vistos.set(clave, f.fila);
     const existentes = (porCalle.get(f.calleId) ?? []).filter((e) => e.numero === f.numero && (e.sufijo ?? '') === (f.sufijo ?? ''));
     if (!existentes.length) return { ...f, clase: 'nuevo', detalle: 'No hay local anterior con esa dirección' };
-    const igual = existentes.find((e) => (f.vacio && !e.nombre) || (e.nombre && f.nombre && similitud(e.nombre, f.nombre) > 0.85));
-    if (igual) return { ...f, clase: 'sin-cambios', localId: igual.id, detalle: 'Coincide con el registro existente' };
+    const iguales = existentes.filter((e) => (f.vacio && !e.nombre) || (e.nombre && f.nombre && similitud(e.nombre, f.nombre) > 0.85));
+    if (iguales.length === 1) return { ...f, clase: 'sin-cambios', localId: iguales[0].id, detalle: 'Coincide con el registro existente' };
+    // Solo se vincula automáticamente si hay un único local posible; si no, queda pendiente de conciliación.
+    if (iguales.length > 1 || existentes.length > 1) {
+      const cands = (iguales.length > 1 ? iguales : existentes).map((e) => e.id);
+      return { ...f, clase: 'ambiguo', candidatos: cands, detalle: `${cands.length} locales con esa dirección: pendiente de conciliación` };
+    }
     const e = existentes[0];
     return { ...f, clase: 'modificado', localId: e.id, detalle: `Antes: ${e.nombre ?? 'vacío'} → ahora: ${f.vacio ? 'vacío' : f.nombre}` };
   });
