@@ -531,8 +531,8 @@ function generarValladolid(db: BaseDatos): BaseDatos {
         const cand = locales[locales.length - 1];
         db.vinculos[`vin-vll-${l.id}`] = {
           id: `vin-vll-${l.id}`, origen: { tipo: 'observacion', id: `obs-vll-${l.id}-${camp.anio}` }, localId: l.id,
-          confianza: dudosa ? 'dudosa' : 'confirmada',
-          criterio: dudosa ? 'Posible continuidad con el último local de la calle (numeración cercana)' : 'Revisado: local nuevo distinto de los anteriores',
+          confianza: dudosa ? 'sin-vinculo' : 'confirmada',
+          criterio: dudosa ? 'Posible continuidad con el último local de la calle: sin evidencia suficiente, queda indeterminado' : 'Revisado: local nuevo distinto de los anteriores',
           candidatos: dudosa && cand ? [{ localId: cand.id, puntuacion: 0.5, motivo: 'número contiguo' }] : undefined,
         };
       }
