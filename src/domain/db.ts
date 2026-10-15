@@ -3,7 +3,7 @@ import type {
   Observacion, Ocupacion, PendienteSync, Persona, RegistroOrigen, Revision, SituacionPrevia, VinculoHistorico,
 } from './types';
 
-export const VERSION_DATOS = 4;
+export const VERSION_DATOS = 5;
 
 /** "Base de datos" del prototipo: normalizada, serializable y persistida en el navegador. */
 export interface BaseDatos {

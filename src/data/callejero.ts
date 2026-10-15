@@ -76,7 +76,7 @@ const RAICES_SIM = [
   'Enebro', 'Escuadra', 'Fresno', 'Garza', 'Gnomon', 'Laurel', 'Madroño', 'Nogal', 'Olmo', 'Sextante', 'Tejo', 'Astrolabio',
   'Cuadrante', 'Nonio', 'Plomada', 'Teodolito', 'Vernier', 'Alidada', 'Meridiana',
 ];
-const TIPOS_SIM = ['Calle del', 'Calle del', 'Calle del', 'Travesía del', 'Plazuela del', 'Calle Nueva del'];
+const TIPOS_SIM = ['Calle del', 'Travesía del', 'Calle Nueva del', 'Plazuela del', 'Ronda del', 'Callejón del'];
 
 /**
  * Callejero esquemático SIMULADO (no corresponde a Medina del Campo).
