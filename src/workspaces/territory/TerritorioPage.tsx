@@ -101,6 +101,8 @@ export default function TerritorioPage() {
   const alListo = useCallback(
     (m: MLMap) => {
       mapa.current = m;
+      // Acceso para pruebas automatizadas en desarrollo
+      if (import.meta.env.DEV) (window as unknown as { __mapaTerritorio: MLMap }).__mapaTerritorio = m;
       m.addSource('calles', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       m.addSource('locales', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       m.addSource('anteriores', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });

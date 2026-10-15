@@ -124,7 +124,7 @@ function TarjetaCampana({ c, activa, onAbrir }: { c: Campana; activa: boolean; o
     {
       k: 'planificacion', t: 'Planificación',
       v: c.tipo === 'historico-importado' ? 1 : nAmbito ? m.asig.completa.length / nAmbito : 0,
-      detalle: c.tipo === 'historico-importado' ? 'Sin itinerarios (censo importado)' : `${m.its.length} de ~${c.itinerariosPrevistos ?? m.its.length} itinerarios · ${m.asig.sinAsignar.length} calles sin asignar`,
+      detalle: c.tipo === 'historico-importado' ? 'Sin itinerarios (censo importado)' : db.municipios[c.municipioId]?.fuenteCallejero === 'sin-geometria' ? 'Itinerarios no incluidos en la demo de volumen' : `${m.its.length} de ~${c.itinerariosPrevistos ?? m.its.length} itinerarios · ${m.asig.sinAsignar.length} calles sin asignar`,
     },
     {
       k: 'campo', t: 'Trabajo de campo', v: c.estados.campo === 'terminado' ? 1 : nAmbito ? m.completadas / nAmbito : 0,
@@ -173,7 +173,7 @@ function TarjetaCampana({ c, activa, onAbrir }: { c: Campana; activa: boolean; o
           ))}
         </div>
         <div className="fila" style={{ flexWrap: 'wrap', marginTop: 4 }}>
-          {c.tipo !== 'historico-importado' && (
+          {c.tipo !== 'historico-importado' && db.municipios[c.municipioId]?.fuenteCallejero !== 'sin-geometria' && (
             <button className="btn primario s" onClick={() => onAbrir('/territorio')}>
               <Route size={14} /> Planificar territorio
             </button>

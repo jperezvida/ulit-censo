@@ -112,6 +112,6 @@ export function buscarActividadPorNombre(nombre: string): NodoActividad | undefi
 
 export const COLOR_GRUPO: Record<string, string> = {
   'a1-comercio': '#0065FE',
-  'a1-servicios': '#8B5CF6',
-  'a1-hosteleria': '#E8590C',
+  'a1-servicios': '#C2255C',
+  'a1-hosteleria': '#D9730D',
 };

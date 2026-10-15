@@ -737,27 +737,6 @@
   gap: 12px;
   align-items: flex-start;
 }
-.kml-drop {
-  width: 100%;
-  border: 2px dashed var(--linea-2);
-  border-radius: 12px;
-  padding: 28px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  text-align: center;
-  cursor: pointer;
-  color: var(--tinta-2);
-}
-.kml-drop:hover {
-  border-color: var(--azul);
-  background: var(--azul-suave);
-}
-.kml-drop input {
-  display: none;
-}
-
 @media (max-width: 900px) {
   .territorio {
     grid-template-columns: 1fr;

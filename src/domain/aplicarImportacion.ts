@@ -1,0 +1,85 @@
+import type { BaseDatos } from './db';
+import { kRev, nuevoId } from './db';
+import { confirmarSinCambios, registrarLocalNuevo, registrarNuevoNegocio, registrarVacio, type Contexto } from './campo';
+import type { FilaDiff } from './importacion';
+import { buscarActividadPorNombre } from './taxonomy';
+import { puntoEnLinea, desplazarPerpendicular } from './geo';
+import { huella } from '../data/rng';
+import type { Campana, Id, Importacion, LngLat } from './types';
+
+function coordAproximada(db: BaseDatos, calleId: Id, numero: number | null): LngLat | undefined {
+  const c = db.calles[calleId];
+  const seg = c?.segmentos.slice().sort((a, b) => b.longitudM - a.longitudM)[0];
+  if (!seg) return undefined;
+  const t = numero ? Math.min(0.95, (numero % 60) / 60 + 0.02) : 0.5;
+  const { p, dir } = puntoEnLinea(seg.coords, t);
+  return desplazarPerpendicular(p, dir, (numero ?? 1) % 2 ? 9 : -9);
+}
+
+/**
+ * C/D · Aplica un Excel de itinerario (resultados de campo pasados a limpio) a la campaña.
+ * Solo se aplican filas «nuevo», «modificado» y «sin cambios»; el resto se conserva sin tocar nada.
+ */
+export function aplicarResultadosPapel(db0: BaseDatos, campanaId: Id, filas: FilaDiff[], archivo: string, tipo: Importacion['tipo'], porId: Id): { db: BaseDatos; resumen: Record<string, number> } {
+  let db = db0;
+  const impId = nuevoId('imp');
+  const ctx: Contexto = { campanaId, investigadorId: porId, fecha: new Date().toISOString(), fuente: 'papel' };
+  const resumen: Record<string, number> = {};
+  const registros = { ...db.registros };
+  for (const f of filas) {
+    resumen[f.clase] = (resumen[f.clase] ?? 0) + 1;
+    const regId = `reg-${impId}-${f.fila}`;
+    registros[regId] = { id: regId, importacionId: impId, fila: f.fila, datos: f.bruto };
+    if (!f.calleId) continue;
+    if (f.clase === 'sin-cambios' && f.localId) db = confirmarSinCambios(db, ctx, f.localId);
+    else if (f.clase === 'modificado' && f.localId) db = f.vacio ? registrarVacio(db, ctx, f.localId, f.metros) : registrarNuevoNegocio(db, ctx, f.localId, f.nombre ?? '');
+    else if (f.clase === 'nuevo') db = registrarLocalNuevo(db, ctx, { calleId: f.calleId, numero: f.numero, sufijo: f.sufijo, vacio: f.vacio, nombre: f.nombre, metrosFachada: f.metros, coord: coordAproximada(db, f.calleId, f.numero) }).db;
+  }
+  db = { ...db, registros: { ...registros, ...db.registros } };
+  db.importaciones = {
+    ...db.importaciones,
+    [impId]: { id: impId, municipioId: db.campanas[campanaId].municipioId, campanaId, tipo, archivo, huella: huella(archivo + filas.length), fecha: new Date().toISOString(), filas: filas.length, estado: 'confirmada', procedencia: 'importado', resumen },
+  };
+  return { db, resumen };
+}
+
+/**
+ * A · Censo histórico completo: crea una campaña histórica con sus locales,
+ * conservando cada fila como registro de origen. No inventa correspondencias con otras campañas.
+ */
+export function importarCensoHistorico(db0: BaseDatos, municipioId: Id, anio: number, nombre: string, filas: FilaDiff[], archivo: string): { db: BaseDatos; campanaId: Id } {
+  const db: BaseDatos = { ...db0, locales: { ...db0.locales }, negocios: { ...db0.negocios }, ocupaciones: { ...db0.ocupaciones }, observaciones: { ...db0.observaciones }, registros: { ...db0.registros }, vinculos: { ...db0.vinculos }, revisiones: { ...db0.revisiones } };
+  const impId = nuevoId('imp');
+  const campanaId = nuevoId('camp');
+  const ambito = new Set<Id>();
+  const resumen: Record<string, number> = { 'locales creados': 0, 'filas sin calle reconocida': 0 };
+  for (const f of filas) {
+    const regId = `reg-${impId}-${f.fila}`;
+    db.registros[regId] = { id: regId, importacionId: impId, fila: f.fila, datos: f.bruto };
+    if (!f.calleId) {
+      resumen['filas sin calle reconocida']++;
+      db.vinculos[`vin-${regId}`] = { id: `vin-${regId}`, origen: { tipo: 'registro', id: regId }, localId: null, confianza: 'sin-vinculo', criterio: 'Calle no encontrada en el callejero: pendiente de relacionar' };
+      continue;
+    }
+    ambito.add(f.calleId);
+    const localId = `loc-${impId}-${f.fila}`;
+    db.locales[localId] = { id: localId, municipioId, direcciones: [{ calleId: f.calleId, numero: f.numero, sufijo: f.sufijo }], coord: coordAproximada(db, f.calleId, f.numero), estado: 'activo', procedencia: 'importado' };
+    let negocioId: Id | null = null;
+    if (!f.vacio && f.nombre) {
+      negocioId = `neg-${localId}`;
+      db.negocios[negocioId] = { id: negocioId, nombre: f.nombre, actividadId: f.actividad ? buscarActividadPorNombre(f.actividad)?.id : undefined, procedencia: 'importado' };
+    }
+    db.ocupaciones[`ocu-${localId}`] = { id: `ocu-${localId}`, localId, negocioId, metrosFachada: f.metros, desdeCampanaId: campanaId };
+    db.observaciones[`obs-${regId}`] = { id: `obs-${regId}`, campanaId, localId, calleId: f.calleId, fecha: `${anio}-12-31`, fuente: 'importacion', tipo: 'confirmado', datos: { numero: f.numero, sufijo: f.sufijo, nombre: f.nombre, vacio: f.vacio, metrosFachada: f.metros }, verificacion: 'verificada' };
+    db.vinculos[`vin-${regId}`] = { id: `vin-${regId}`, origen: { tipo: 'registro', id: regId }, localId, confianza: 'confirmada', criterio: 'Local físico creado a partir de esta fila' };
+    db.revisiones[kRev(campanaId, localId)] = { campanaId, localId, campo: 'terminado', categorizacion: negocioId && db.negocios[negocioId].actividadId ? 'revisado' : 'pendiente', digital: 'pendiente', validacion: 'pendiente' };
+    resumen['locales creados']++;
+  }
+  const camp: Campana = {
+    id: campanaId, municipioId, anio, nombre, tipo: 'historico-importado', periodo: { inicio: `${anio}-01-01`, fin: `${anio}-12-31` },
+    ambitoCalleIds: [...ambito], ampliacionCalleIds: [], estados: { planificacion: 'no-aplica', campo: 'terminado', revision: 'en-curso', validacion: 'pendiente' }, procedencia: 'importado',
+  };
+  db.campanas = { ...db.campanas, [campanaId]: camp };
+  db.importaciones = { ...db.importaciones, [impId]: { id: impId, municipioId, campanaId, tipo: 'A-censo-historico', archivo, huella: huella(archivo + filas.length), fecha: new Date().toISOString(), filas: filas.length, estado: 'confirmada', procedencia: 'importado', resumen, nota: 'Archivo original conservado como registros de origen inmutables.' } };
+  return { db, campanaId };
+}

@@ -9,18 +9,34 @@ export function normalizar(s: string): string {
     .trim();
 }
 
-const PREFIJOS_VIA = [
-  'calle', 'c', 'cl', 'c/', 'avenida', 'av', 'avda', 'plaza', 'pl', 'pza', 'paseo', 'pº', 'po', 'travesia', 'trv',
-  'ronda', 'camino', 'carretera', 'ctra', 'callejon', 'pasaje', 'glorieta', 'costanilla', 'cuesta', 'rua',
-];
+/** Abreviaturas habituales de tipo de vía → forma canónica. */
+const TIPOS_VIA: Record<string, string> = {
+  calle: 'calle', c: 'calle', cl: 'calle', 'c/': 'calle', cll: 'calle',
+  avenida: 'avenida', av: 'avenida', avda: 'avenida',
+  plaza: 'plaza', pl: 'plaza', pza: 'plaza', plza: 'plaza',
+  paseo: 'paseo', po: 'paseo', 'pº': 'paseo',
+  travesia: 'travesia', trv: 'travesia', trav: 'travesia',
+  ronda: 'ronda', camino: 'camino', carretera: 'carretera', ctra: 'carretera', callejon: 'callejon', pasaje: 'pasaje',
+  glorieta: 'glorieta', costanilla: 'costanilla', cuesta: 'cuesta', rua: 'rua', plazuela: 'plazuela',
+};
 const ARTICULOS = ['de', 'del', 'la', 'las', 'el', 'los'];
 
-/** Clave de calle: sin tipo de vía ni artículos iniciales ("C/ de los Mostenes" → "mostenes"). */
+/**
+ * Clave de calle para casar fuentes: tipo de vía canónico (por defecto «calle»)
+ * + nombre sin artículos iniciales. «C/ de los Mostenes» y «Los Mostenes» → «calle mostenes»;
+ * «Travesía del Fresno» no se confunde con «Calle del Fresno».
+ */
 export function claveCalle(nombre: string): string {
-  let palabras = normalizar(nombre.replace(/\//g, ' / ')).split(' ').filter((w) => w && w !== '/');
-  if (palabras.length > 1 && PREFIJOS_VIA.includes(palabras[0])) palabras = palabras.slice(1);
+  let palabras = normalizar(nombre.replace(/\//g, '/ ')).split(' ').filter((w) => w);
+  let tipo = 'calle';
+  const p0 = palabras[0]?.replace(/\.$/, '');
+  if (palabras.length > 1 && p0 && TIPOS_VIA[p0]) {
+    tipo = TIPOS_VIA[p0];
+    palabras = palabras.slice(1);
+  }
+  palabras = palabras.filter((w) => w !== '/');
   while (palabras.length > 1 && ARTICULOS.includes(palabras[0])) palabras = palabras.slice(1);
-  return palabras.join(' ');
+  return `${tipo} ${palabras.join(' ')}`;
 }
 
 /** Similitud 0..1 basada en bigramas (Dice). Suficiente para proponer, nunca para decidir. */
