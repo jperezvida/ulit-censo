@@ -101,8 +101,8 @@ export default function TerritorioPage() {
   const alListo = useCallback(
     (m: MLMap) => {
       mapa.current = m;
-      // Acceso para pruebas automatizadas en desarrollo
-      if (import.meta.env.DEV) (window as unknown as { __mapaTerritorio: MLMap }).__mapaTerritorio = m;
+      // Acceso para pruebas automatizadas
+      (window as unknown as { __mapaTerritorio: MLMap }).__mapaTerritorio = m;
       m.addSource('calles', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       m.addSource('locales', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       m.addSource('anteriores', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
@@ -410,7 +410,7 @@ export default function TerritorioPage() {
           <div className="t-modo" style={{ ['--c' as string]: itActual.color }}>
             <b>Editando {itActual.codigo}</b>
             <span>
-              {dividiendo ? 'Pulsa segmentos de la calle seleccionada para incluirlos o excluirlos.' : 'Pulsa una calle para añadirla completa (todos sus segmentos y ambas aceras). Vuelve a pulsar para quitarla.'}
+              {dividiendo ? 'Pulsa segmentos de la calle seleccionada para incluirlos o excluirlos' : 'Pulsa calles para añadirlas completas (ambas aceras) o quitarlas'}
             </span>
             <button className="btn s" onClick={() => { setEditando(false); setDividiendo(false); }}>Terminar</button>
           </div>

@@ -5,7 +5,9 @@
   "description": "ULIT Censo — prototipo navegable (fase 1). Datos simulados; sin servicios productivos.",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/copiar-maplibre.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/copiar-maplibre.mjs",
     "build": "tsc -p tsconfig.json && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json",

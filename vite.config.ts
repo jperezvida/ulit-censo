@@ -7,8 +7,6 @@ export default defineConfig({
   base: './',
   plugins: [react()],
   build: { chunkSizeWarningLimit: 2000 },
-  // El worker de MapLibre es un módulo ES: se empaqueta como tal.
-  worker: { format: 'es' },
   test: {
     environment: 'jsdom',
     globals: true,

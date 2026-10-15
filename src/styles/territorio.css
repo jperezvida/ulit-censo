@@ -491,8 +491,7 @@
 .t-modo {
   position: absolute;
   top: 64px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 12px;
   z-index: 3;
   background: var(--navy);
   color: #fff;
@@ -503,11 +502,12 @@
   align-items: center;
   box-shadow: var(--sombra-2), inset 4px 0 0 var(--c, var(--azul));
   font-size: 13px;
-  max-width: calc(100% - 24px);
+  max-width: min(620px, calc(100% - 380px));
   flex-wrap: wrap;
 }
 .t-modo span {
   opacity: 0.8;
+  font-size: 12.5px;
 }
 .t-modo .btn {
   background: rgba(255, 255, 255, 0.12);

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Map as MLMap, NavigationControl, ScaleControl, setWorkerUrl } from 'maplibre-gl';
-import urlWorker from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 
-setWorkerUrl(urlWorker);
+// Worker de MapLibre servido tal cual desde public/maplibre (ver scripts/copiar-maplibre.mjs).
+setWorkerUrl(new URL('maplibre/maplibre-gl-worker.mjs', document.baseURI).href);
 import { estiloBase } from './estilo';
 import type { LngLat } from '../../domain/types';
 
@@ -52,7 +52,15 @@ export function MapaBase({
       errores++;
       if (errores > 3) setSinBase(true);
     });
-    mapa.on('load', () => listo.current(mapa!));
+    // «style.load» basta para añadir capas propias y no depende de que carguen las teselas remotas.
+    let iniciado = false;
+    const iniciar = () => {
+      if (iniciado) return;
+      iniciado = true;
+      listo.current(mapa!);
+    };
+    mapa.once('style.load', iniciar);
+    mapa.once('load', iniciar);
     return () => mapa?.remove();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

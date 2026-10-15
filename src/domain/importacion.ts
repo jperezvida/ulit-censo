@@ -1,6 +1,6 @@
 import type { BaseDatos } from './db';
 import { claveCalle, normalizar, similitud } from './text';
-import { direccionVigente, ocupacionEn } from './consultas';
+import { direccionVigente, indiceOcupaciones, ocupacionEn } from './consultas';
 import type { Calle, Id } from './types';
 
 // ───────────────────────── CSV ─────────────────────────
@@ -133,9 +133,11 @@ export function compararImportacion(
   const camp = db.campanas[campanaId];
   const ref = camp?.campanaReferenciaId ?? campanaId;
   const porCalle = new Map<Id, { id: Id; numero: number | null; sufijo?: string; nombre?: string }[]>();
+  const ixOc = indiceOcupaciones(db);
   for (const l of Object.values(db.locales)) {
+    if (camp && l.municipioId !== camp.municipioId) continue;
     const d = direccionVigente(l);
-    const oc = ocupacionEn(db, l.id, ref);
+    const oc = ocupacionEn(db, l.id, ref, ixOc);
     if (!oc) continue;
     const arr = porCalle.get(d.calleId) ?? [];
     arr.push({ id: l.id, numero: d.numero, sufijo: d.sufijo, nombre: oc.negocioId ? db.negocios[oc.negocioId]?.nombre : undefined });
