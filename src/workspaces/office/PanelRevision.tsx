@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, CheckCheck, Copy, ExternalLink, GitMerge, ShieldCheck, Undo2, X } from 'lucide-react';
 import { useContexto, useFichaLocal } from '../../store/contexto';
 import { useStore } from '../../store/store';
-import { actualizarRevisiones, asignarActividad, editarNegocio, esDudosa, motivoNoAprobable, type FilaOficina } from '../../domain/oficina';
+import { actualizarRevisiones, aprobar, asignarActividad, devolver, editarNegocio, esDudosa, motivoNoAprobable, type FilaOficina } from '../../domain/oficina';
+import { useCtxOficina } from './contextoOficina';
 import { clasificacionAnterior, clasificacionEn, partirDeClasificacionAnterior } from '../../domain/clasificacion';
 import { VARIABLES_DIGITALES, esExigible, estadoDigital, partirDeDigitalAnterior, problemasDigitales, registrarDatoDigital, revisionDigitalAnterior, revisionDigitalEn, verificarDigital } from '../../domain/digital';
 import { RESPUESTA_TXT } from '../../domain/respuesta';
@@ -13,27 +14,57 @@ import { rutaActividad } from '../../domain/taxonomy';
 import type { Respuesta, VariableDigital } from '../../domain/types';
 import { SelectorActividad } from '../../components/SelectorActividad';
 import { Historico } from '../local/Historico';
-import { fmtFecha } from '../../components/ui';
+import { Modal, fmtFecha } from '../../components/ui';
 
-type Pestana = 'ficha' | 'digital' | 'historico' | 'conciliacion';
+export type Pestana = 'ficha' | 'digital' | 'historico' | 'conciliacion';
 
-export function PanelRevision({ fila, onCerrar, onAnterior, onSiguiente, onAprobar, onDevolver, posicion }: {
+/** Campo de texto que guarda al confirmar (Enter o salir del campo), no en cada pulsación. */
+export function CampoConfirmado({ valor, onGuardar, placeholder, etiqueta, disabled }: { valor: string; onGuardar: (v: string) => void; placeholder?: string; etiqueta: string; disabled?: boolean }) {
+  const [v, setV] = useState(valor);
+  useEffect(() => setV(valor), [valor]);
+  const guardar = () => {
+    if (v !== valor) onGuardar(v);
+  };
+  return (
+    <input
+      className="input"
+      aria-label={etiqueta}
+      value={v}
+      placeholder={placeholder}
+      disabled={disabled}
+      onChange={(e) => setV(e.target.value)}
+      onBlur={guardar}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') guardar();
+        if (e.key === 'Escape') setV(valor);
+      }}
+    />
+  );
+}
+
+export function PanelRevision({ fila, onCerrar, onAnterior, onSiguiente, onAprobar, onDevolver, posicion, variante = 'panel', pestanaInicial }: {
   fila: FilaOficina;
   onCerrar: () => void;
   onAnterior: () => void;
   onSiguiente: () => void;
-  onAprobar: () => void;
-  onDevolver: () => void;
+  onAprobar?: () => void;
+  onDevolver?: () => void;
   posicion: string;
+  variante?: 'panel' | 'pagina';
+  pestanaInicial?: Pestana;
 }) {
   const { db, campana, prefs } = useContexto();
   const aplicar = useStore((s) => s.aplicar);
+  const oficina = useCtxOficina();
+  const alcance = oficina?.alcance;
+  const bloqueado = !!oficina?.bloqueado || fila.bloqueado;
+  const [devolviendo, setDevolviendo] = useState(false);
   const ficha = useFichaLocal();
   const vinculos = useMemo(
     () => Object.values(db.vinculos).filter((v) => v.localId === fila.localId && v.origen.tipo === 'observacion' && (v.confianza === 'dudosa' || v.confianza === 'probable')),
     [db.vinculos, fila.localId],
   );
-  const [pestana, setPestana] = useState<Pestana>(esDudosa(fila) && vinculos.length ? 'conciliacion' : 'ficha');
+  const [pestana, setPestana] = useState<Pestana>(pestanaInicial ?? (esDudosa(fila) && vinculos.length ? 'conciliacion' : 'ficha'));
   if (!campana) return null;
   const l = db.locales[fila.localId];
   const neg = fila.negocioId ? db.negocios[fila.negocioId] : undefined;
@@ -44,9 +75,11 @@ export function PanelRevision({ fila, onCerrar, onAnterior, onSiguiente, onAprob
   const cla = neg ? clasificacionEn(db, neg.id, campana.id) : undefined;
   const claAnt = neg ? clasificacionAnterior(db, neg.id, campana.id) : undefined;
   const ocAntes = ref ? ocupacionEn(db, fila.localId, ref) : undefined;
+  const accionAprobar = onAprobar ?? (() => aplicar((d) => aprobar(d, campana.id, [fila], alcance).db, 'Registro aprobado'));
+  const accionDevolver = onDevolver ?? (() => setDevolviendo(true));
 
   return (
-    <aside className="of-panel" aria-label="Revisión del registro">
+    <aside className={`of-panel ${variante === 'pagina' ? 'of-panel-pagina' : ''}`} aria-label="Revisión del registro">
       <div className="of-panel-cab">
         <div className="fila">
           <span className="muted mono" style={{ fontSize: 11 }}>{posicion}</span>
@@ -64,6 +97,8 @@ export function PanelRevision({ fila, onCerrar, onAnterior, onSiguiente, onAprob
           <Estado t="Validación" ok={r.validacion === 'aprobada'} error={r.validacion === 'devuelta'} />
         </div>
         {r.validacion === 'devuelta' && <div className="t-info error" style={{ margin: '8px 0 0' }}>Devuelto: {r.motivoDevolucion}</div>}
+        {fila.situacion === 'pendiente-visita' && <div className="t-info" style={{ margin: '8px 0 0' }}>Pendiente de visitar en campo: se muestran los datos de {db.campanas[ref ?? '']?.anio ?? 'referencia'}.</div>}
+        {bloqueado && <div className="t-info aviso" style={{ margin: '8px 0 0' }}>Itinerario con la revisión cerrada: solo lectura.</div>}
         {fila.obs && (
           <div className="of-obs-det">
             <span className={`of-obs t-${fila.obs.tipo}`}>{TIPO_OBS_TXT[fila.obs.tipo]}</span>
@@ -81,38 +116,38 @@ export function PanelRevision({ fila, onCerrar, onAnterior, onSiguiente, onAprob
         ))}
       </div>
 
-      <div className="of-panel-cuerpo scroll-fino">
+      <fieldset className="of-panel-cuerpo scroll-fino" disabled={bloqueado} style={{ border: 0, margin: 0, minWidth: 0 }}>
         {pestana === 'ficha' && (
           <div className="col" style={{ gap: 14 }}>
             {neg ? (
               <>
                 <div className="campo">
                   <label>Nombre comercial</label>
-                  <input className="input" value={neg.nombre} onChange={(e) => aplicar((d) => editarNegocio(d, campana.id, neg.id, { nombre: e.target.value }), 'Nombre', { silencioso: true })} />
+                  <CampoConfirmado etiqueta="Nombre comercial" valor={neg.nombre} onGuardar={(v) => aplicar((d) => editarNegocio(d, campana.id, neg.id, { nombre: v }, alcance), 'Nombre comercial')} />
                 </div>
                 <div className="grid2">
                   <div className="campo">
                     <label>Cadena / franquicia</label>
-                    <input className="input" value={neg.cadena ?? ''} placeholder="Independiente" onChange={(e) => aplicar((d) => editarNegocio(d, campana.id, neg.id, { cadena: e.target.value || undefined }), 'Cadena', { silencioso: true })} />
+                    <CampoConfirmado etiqueta="Cadena o franquicia" valor={neg.cadena ?? ''} placeholder="Independiente" onGuardar={(v) => aplicar((d) => editarNegocio(d, campana.id, neg.id, { cadena: v.trim() || undefined }, alcance), 'Cadena / franquicia')} />
                   </div>
                   <div className="campo">
                     <label>Descripción</label>
-                    <input className="input" value={neg.descripcion ?? ''} onChange={(e) => aplicar((d) => editarNegocio(d, campana.id, neg.id, { descripcion: e.target.value || undefined }), 'Descripción', { silencioso: true })} />
+                    <CampoConfirmado etiqueta="Descripción" valor={neg.descripcion ?? ''} onGuardar={(v) => aplicar((d) => editarNegocio(d, campana.id, neg.id, { descripcion: v.trim() || undefined }, alcance), 'Descripción')} />
                   </div>
                 </div>
                 <div>
                   <div className="rotulo" style={{ marginBottom: 8 }}>Clasificación (4 niveles)</div>
-                  <SelectorActividad key={fila.localId} valor={cla?.actividadId} onCambio={(id) => aplicar((d) => asignarActividad(d, campana.id, [fila], id, prefs.personaId), 'Actividad asignada · categorización revisada')} />
+                  <SelectorActividad key={fila.localId} valor={cla?.actividadId} onCambio={(id) => aplicar((d) => asignarActividad(d, campana.id, [fila], id, prefs.personaId, alcance), 'Actividad asignada · categorización revisada')} />
                   {cla && !cla.confirmada && (
                     <div className="fila" style={{ marginTop: 6 }}>
                       <span className="chip aviso">{cla.origen === 'heredado' ? 'Copiada de una campaña anterior' : 'Importada'} · sin confirmar</span>
-                      <button className="btn s" onClick={() => aplicar((d) => asignarActividad(d, campana.id, [fila], cla.actividadId, prefs.personaId), 'Clasificación confirmada')}>Confirmar</button>
+                      <button className="btn s" onClick={() => aplicar((d) => asignarActividad(d, campana.id, [fila], cla.actividadId, prefs.personaId, alcance), 'Clasificación confirmada')}>Confirmar</button>
                     </div>
                   )}
                   {!cla && claAnt && (
                     <div className="fila" style={{ marginTop: 6, flexWrap: 'wrap' }}>
-                      <span className="muted" style={{ fontSize: 12 }}>En {db.campanas[claAnt.campanaId]?.anio}: {rutaActividad(claAnt.actividadId)[3]?.nombre} (mismo negocio)</span>
-                      <button className="btn s" onClick={() => aplicar((d) => partirDeClasificacionAnterior(d, neg.id, campana.id, prefs.personaId), 'Clasificación anterior copiada como borrador')}>Partir de {db.campanas[claAnt.campanaId]?.anio}</button>
+                      <span className="muted" style={{ fontSize: 12 }}>En {db.campanas[claAnt.campanaId]?.anio}: {rutaActividad(claAnt.actividadId).at(-1)?.nombre} (mismo negocio)</span>
+                      <button className="btn s" onClick={() => aplicar((d) => partirDeClasificacionAnterior(d, neg.id, campana.id, prefs.personaId, { alcance }), 'Clasificación anterior copiada como borrador')}>Partir de {db.campanas[claAnt.campanaId]?.anio}</button>
                     </div>
                   )}
                   {antes && antes.id !== neg.id && <p className="muted" style={{ fontSize: 12 }}>En {db.campanas[ref!]?.anio} el local lo ocupaba otro negocio ({antes.nombre}): no se hereda su clasificación.</p>}
@@ -124,7 +159,7 @@ export function PanelRevision({ fila, onCerrar, onAnterior, onSiguiente, onAprob
               </div>
             )}
             <label className="fila" style={{ fontSize: 13 }}>
-              <input type="checkbox" checked={!!r.pendienteComprobacion} onChange={(e) => aplicar((d) => actualizarRevisiones(d, campana.id, [fila.localId], { pendienteComprobacion: e.target.checked }), e.target.checked ? 'Pendiente de comprobación' : 'Comprobado')} />
+              <input type="checkbox" checked={!!r.pendienteComprobacion} onChange={(e) => aplicar((d) => actualizarRevisiones(d, campana.id, [fila.localId], { pendienteComprobacion: e.target.checked }, alcance), e.target.checked ? 'Pendiente de comprobación' : 'Comprobado')} />
               Pendiente de comprobación
             </label>
             {fila.errores.length > 0 && <div className="t-info error" style={{ margin: 0 }}>Errores: {fila.errores.join(' · ')}</div>}
@@ -159,33 +194,34 @@ export function PanelRevision({ fila, onCerrar, onAnterior, onSiguiente, onAprob
                         <div className="muted" style={{ fontSize: 11.5 }}>Coincidencia {Math.round(c.puntuacion * 100)} %: {c.motivo}</div>
                       </div>
                       <div className="of-decision">
-                        <button className="btn s" onClick={() => aplicar((d) => resolverVinculo(d, v.id, { tipo: 'mismo-local', localAnteriorId: c.localId }, prefs.personaId), 'Vinculado: mismo local físico (histórico unificado)')}>Mismo local</button>
+                        <button className="btn s" onClick={() => aplicar((d) => resolverVinculo(d, v.id, { tipo: 'mismo-local', localAnteriorId: c.localId }, prefs.personaId, alcance), 'Vinculado: mismo local físico (histórico unificado)')}>Mismo local</button>
                       </div>
                     </div>
                   );
                 })}
                 <div className="fila" style={{ flexWrap: 'wrap', marginTop: 8 }}>
-                  <button className="btn s" onClick={() => aplicar((d) => resolverVinculo(d, v.id, { tipo: 'distintos' }, prefs.personaId), 'Confirmado como local distinto')}>Son locales distintos</button>
-                  <button className="btn s fantasma" onClick={() => aplicar((d) => resolverVinculo(d, v.id, { tipo: 'indeterminado' }, prefs.personaId), 'Queda indeterminado')}>Dejar indeterminado</button>
+                  <button className="btn s" onClick={() => aplicar((d) => resolverVinculo(d, v.id, { tipo: 'distintos' }, prefs.personaId, alcance), 'Confirmado como local distinto')}>Son locales distintos</button>
+                  <button className="btn s fantasma" onClick={() => aplicar((d) => resolverVinculo(d, v.id, { tipo: 'indeterminado' }, prefs.personaId, alcance), 'Queda indeterminado')}>Dejar indeterminado</button>
                 </div>
               </div>
             ))}
             {(fila.obs?.tipo === 'posible-desaparicion' || fila.obs?.tipo === 'dudoso') && (
               <div className="t-info aviso" style={{ margin: 0 }}>
                 Marcado en campo como «{TIPO_OBS_TXT[fila.obs.tipo]}». No se contabiliza como cierre hasta que se confirme.
-                <button className="btn s" style={{ marginLeft: 'auto' }} onClick={() => aplicar((d) => actualizarRevisiones(d, campana.id, [fila.localId], { pendienteComprobacion: false }), 'Comprobación registrada')}>Comprobado</button>
+                <button className="btn s" style={{ marginLeft: 'auto' }} onClick={() => aplicar((d) => actualizarRevisiones(d, campana.id, [fila.localId], { pendienteComprobacion: false }, alcance), 'Comprobación registrada')}>Comprobado</button>
               </div>
             )}
           </div>
         )}
-      </div>
+      </fieldset>
 
       <div className="of-panel-pie">
-        <button className="btn" onClick={onDevolver}><Undo2 size={14} /> Devolver</button>
+        <button className="btn" onClick={accionDevolver} disabled={bloqueado}><Undo2 size={14} /> Devolver</button>
         <span className="esp" />
         {motivo && <span className="muted" style={{ fontSize: 11.5 }} title="Requisitos para aprobar">Falta: {motivo}</span>}
-        <button className="btn primario" onClick={onAprobar} disabled={!!motivo}><CheckCheck size={14} /> Aprobar</button>
+        <button className="btn primario" onClick={accionAprobar} disabled={!!motivo || bloqueado}><CheckCheck size={14} /> Aprobar</button>
       </div>
+      {devolviendo && <ModalDevolverUno onCerrar={() => setDevolviendo(false)} onAplicar={(m) => { aplicar((d) => devolver(d, campana.id, [fila.localId], m, alcance), 'Registro devuelto para corrección'); setDevolviendo(false); }} />}
     </aside>
   );
 }
@@ -207,15 +243,40 @@ const OPCIONES: { r: Respuesta; t: string; tecla: string }[] = [
   { r: 'pendiente', t: '·', tecla: 'Supr' },
 ];
 
+/** Valor numérico que se guarda al confirmar (Enter o salir), no en cada pulsación. */
+function NumeroConfirmado({ valor, onGuardar, etiqueta }: { valor?: number; onGuardar: (v: number | undefined) => void; etiqueta: string }) {
+  const [t, setT] = useState(valor === undefined ? '' : String(valor));
+  useEffect(() => setT(valor === undefined ? '' : String(valor)), [valor]);
+  const guardar = () => {
+    const x = t.trim().replace(',', '.');
+    if (x === '' && valor !== undefined) onGuardar(undefined);
+    else if (x !== '' && Number.isFinite(+x) && +x !== valor) onGuardar(+x);
+  };
+  return (
+    <input className="input of-mini" style={{ width: 80 }} inputMode="decimal" aria-label={etiqueta} value={t} placeholder="valor"
+      onChange={(e) => setT(e.target.value)} onBlur={guardar} onKeyDown={(e) => { if (e.key === 'Enter') guardar(); if (e.key === 'Escape') setT(valor === undefined ? '' : String(valor)); }} />
+  );
+}
+
+function ModalDevolverUno({ onCerrar, onAplicar }: { onCerrar: () => void; onAplicar: (m: string) => void }) {
+  const [m, setM] = useState('');
+  return (
+    <Modal titulo="Devolver para corrección" onCerrar={onCerrar} pie={<><button className="btn" onClick={onCerrar}>Cancelar</button><button className="btn primario" disabled={!m.trim()} onClick={() => onAplicar(m.trim())}>Devolver</button></>}>
+      <textarea className="input" aria-label="Motivo de la devolución" value={m} onChange={(e) => setM(e.target.value)} autoFocus />
+    </Modal>
+  );
+}
+
 function Digital({ negocioId }: { negocioId: string }) {
   const { db, campana, prefs } = useContexto();
   const aplicar = useStore((s) => s.aplicar);
+  const alcance = useCtxOficina()?.alcance;
   const rev = revisionDigitalEn(db, negocioId, campana!.id);
   const ant = revisionDigitalAnterior(db, negocioId, campana!.id);
   const estado = estadoDigital(db, negocioId, campana!.id);
   const problemas = problemasDigitales(rev);
   const registrar = (v: VariableDigital, respuesta: Respuesta, valor?: number) =>
-    aplicar((d) => registrarDatoDigital(d, negocioId, campana!.id, v, { respuesta, valor }, prefs.personaId), 'Dato digital', { silencioso: true });
+    aplicar((d) => registrarDatoDigital(d, negocioId, campana!.id, v, { respuesta, valor }, prefs.personaId, { alcance }), 'Dato digital');
   const neg = db.negocios[negocioId];
   const ESTADO_TXT = { 'sin-datos': 'Sin datos', 'solo-historico': 'Solo datos históricos', borrador: `Borrador ${campana!.anio}`, verificada: 'Verificada' } as const;
   return (
@@ -227,7 +288,7 @@ function Digital({ negocioId }: { negocioId: string }) {
         </span>
         <span className="esp" />
         {ant && (
-          <button className="btn s" onClick={() => aplicar((d) => partirDeDigitalAnterior(d, negocioId, campana!.id, prefs.personaId), `Copiado de ${db.campanas[ant.campanaId]?.anio} como borrador sin verificar`)}>
+          <button className="btn s" onClick={() => aplicar((d) => partirDeDigitalAnterior(d, negocioId, campana!.id, prefs.personaId, { alcance }), `Copiado de ${db.campanas[ant.campanaId]?.anio} como borrador sin verificar`)}>
             <Copy size={13} /> Partir de {db.campanas[ant.campanaId]?.anio}
           </button>
         )}
@@ -235,7 +296,7 @@ function Digital({ negocioId }: { negocioId: string }) {
           className="btn s primario"
           disabled={!rev || problemas.length > 0 || estado === 'verificada'}
           title={problemas.map((p) => p.mensaje).join('\n') || undefined}
-          onClick={() => aplicar((d) => verificarDigital(d, negocioId, campana!.id, prefs.personaId), `Presencia digital verificada en ${campana!.anio}`)}
+          onClick={() => aplicar((d) => verificarDigital(d, negocioId, campana!.id, prefs.personaId, { alcance }), `Presencia digital verificada en ${campana!.anio}`)}
         >
           <ShieldCheck size={13} /> Verificar
         </button>
@@ -267,17 +328,10 @@ function Digital({ negocioId }: { negocioId: string }) {
                 <td>
                   <div className="of-resp">
                     {def.tipo === 'numero' && (
-                      <input
-                        className="input of-mini"
-                        style={{ width: 80 }}
-                        inputMode="decimal"
-                        value={d?.valor ?? ''}
-                        placeholder="valor"
-                        onChange={(e) => {
-                          const v = e.target.value.replace(',', '.');
-                          if (v === '') registrar(def.id, 'pendiente');
-                          else if (Number.isFinite(+v)) registrar(def.id, 'si', +v);
-                        }}
+                      <NumeroConfirmado
+                        etiqueta={def.etiqueta}
+                        valor={d?.valor}
+                        onGuardar={(v) => (v === undefined ? registrar(def.id, 'pendiente') : registrar(def.id, 'si', v))}
                       />
                     )}
                     {OPCIONES.filter((o) => (def.tipo === 'numero' ? o.r !== 'si' && o.r !== 'no' : true)).filter((o) => o.r !== 'na' || def.admiteNa || def.depende).map((o) => (

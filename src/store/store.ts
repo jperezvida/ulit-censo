@@ -17,6 +17,15 @@ export interface Prefs {
   sinConexion: boolean;
   modoSol: boolean;
   guiaAbierta: boolean;
+  /** Preferencias de Oficina de cada persona (modo de trabajo y columnas por tarea). */
+  oficina: Record<Id, PrefsOficina>;
+}
+
+export type ModoOficina = 'tareas' | 'establecimiento';
+export interface PrefsOficina {
+  modo: ModoOficina;
+  /** Por tarea: columnas ocultas y fijadas a la izquierda (además de las fijas por defecto). */
+  columnas?: Record<string, { ocultas: string[]; fijas: string[] }>;
 }
 
 const PREFS_INICIALES: Prefs = {
@@ -28,6 +37,7 @@ const PREFS_INICIALES: Prefs = {
   sinConexion: false,
   modoSol: false,
   guiaAbierta: false,
+  oficina: {},
 };
 
 function leerPrefs(): Prefs {
@@ -51,22 +61,33 @@ interface Estado {
   carga: { fase: 'inicio' | 'cargando' | 'lista' | 'error'; mensaje: string };
   prefs: Prefs;
   pilaDeshacer: { db: BaseDatos; etiqueta: string }[];
+  /** Operaciones deshechas que pueden rehacerse (se vacía con cada operación nueva). */
+  pilaRehacer: { db: BaseDatos; etiqueta: string }[];
+  /** Momento del último guardado local (para el indicador de guardado). */
+  guardado: { estado: 'guardado' | 'pendiente' | 'error'; momento?: number };
   avisos: Aviso[];
   inicializar: (forzar?: boolean) => Promise<void>;
   aplicar: (fn: (db: BaseDatos) => BaseDatos, etiqueta: string, opciones?: { silencioso?: boolean }) => boolean;
   deshacer: () => void;
+  rehacer: () => void;
+  setPrefsOficina: (personaId: Id, p: Partial<PrefsOficina>) => void;
   setPrefs: (p: Partial<Prefs>) => void;
   avisar: (texto: string, tipo?: Aviso['tipo'], deshacer?: boolean) => void;
   quitarAviso: (id: number) => void;
 }
 
 let temporizador: ReturnType<typeof setTimeout> | undefined;
+let marcarGuardado: (g: Estado['guardado']) => void = () => undefined;
 function persistir(db: BaseDatos) {
   clearTimeout(temporizador);
+  marcarGuardado({ estado: 'pendiente' });
   temporizador = setTimeout(() => {
-    idbSet(CLAVE_DB, db).catch(() => {
-      /* almacenamiento no disponible: la demo sigue funcionando en memoria */
-    });
+    idbSet(CLAVE_DB, db)
+      .then(() => marcarGuardado({ estado: 'guardado', momento: Date.now() }))
+      .catch(() => {
+        /* almacenamiento no disponible: la demo sigue funcionando en memoria */
+        marcarGuardado({ estado: 'error', momento: Date.now() });
+      });
   }, 600);
 }
 
@@ -77,6 +98,8 @@ export const useStore = create<Estado>((set, get) => ({
   carga: { fase: 'inicio', mensaje: '' },
   prefs: leerPrefs(),
   pilaDeshacer: [],
+  pilaRehacer: [],
+  guardado: { estado: 'guardado' },
   avisos: [],
 
   inicializar: async (forzar = false) => {
@@ -95,7 +118,7 @@ export const useStore = create<Estado>((set, get) => ({
       set({ carga: { fase: 'cargando', mensaje: 'Generando datos ficticios reproducibles…' } });
       await new Promise((r) => setTimeout(r, 30));
       const db = generarDemo({ calles: callejero.calles, fuente: callejero.fuente, detalleFuente: callejero.detalle });
-      set({ db, carga: { fase: 'lista', mensaje: '' }, pilaDeshacer: [] });
+      set({ db, carga: { fase: 'lista', mensaje: '' }, pilaDeshacer: [], pilaRehacer: [] });
       persistir(db);
     } catch (e) {
       console.error(e);
@@ -109,7 +132,7 @@ export const useStore = create<Estado>((set, get) => ({
     try {
       const nueva = fn(db);
       if (nueva === db) return false;
-      set({ db: nueva, pilaDeshacer: [...pilaDeshacer.slice(-29), { db, etiqueta }] });
+      set({ db: nueva, pilaDeshacer: [...pilaDeshacer.slice(-49), { db, etiqueta }], pilaRehacer: [] });
       persistir(nueva);
       if (!opciones?.silencioso) get().avisar(etiqueta, 'ok', true);
       return true;
@@ -120,12 +143,26 @@ export const useStore = create<Estado>((set, get) => ({
   },
 
   deshacer: () => {
-    const { pilaDeshacer } = get();
+    const { pilaDeshacer, pilaRehacer, db } = get();
     const ultimo = pilaDeshacer[pilaDeshacer.length - 1];
-    if (!ultimo) return;
-    set({ db: ultimo.db, pilaDeshacer: pilaDeshacer.slice(0, -1) });
+    if (!ultimo || !db) return;
+    set({ db: ultimo.db, pilaDeshacer: pilaDeshacer.slice(0, -1), pilaRehacer: [...pilaRehacer, { db, etiqueta: ultimo.etiqueta }] });
     persistir(ultimo.db);
     get().avisar(`Deshecho: ${ultimo.etiqueta}`, 'info');
+  },
+
+  rehacer: () => {
+    const { pilaDeshacer, pilaRehacer, db } = get();
+    const siguiente = pilaRehacer[pilaRehacer.length - 1];
+    if (!siguiente || !db) return;
+    set({ db: siguiente.db, pilaRehacer: pilaRehacer.slice(0, -1), pilaDeshacer: [...pilaDeshacer, { db, etiqueta: siguiente.etiqueta }] });
+    persistir(siguiente.db);
+    get().avisar(`Rehecho: ${siguiente.etiqueta}`, 'info');
+  },
+
+  setPrefsOficina: (personaId, p) => {
+    const actual = get().prefs.oficina[personaId] ?? { modo: 'tareas' as const };
+    get().setPrefs({ oficina: { ...get().prefs.oficina, [personaId]: { ...actual, ...p } } });
   },
 
   setPrefs: (p) => {
@@ -150,3 +187,5 @@ export const useStore = create<Estado>((set, get) => ({
 export function useDB(): BaseDatos {
   return useStore((s) => s.db!);
 }
+
+marcarGuardado = (g) => useStore.setState({ guardado: g });

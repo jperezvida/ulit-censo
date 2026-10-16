@@ -1,7 +1,8 @@
 import type { BaseDatos } from './db';
 import { ErrorDominio } from './db';
-import { abarca, direccionVigente, ocupacionEn } from './consultas';
-import type { Acera, EstadoOficinaItinerario, Id, Itinerario, TramoPlan } from './types';
+import { abarca, ocupacionEn } from './consultas';
+import { direccionDeLocal, itinerariosDeDireccionEfectiva } from './ambito';
+import type { Acera, EstadoOficinaItinerario, Id, Itinerario, LngLat, TramoPlan } from './types';
 
 /**
  * Estado de oficina, bloqueo y alcance de los itinerarios.
@@ -30,38 +31,31 @@ export const ESTADO_OFICINA_TXT: Record<EstadoOficinaItinerario['estado'], strin
   reabierto: 'Reabierto',
 };
 
-/** ¿El tramo del itinerario cubre la acera en la que está este número? */
-function tramoCubreNumero(t: TramoPlan, numero: number | null | undefined): boolean {
-  if (t.acera === 'ambas' || numero === null || numero === undefined) return true;
-  return t.acera === (numero % 2 === 0 ? 'par' : 'impar');
-}
-
 function tramoCubreAcera(t: TramoPlan, acera: Acera | undefined): boolean {
   return !acera || acera === 'ambas' || t.acera === 'ambas' || t.acera === acera;
 }
 
-/** Itinerarios de una campaña que cubren una dirección (calle y acera según la paridad del número). */
-export function itinerariosDeDireccion(db: BaseDatos, campanaId: Id, calleId: Id, numero: number | null | undefined): Itinerario[] {
-  return Object.values(db.itinerarios).filter((it) => it.campanaId === campanaId && it.tramos.some((t) => t.calleId === calleId && tramoCubreNumero(t, numero)));
+/** Itinerarios de una campaña que cubren una dirección (calle, acera según el número y segmento). */
+export function itinerariosDeDireccion(db: BaseDatos, campanaId: Id, calleId: Id, numero: number | null | undefined, coord?: LngLat): Itinerario[] {
+  return itinerariosDeDireccionEfectiva(db, campanaId, { calleId, numero, coord });
 }
 
-/** Itinerarios de una campaña que incluyen la calle (y acera) de un local. */
+/** Itinerarios de una campaña cuyo ámbito efectivo incluye el local. */
 export function itinerariosDeLocal(db: BaseDatos, campanaId: Id, localId: Id): Itinerario[] {
   const l = db.locales[localId];
   if (!l) return [];
-  const d = direccionVigente(l);
-  return itinerariosDeDireccion(db, campanaId, d.calleId, d.numero);
+  return itinerariosDeDireccionEfectiva(db, campanaId, direccionDeLocal(l));
 }
 
 export function itinerariosDeCalle(db: BaseDatos, campanaId: Id, calleId: Id, acera?: Acera): Itinerario[] {
   return Object.values(db.itinerarios).filter((it) => it.campanaId === campanaId && it.tramos.some((t) => t.calleId === calleId && tramoCubreAcera(t, acera)));
 }
 
-export type Objetivo = { localId: Id } | { calleId: Id; numero?: number | null; acera?: Acera };
+export type Objetivo = { localId: Id } | { calleId: Id; numero?: number | null; acera?: Acera; coord?: LngLat };
 
 function itinerariosDeObjetivo(db: BaseDatos, campanaId: Id, o: Objetivo): Itinerario[] {
   if ('localId' in o) return itinerariosDeLocal(db, campanaId, o.localId);
-  if (o.numero !== undefined) return itinerariosDeDireccion(db, campanaId, o.calleId, o.numero);
+  if (o.numero !== undefined) return itinerariosDeDireccion(db, campanaId, o.calleId, o.numero, o.coord);
   return itinerariosDeCalle(db, campanaId, o.calleId, o.acera);
 }
 

@@ -289,8 +289,8 @@ export interface NuevoLocal {
  */
 export function registrarLocalNuevo(db0: BaseDatos, ctx: Contexto, n: NuevoLocal): { db: BaseDatos; localId: Id; candidatos: number } {
   // Alcance y bloqueo por DIRECCIÓN (calle y acera según el número), no por calle completa.
-  comprobarAlcanceObjetivo(db0, ctx.alcance, { calleId: n.calleId, numero: n.numero });
-  comprobarEditable(db0, ctx.campanaId, { calleId: n.calleId, numero: n.numero });
+  comprobarAlcanceObjetivo(db0, ctx.alcance, { calleId: n.calleId, numero: n.numero, coord: n.coord });
+  comprobarEditable(db0, ctx.campanaId, { calleId: n.calleId, numero: n.numero, coord: n.coord });
   const db = clonar(db0);
   const camp = db.campanas[ctx.campanaId];
   const localId = nuevoId('loc');
