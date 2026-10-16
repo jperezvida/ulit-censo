@@ -1,5 +1,5 @@
 import type { BaseDatos } from './db';
-import { kRev, nuevoId } from './db';
+import { kNC, kRev, nuevoId, siguienteOrden } from './db';
 import { confirmarSinCambios, registrarLocalNuevo, registrarNuevoNegocio, registrarVacio, type Contexto } from './campo';
 import type { FilaDiff } from './importacion';
 import { buscarActividadPorNombre } from './taxonomy';
@@ -92,12 +92,16 @@ export function importarCensoHistorico(db0: BaseDatos, municipioId: Id, anio: nu
     let negocioId: Id | null = null;
     if (!f.vacio && f.nombre) {
       negocioId = `neg-${localId}`;
-      db.negocios[negocioId] = { id: negocioId, nombre: f.nombre, actividadId: f.actividad ? buscarActividadPorNombre(f.actividad)?.id : undefined, procedencia: 'importado' };
+      db.negocios[negocioId] = { id: negocioId, nombre: f.nombre, procedencia: 'importado' };
+      const act = f.actividad ? buscarActividadPorNombre(f.actividad)?.id : undefined;
+      // La clasificación del archivo se conserva como «importada», sin darla por revisada.
+      if (act) db.clasificaciones = { ...db.clasificaciones, [kNC(negocioId, campanaId)]: { negocioId, campanaId, actividadId: act, origen: 'importado', confirmada: false } };
     }
-    db.ocupaciones[`ocu-${localId}`] = { id: `ocu-${localId}`, localId, negocioId, metrosFachada: f.metros, desdeCampanaId: campanaId };
-    db.observaciones[`obs-${regId}`] = { id: `obs-${regId}`, campanaId, localId, calleId: f.calleId, registrado: new Date().toISOString(), fuente: 'importacion', tipo: 'confirmado', datos: { numero: f.numero, sufijo: f.sufijo, nombre: f.nombre, vacio: f.vacio, metrosFachada: f.metros }, verificacion: 'verificada' };
+    const orden = siguienteOrden(db);
+    db.observaciones[`obs-${regId}`] = { id: `obs-${regId}`, campanaId, localId, calleId: f.calleId, registrado: new Date().toISOString(), orden, fuente: 'importacion', tipo: 'confirmado', datos: { numero: f.numero, sufijo: f.sufijo, nombre: f.nombre, negocioId, vacio: f.vacio, metrosFachada: f.metros }, verificacion: 'verificada' };
+    db.ocupaciones[`ocu-${localId}`] = { id: `ocu-${localId}`, localId, negocioId, metrosFachada: f.metros, desdeCampanaId: campanaId, desdeObservacionId: `obs-${regId}`, orden: siguienteOrden(db) };
     db.vinculos[`vin-${regId}`] = { id: `vin-${regId}`, origen: { tipo: 'registro', id: regId }, localId, confianza: 'confirmada', criterio: 'Local físico creado a partir de esta fila' };
-    db.revisiones[kRev(campanaId, localId)] = { campanaId, localId, campo: 'terminado', categorizacion: negocioId && db.negocios[negocioId].actividadId ? 'revisado' : 'pendiente', digital: 'pendiente', validacion: 'pendiente' };
+    db.revisiones[kRev(campanaId, localId)] = { campanaId, localId, campo: 'terminado', categorizacion: 'pendiente', digital: 'pendiente', validacion: 'pendiente' };
     resumen['locales creados']++;
   }
   const camp: Campana = {

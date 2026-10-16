@@ -1,5 +1,6 @@
 import type { BaseDatos } from './db';
 import { nuevoId } from './db';
+import { comprobarEditable } from './bloqueo';
 import { direccionVigente, ocupacionEn } from './consultas';
 import { similitud } from './text';
 import type { Confianza, Id, LocalFisico, VinculoHistorico } from './types';
@@ -76,6 +77,8 @@ export function resolverVinculo(db0: BaseDatos, vinculoId: Id, decision: Decisio
   const db: BaseDatos = { ...db0 };
   const v = db.vinculos[vinculoId];
   if (!v) return db0;
+  const obsOrigen = v.origen.tipo === 'observacion' ? db.observaciones[v.origen.id] : undefined;
+  if (obsOrigen && v.localId) comprobarEditable(db0, obsOrigen.campanaId, { localId: v.localId });
   if (decision.tipo === 'indeterminado') {
     db.vinculos = { ...db.vinculos, [vinculoId]: { ...v, confianza: 'sin-vinculo', criterio: 'Revisado: evidencia insuficiente, queda indeterminado', revisadoPorId: revisorId } };
     return db;

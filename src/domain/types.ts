@@ -149,24 +149,37 @@ export interface LocalFisico {
   procedencia: Procedencia;
 }
 
-/** Negocio / establecimiento. Los perfiles digitales le pertenecen a él, no al local. */
+/**
+ * Negocio / establecimiento. Los perfiles digitales le pertenecen a él, no al local.
+ * La clasificación NO vive aquí: se guarda por campaña (ClasificacionCampana) para que
+ * corregir 2026 no reescriba 2025.
+ */
 export interface Negocio {
   id: Id;
   nombre: string;
-  actividadId?: Id;
   cadena?: string;
   descripcion?: string;
   procedencia: Procedencia;
 }
 
-/** Qué negocio ocupa un local en un periodo (o si está vacío). */
+/**
+ * Qué negocio ocupa un local (o si está vacío) entre dos observaciones.
+ * Una campaña puede contener varias ocupaciones sucesivas del mismo local: nunca se
+ * borra una intermedia; se cierra con la observación que la sustituye.
+ */
 export interface Ocupacion {
   id: Id;
   localId: Id;
   negocioId: Id | null; // null = vacío
   metrosFachada?: number;
   desdeCampanaId: Id;
+  /** Campaña en la que se vio por última vez antes de cerrarse (puede ser la misma de inicio). */
   hastaCampanaId?: Id;
+  /** Observación que la abrió / la cerró (si constan). */
+  desdeObservacionId?: Id;
+  hastaObservacionId?: Id;
+  /** Orden global de registro: desempata ocupaciones de la misma campaña aunque falten fechas. */
+  orden: number;
 }
 
 export type FuenteObservacion = 'campo-app' | 'papel' | 'importacion' | 'oficina';
@@ -193,7 +206,10 @@ export interface Observacion {
   fuente: FuenteObservacion;
   investigadorId?: Id;
   tipo: TipoObservacion;
-  datos: { numero: number | null; sufijo?: string; nombre?: string; vacio: boolean; metrosFachada?: number };
+  /** Instantánea de lo observado EN ESE MOMENTO (no se recalcula después). */
+  datos: { numero: number | null; sufijo?: string; nombre?: string; negocioId?: Id | null; vacio: boolean; metrosFachada?: number };
+  /** Orden global de registro (las fechas pueden faltar). */
+  orden?: number;
   nota?: string;
   verificacion: 'pendiente' | 'verificada' | 'devuelta';
   sync?: 'local' | 'sincronizada' | 'conflicto';
@@ -252,22 +268,59 @@ export interface Revision {
   pendienteComprobacion?: boolean;
 }
 
-/** Medición digital de un NEGOCIO en una campaña concreta. */
-export interface MetricaDigital {
+/**
+ * Respuesta de una variable de comprobación. «pendiente» NO equivale a «no».
+ *  si / no        → comprobado (1 / 0)
+ *  pendiente      → todavía no se ha mirado
+ *  na             → no aplicable a este establecimiento
+ *  sin-info       → se buscó y no hay información disponible
+ */
+export type Respuesta = 'si' | 'no' | 'pendiente' | 'na' | 'sin-info';
+
+export type VariableDigital =
+  | 'web' | 'ventaOnline' | 'googleBusiness' | 'valoracion' | 'numResenas' | 'respondeResenas'
+  | 'instagram' | 'seguidoresInstagram' | 'facebook' | 'otrasRedes';
+
+/** Una variable digital de un negocio en una campaña, con su trazabilidad. */
+export interface DatoDigital {
+  respuesta: Respuesta;
+  /** Solo para variables numéricas (valoración, nº de reseñas, seguidores). */
+  valor?: number;
+  origen: 'manual' | 'heredado' | 'importado' | 'google-maps-manual';
+  porId?: Id;
+  fecha?: string;
+}
+
+/** Revisión de la presencia digital de un NEGOCIO en una campaña. */
+export interface RevisionDigital {
   negocioId: Id;
   campanaId: Id;
-  fechaComprobacion?: string;
-  verificada: boolean;
-  web?: string;
-  ventaOnline?: boolean;
-  googleBusiness?: boolean;
-  valoracion?: number;
-  numResenas?: number;
-  respondeResenas?: boolean;
-  instagram?: string;
-  seguidoresInstagram?: number;
-  facebook?: string;
-  otrasRedes?: string;
+  datos: Partial<Record<VariableDigital, DatoDigital>>;
+  estado: 'borrador' | 'verificada';
+  verificadaPor?: Id;
+  verificadaEn?: string;
+  historial: { accion: 'verificar' | 'reabrir' | 'partir-de-anterior'; porId?: Id; fecha: string; motivo?: string }[];
+}
+
+/** Clasificación de un negocio en una campaña concreta. */
+export interface ClasificacionCampana {
+  negocioId: Id;
+  campanaId: Id;
+  actividadId: Id;
+  /** importado: tal como venía · heredado: copiado de otra campaña como borrador · manual: decidido en oficina */
+  origen: 'importado' | 'heredado' | 'manual';
+  /** Solo una clasificación confirmada por una persona cuenta como «categorización revisada». */
+  confirmada: boolean;
+  porId?: Id;
+  fecha?: string;
+}
+
+/** Estado de oficina de un itinerario (cada itinerario pertenece a una sola campaña). */
+export interface EstadoOficinaItinerario {
+  itinerarioId: Id;
+  campanaId: Id;
+  estado: 'en-revision' | 'validado' | 'reabierto';
+  historial: { accion: 'validar' | 'reabrir'; porId: Id; fecha: string; motivo?: string }[];
 }
 
 // ───────────────────────── Personas y actividad ─────────────────────────

@@ -34,7 +34,7 @@ const VISTAS: { v: Vista; t: string; icono: typeof Inbox; f: (x: FilaOficina) =>
 const ALTO_FILA = 46;
 
 export default function OficinaPage() {
-  const { db, campana, municipio } = useContexto();
+  const { db, campana, municipio, prefs } = useContexto();
   const ix = useIndices();
   const aplicar = useStore((s) => s.aplicar);
   const avisar = useStore((s) => s.avisar);
@@ -271,7 +271,7 @@ export default function OficinaPage() {
           n={objetivo.filter((f) => !f.vacio).length}
           onCerrar={() => setModal(null)}
           onAplicar={(act) => {
-            aplicar((d) => asignarActividad(d, campana.id, objetivo, act), `Actividad asignada a ${objetivo.filter((f) => !f.vacio).length} registros`);
+            aplicar((d) => asignarActividad(d, campana.id, objetivo, act, prefs.personaId), `Actividad asignada a ${objetivo.filter((f) => !f.vacio).length} registros`);
             setModal(null);
           }}
         />
@@ -321,11 +321,12 @@ function Fila({ f, top, activa, marcada, onClick, onMarcar }: { f: FilaOficina; 
         {r.validacion === 'devuelta' && <span className="tag rojo" title={r.motivoDevolucion}>devuelto</span>}
       </span>
       <span className="c-act">
-        {f.vacio ? <span className="muted">—</span> : f.actividad ? <><span>{f.actividad}</span><span className="of-grupo">{f.grupo}</span></> : <span className="tag naranja">sin clasificar</span>}
+        {f.vacio ? <span className="muted">—</span> : f.actividad ? <><span>{f.actividad}{f.clasificacion && !f.clasificacion.confirmada ? ' *' : ''}</span><span className="of-grupo">{f.grupo}{f.clasificacion && !f.clasificacion.confirmada ? ` · ${f.clasificacion.origen}, sin confirmar` : ''}</span></> : <span className="tag naranja">sin clasificar</span>}
       </span>
       <span className="c-dig">
         {f.digital === 'verificada' && <span className="chip ok">verificada</span>}
-        {f.digital === 'anterior' && <span className="chip aviso" title="Hay datos de una campaña anterior: no se consideran verificados en esta">solo anterior</span>}
+        {f.digital === 'borrador' && <span className="chip aviso" title="Revisión digital iniciada, sin verificar">borrador</span>}
+        {f.digital === 'solo-historico' && <span className="chip" title="Hay datos de una campaña anterior: no se consideran verificados en esta">solo histórico</span>}
         {f.digital === 'sin-datos' && <span className="muted">sin datos</span>}
         {f.digital === 'no-aplica' && <span className="muted">—</span>}
       </span>

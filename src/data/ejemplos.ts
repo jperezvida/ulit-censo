@@ -1,6 +1,7 @@
 import type { BaseDatos } from '../domain/db';
 import { direccionVigente, localesPrevios, ocupacionEn } from '../domain/consultas';
 import { rutaActividad } from '../domain/taxonomy';
+import { clasificacionEn } from '../domain/clasificacion';
 import type { Id, Itinerario } from '../domain/types';
 import { crearRng } from './rng';
 import { nombreNegocio } from './nombres';
@@ -41,7 +42,7 @@ export function csvEjemploItinerario(db: BaseDatos, it: Itinerario): string {
         nombre = '';
         vacio = true;
       }
-      const ruta = rutaActividad(neg?.actividadId);
+      const ruta = rutaActividad(neg ? clasificacionEn(db, neg.id, camp.campanaReferenciaId!)?.actividadId : undefined);
       filas.push([primera ? calle.nombre : '', `${d.numero ?? ''}${d.sufijo ? ' ' + d.sufijo : ''}`, nombre, vacio ? 'Vacío' : 'Ocupado', vacio ? String(rng.int(3, 9)) : '', ...(vacio || r > 0.75 ? ['', '', '', ''] : ruta.map((x) => x.nombre))]);
       primera = false;
     }

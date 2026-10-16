@@ -84,7 +84,7 @@ describe('correspondencias ambiguas', () => {
     const db: BaseDatos = {
       ...base,
       locales: { ...base.locales, [copiaId]: { ...original, id: copiaId } },
-      ocupaciones: { ...base.ocupaciones, [`ocu-${copiaId}`]: { id: `ocu-${copiaId}`, localId: copiaId, negocioId: null, metrosFachada: 4, desdeCampanaId: camp.campanaReferenciaId! } },
+      ocupaciones: { ...base.ocupaciones, [`ocu-${copiaId}`]: { id: `ocu-${copiaId}`, localId: copiaId, negocioId: null, metrosFachada: 4, desdeCampanaId: camp.campanaReferenciaId!, orden: 0 } },
       observaciones: { ...base.observaciones, [`obs-${copiaId}`]: { id: `obs-${copiaId}`, campanaId: camp.campanaReferenciaId!, localId: copiaId, calleId: calle, fuente: 'importacion', tipo: 'confirmado', datos: { numero: d.numero, vacio: true }, verificacion: 'verificada' } },
     };
     return { db, calle, d, ids: [original.id, copiaId] };

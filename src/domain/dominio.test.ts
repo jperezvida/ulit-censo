@@ -12,7 +12,9 @@ import {
 import { resolverVinculo } from './conciliacion';
 import { compararCampanas } from './estadisticas';
 import { casarTrazosKML, compararImportacion, interpretarFilas, mapearCabecera, parsearCSV, parsearKML } from './importacion';
-import { aprobar, filasOficina, partirDeAnterior } from './oficina';
+import { aprobar, filasOficina } from './oficina';
+import { partirDeDigitalAnterior } from './digital';
+import { localesDeNegocioEnCampana } from './bloqueo';
 import { aCSV } from './exportacion';
 import { distanciaPuntoLinea } from './geo';
 import { indiceObservaciones, indiceOcupaciones } from './consultas';
@@ -105,11 +107,11 @@ describe('trabajo de campo', () => {
   });
 
   it('un negocio nuevo en el local no hereda los perfiles digitales del anterior', () => {
-    const conMetrica = Object.values(base.ocupaciones).find((o) => o.negocioId && !o.hastaCampanaId && base.metricas[kMet(o.negocioId, 'camp-medina-2025')] && !Object.values(base.observaciones).some((x) => x.campanaId === C26 && x.localId === o.localId))!;
+    const conMetrica = Object.values(base.ocupaciones).find((o) => o.negocioId && !o.hastaCampanaId && base.digital[kMet(o.negocioId, 'camp-medina-2025')] && !Object.values(base.observaciones).some((x) => x.campanaId === C26 && x.localId === o.localId))!;
     const db = registrarNuevoNegocio(base, ctx(), conMetrica.localId, 'Peluquería Prueba');
     const nueva = ocupacionEn(db, conMetrica.localId, C26)!;
     expect(nueva.negocioId).not.toBe(conMetrica.negocioId);
-    expect(Object.values(db.metricas).some((m) => m.negocioId === nueva.negocioId)).toBe(false);
+    expect(Object.values(db.digital).some((m) => m.negocioId === nueva.negocioId)).toBe(false);
     // el histórico conserva el negocio anterior en 2025
     expect(ocupacionEn(db, conMetrica.localId, 'camp-medina-2025')!.negocioId).toBe(conMetrica.negocioId);
   });
@@ -238,13 +240,14 @@ describe('oficina y exportación', () => {
     expect(r.omitidos.length).toBe(filas.length);
   });
 
-  it('copiar la medición digital de 2025 crea un borrador sin verificar', () => {
-    const m = Object.values(base.metricas).find((x) => x.campanaId === 'camp-medina-2025')!;
-    const db = partirDeAnterior(base, m.negocioId, C26, m);
-    const nueva = db.metricas[kMet(m.negocioId, C26)];
-    expect(nueva.verificada).toBe(false);
-    expect(nueva.fechaComprobacion).toBeUndefined();
-    expect(nueva.instagram).toBe(m.instagram);
+  it('copiar la revisión digital de 2025 crea un borrador sin verificar', () => {
+    const m = Object.values(base.digital).find((x) => x.campanaId === 'camp-medina-2025' && localesDeNegocioEnCampana(base, x.negocioId, C26, (c) => base.campanas[c!]?.anio ?? 0).length)!;
+    const db = partirDeDigitalAnterior(base, m.negocioId, C26, 'p-marta');
+    const nueva = db.digital[kMet(m.negocioId, C26)];
+    expect(nueva.estado).toBe('borrador');
+    expect(nueva.verificadaEn).toBeUndefined();
+    expect(nueva.datos.instagram?.respuesta).toBe(m.datos.instagram?.respuesta);
+    expect(nueva.datos.instagram?.origen).toBe('heredado');
   });
 
   it('el CSV es compatible con Excel en español', () => {

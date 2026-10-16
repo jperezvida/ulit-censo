@@ -1,7 +1,7 @@
 import type { BaseDatos } from './db';
-import { kCC, kCob, kMet, kRev } from './db';
+import { kCC, kCob, kRev } from './db';
 import type {
-  Acera, Campana, EstadoCobertura, Id, Itinerario, LocalFisico, MetricaDigital, Negocio, Observacion, Ocupacion,
+  Acera, Campana, EstadoCobertura, Id, Itinerario, LocalFisico, Negocio, Observacion, Ocupacion,
   Revision, SituacionPrevia,
 } from './types';
 
@@ -28,7 +28,11 @@ export function direccionVigente(l: LocalFisico) {
   return l.direcciones[l.direcciones.length - 1];
 }
 
-/** Ocupación vigente de un local en una campaña (por año). */
+/**
+ * Ocupación vigente de un local en una campaña: de las que abarcan esa campaña, la
+ * última registrada (mayor «orden»). Una campaña puede contener varias ocupaciones
+ * sucesivas; las anteriores siguen existiendo y forman el histórico.
+ */
 export function ocupacionEn(db: BaseDatos, localId: Id, campanaId: Id, indice?: IndiceOcupaciones): Ocupacion | undefined {
   const anio = anioDe(db, campanaId);
   const lista = indice ? indice.get(localId) ?? [] : Object.values(db.ocupaciones).filter((o) => o.localId === localId);
@@ -36,9 +40,14 @@ export function ocupacionEn(db: BaseDatos, localId: Id, campanaId: Id, indice?: 
   for (const o of lista) {
     const desde = anioDe(db, o.desdeCampanaId);
     const hasta = o.hastaCampanaId ? anioDe(db, o.hastaCampanaId) : Infinity;
-    if (desde <= anio && anio <= hasta && (!mejor || desde > anioDe(db, mejor.desdeCampanaId))) mejor = o;
+    if (desde <= anio && anio <= hasta && (!mejor || o.orden > mejor.orden)) mejor = o;
   }
   return mejor;
+}
+
+/** Todas las ocupaciones de un local en orden de registro. */
+export function ocupacionesDeLocal(db: BaseDatos, localId: Id): Ocupacion[] {
+  return Object.values(db.ocupaciones).filter((o) => o.localId === localId).sort((a, b) => a.orden - b.orden);
 }
 
 export type IndiceOcupaciones = Map<Id, Ocupacion[]>;
@@ -61,12 +70,12 @@ export function indiceObservaciones(db: BaseDatos): IndiceObservaciones {
     if (l) l.push(o);
     else m.set(o.localId, [o]);
   }
-  for (const l of m.values()) l.sort((a, b) => (a.fecha ?? '').localeCompare(b.fecha ?? ''));
+  for (const l of m.values()) l.sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || (a.fecha ?? '').localeCompare(b.fecha ?? ''));
   return m;
 }
 
 export function observacionesDeLocal(db: BaseDatos, localId: Id): Observacion[] {
-  return Object.values(db.observaciones).filter((o) => o.localId === localId).sort((a, b) => (a.fecha ?? '').localeCompare(b.fecha ?? ''));
+  return Object.values(db.observaciones).filter((o) => o.localId === localId).sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || (a.fecha ?? '').localeCompare(b.fecha ?? ''));
 }
 
 /** Observación del local en una campaña concreta (la más reciente). */
@@ -99,25 +108,6 @@ export function textoDireccion(db: BaseDatos, l: LocalFisico): string {
 export function negocioEn(db: BaseDatos, localId: Id, campanaId: Id, idx?: IndiceOcupaciones): Negocio | null {
   const o = ocupacionEn(db, localId, campanaId, idx);
   return o?.negocioId ? db.negocios[o.negocioId] ?? null : null;
-}
-
-// ───────────── Información digital (del negocio, con campaña y verificación) ─────────────
-
-export interface DigitalVista {
-  actual?: MetricaDigital; // de esta campaña
-  anterior?: MetricaDigital; // la más reciente de campañas previas (solo referencia)
-}
-
-export function digitalDe(db: BaseDatos, negocioId: Id, campanaId: Id): DigitalVista {
-  const anio = anioDe(db, campanaId);
-  const actual = db.metricas[kMet(negocioId, campanaId)];
-  let anterior: MetricaDigital | undefined;
-  for (const m of Object.values(db.metricas)) {
-    if (m.negocioId !== negocioId || m.campanaId === campanaId) continue;
-    const a = anioDe(db, m.campanaId);
-    if (a < anio && (!anterior || a > anioDe(db, anterior.campanaId))) anterior = m;
-  }
-  return { actual, anterior };
 }
 
 // ───────────── Cobertura ─────────────

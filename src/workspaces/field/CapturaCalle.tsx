@@ -12,6 +12,7 @@ import {
 import { estadoTramo } from '../../domain/planificacion';
 import { puntoEnLinea, desplazarPerpendicular } from '../../domain/geo';
 import { rutaActividad } from '../../domain/taxonomy';
+import { clasificacionEn } from '../../domain/clasificacion';
 import type { Id, LocalFisico, Observacion } from '../../domain/types';
 import { EstadoCob } from '../../components/ui';
 import { BarraEstado, pasoCalle, useCtxCampo } from './CampoApp';
@@ -111,7 +112,7 @@ export function CapturaCalle() {
             const o = porLocal.get(l.id);
             const oc = ocupacionEn(db, l.id, camp.campanaReferenciaId!);
             const neg = oc?.negocioId ? db.negocios[oc.negocioId] : undefined;
-            const act = rutaActividad(neg?.actividadId);
+            const act = rutaActividad(clasificacionEn(db, neg?.id, camp.campanaReferenciaId!)?.actividadId);
             return (
               <div key={l.id} className={`m-local ${o ? 'hecho' : ''}`}>
                 <div className="m-local-num">

@@ -1,5 +1,6 @@
 import type { BaseDatos } from './db';
-import { kCC, nuevoId } from './db';
+import { ErrorDominio, kCC, nuevoId } from './db';
+import { estadoOficina } from './bloqueo';
 import { ordenarPorProximidad } from './planificacion';
 import { longitudLinea } from './geo';
 import type { Acera, Calle, Id, Itinerario, LngLat, SituacionPrevia, TramoPlan } from './types';
@@ -9,6 +10,7 @@ import type { Acera, Calle, Id, Itinerario, LngLat, SituacionPrevia, TramoPlan }
 function conIt(db: BaseDatos, itId: Id, fn: (it: Itinerario) => Itinerario): BaseDatos {
   const it = db.itinerarios[itId];
   if (!it) return db;
+  if (estadoOficina(db, itId) === 'validado') throw new ErrorDominio('bloqueado', `${it.codigo} está validado: reábrelo para cambiar su planificación.`);
   return { ...db, itinerarios: { ...db.itinerarios, [itId]: fn(it) } };
 }
 
@@ -26,6 +28,7 @@ export function crearItinerario(db: BaseDatos, campanaId: Id, datos: { codigo: s
 }
 
 export function eliminarItinerario(db: BaseDatos, itId: Id): BaseDatos {
+  if (estadoOficina(db, itId) === 'validado') throw new ErrorDominio('bloqueado', 'No se puede eliminar un itinerario validado.');
   const { [itId]: _, ...resto } = db.itinerarios;
   return { ...db, itinerarios: resto };
 }

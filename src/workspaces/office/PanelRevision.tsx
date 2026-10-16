@@ -2,12 +2,15 @@ import { useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, CheckCheck, Copy, ExternalLink, GitMerge, ShieldCheck, Undo2, X } from 'lucide-react';
 import { useContexto, useFichaLocal } from '../../store/contexto';
 import { useStore } from '../../store/store';
-import { actualizarRevisiones, asignarActividad, editarNegocio, esDudosa, guardarMetrica, motivoNoAprobable, partirDeAnterior, type FilaOficina } from '../../domain/oficina';
-import { digitalDe, negocioEn, ocupacionEn, textoDireccion } from '../../domain/consultas';
+import { actualizarRevisiones, asignarActividad, editarNegocio, esDudosa, motivoNoAprobable, type FilaOficina } from '../../domain/oficina';
+import { clasificacionAnterior, clasificacionEn, partirDeClasificacionAnterior } from '../../domain/clasificacion';
+import { VARIABLES_DIGITALES, esExigible, estadoDigital, partirDeDigitalAnterior, problemasDigitales, registrarDatoDigital, revisionDigitalAnterior, revisionDigitalEn, verificarDigital } from '../../domain/digital';
+import { RESPUESTA_TXT } from '../../domain/respuesta';
+import { negocioEn, ocupacionEn, textoDireccion } from '../../domain/consultas';
 import { resolverVinculo } from '../../domain/conciliacion';
 import { TIPO_OBS_TXT } from '../../domain/campo';
 import { rutaActividad } from '../../domain/taxonomy';
-import type { MetricaDigital } from '../../domain/types';
+import type { Respuesta, VariableDigital } from '../../domain/types';
 import { SelectorActividad } from '../../components/SelectorActividad';
 import { Historico } from '../local/Historico';
 import { fmtFecha } from '../../components/ui';
@@ -38,6 +41,8 @@ export function PanelRevision({ fila, onCerrar, onAnterior, onSiguiente, onAprob
   const motivo = motivoNoAprobable(fila);
   const ref = campana.campanaReferenciaId;
   const antes = ref ? negocioEn(db, fila.localId, ref) : null;
+  const cla = neg ? clasificacionEn(db, neg.id, campana.id) : undefined;
+  const claAnt = neg ? clasificacionAnterior(db, neg.id, campana.id) : undefined;
   const ocAntes = ref ? ocupacionEn(db, fila.localId, ref) : undefined;
 
   return (
@@ -54,8 +59,8 @@ export function PanelRevision({ fila, onCerrar, onAnterior, onSiguiente, onAprob
         <div className="muted" style={{ fontSize: 13 }}>{textoDireccion(db, l)}{fila.itinerario ? ` · ${fila.itinerario}` : ''}</div>
         <div className="of-estados4">
           <Estado t="Campo" ok={r.campo === 'terminado'} />
-          <Estado t="Categoría" ok={fila.vacio || r.categorizacion === 'revisado'} na={fila.vacio} onClick={fila.vacio ? undefined : () => aplicar((d) => actualizarRevisiones(d, campana.id, [fila.localId], { categorizacion: r.categorizacion === 'revisado' ? 'pendiente' : 'revisado' }), 'Categorización actualizada', { silencioso: true })} />
-          <Estado t="Digital" ok={fila.vacio || r.digital === 'revisado'} na={fila.vacio} onClick={fila.vacio ? undefined : () => aplicar((d) => actualizarRevisiones(d, campana.id, [fila.localId], { digital: r.digital === 'revisado' ? 'pendiente' : 'revisado' }), 'Revisión digital actualizada', { silencioso: true })} />
+          <Estado t="Categoría" ok={fila.vacio || r.categorizacion === 'revisado'} na={fila.vacio} onClick={fila.vacio ? undefined : () => setPestana('ficha')} />
+          <Estado t="Digital" ok={fila.vacio || r.digital === 'revisado'} na={fila.vacio} onClick={fila.vacio ? undefined : () => setPestana('digital')} />
           <Estado t="Validación" ok={r.validacion === 'aprobada'} error={r.validacion === 'devuelta'} />
         </div>
         {r.validacion === 'devuelta' && <div className="t-info error" style={{ margin: '8px 0 0' }}>Devuelto: {r.motivoDevolucion}</div>}
@@ -83,23 +88,34 @@ export function PanelRevision({ fila, onCerrar, onAnterior, onSiguiente, onAprob
               <>
                 <div className="campo">
                   <label>Nombre comercial</label>
-                  <input className="input" value={neg.nombre} onChange={(e) => aplicar((d) => editarNegocio(d, neg.id, { nombre: e.target.value }), 'Nombre', { silencioso: true })} />
+                  <input className="input" value={neg.nombre} onChange={(e) => aplicar((d) => editarNegocio(d, campana.id, neg.id, { nombre: e.target.value }), 'Nombre', { silencioso: true })} />
                 </div>
                 <div className="grid2">
                   <div className="campo">
                     <label>Cadena / franquicia</label>
-                    <input className="input" value={neg.cadena ?? ''} placeholder="Independiente" onChange={(e) => aplicar((d) => editarNegocio(d, neg.id, { cadena: e.target.value || undefined }), 'Cadena', { silencioso: true })} />
+                    <input className="input" value={neg.cadena ?? ''} placeholder="Independiente" onChange={(e) => aplicar((d) => editarNegocio(d, campana.id, neg.id, { cadena: e.target.value || undefined }), 'Cadena', { silencioso: true })} />
                   </div>
                   <div className="campo">
                     <label>Descripción</label>
-                    <input className="input" value={neg.descripcion ?? ''} onChange={(e) => aplicar((d) => editarNegocio(d, neg.id, { descripcion: e.target.value || undefined }), 'Descripción', { silencioso: true })} />
+                    <input className="input" value={neg.descripcion ?? ''} onChange={(e) => aplicar((d) => editarNegocio(d, campana.id, neg.id, { descripcion: e.target.value || undefined }), 'Descripción', { silencioso: true })} />
                   </div>
                 </div>
                 <div>
                   <div className="rotulo" style={{ marginBottom: 8 }}>Clasificación (4 niveles)</div>
-                  <SelectorActividad key={fila.localId} valor={neg.actividadId} onCambio={(id) => aplicar((d) => asignarActividad(d, campana.id, [fila], id), 'Actividad asignada · categorización revisada')} />
-                  {antes && antes.id !== neg.id && <p className="muted" style={{ fontSize: 12 }}>En {db.campanas[ref!]?.anio}: {antes.nombre} ({rutaActividad(antes.actividadId)[3]?.nombre ?? 'sin clasificar'}) — otro negocio.</p>}
-                  {antes && antes.id === neg.id && <p className="muted" style={{ fontSize: 12 }}>Mismo negocio que en {db.campanas[ref!]?.anio}: actividad heredada, pendiente de confirmar.</p>}
+                  <SelectorActividad key={fila.localId} valor={cla?.actividadId} onCambio={(id) => aplicar((d) => asignarActividad(d, campana.id, [fila], id, prefs.personaId), 'Actividad asignada · categorización revisada')} />
+                  {cla && !cla.confirmada && (
+                    <div className="fila" style={{ marginTop: 6 }}>
+                      <span className="chip aviso">{cla.origen === 'heredado' ? 'Copiada de una campaña anterior' : 'Importada'} · sin confirmar</span>
+                      <button className="btn s" onClick={() => aplicar((d) => asignarActividad(d, campana.id, [fila], cla.actividadId, prefs.personaId), 'Clasificación confirmada')}>Confirmar</button>
+                    </div>
+                  )}
+                  {!cla && claAnt && (
+                    <div className="fila" style={{ marginTop: 6, flexWrap: 'wrap' }}>
+                      <span className="muted" style={{ fontSize: 12 }}>En {db.campanas[claAnt.campanaId]?.anio}: {rutaActividad(claAnt.actividadId)[3]?.nombre} (mismo negocio)</span>
+                      <button className="btn s" onClick={() => aplicar((d) => partirDeClasificacionAnterior(d, neg.id, campana.id, prefs.personaId), 'Clasificación anterior copiada como borrador')}>Partir de {db.campanas[claAnt.campanaId]?.anio}</button>
+                    </div>
+                  )}
+                  {antes && antes.id !== neg.id && <p className="muted" style={{ fontSize: 12 }}>En {db.campanas[ref!]?.anio} el local lo ocupaba otro negocio ({antes.nombre}): no se hereda su clasificación.</p>}
                 </div>
               </>
             ) : (
@@ -183,89 +199,101 @@ function Estado({ t, ok, na, error, onClick }: { t: string; ok: boolean; na?: bo
   );
 }
 
-const CAMPOS: { k: keyof MetricaDigital; t: string; tipo: 'texto' | 'numero' | 'bool' }[] = [
-  { k: 'web', t: 'Página web', tipo: 'texto' },
-  { k: 'ventaOnline', t: 'Venta por internet', tipo: 'bool' },
-  { k: 'googleBusiness', t: 'Google Business Profile', tipo: 'bool' },
-  { k: 'valoracion', t: 'Valoración media', tipo: 'numero' },
-  { k: 'numResenas', t: 'Nº de reseñas', tipo: 'numero' },
-  { k: 'respondeResenas', t: 'Responde reseñas', tipo: 'bool' },
-  { k: 'instagram', t: 'Instagram', tipo: 'texto' },
-  { k: 'seguidoresInstagram', t: 'Seguidores Instagram', tipo: 'numero' },
-  { k: 'facebook', t: 'Facebook', tipo: 'texto' },
-  { k: 'otrasRedes', t: 'Otras redes', tipo: 'texto' },
+const OPCIONES: { r: Respuesta; t: string; tecla: string }[] = [
+  { r: 'si', t: 'Sí', tecla: '1' },
+  { r: 'no', t: 'No', tecla: '0' },
+  { r: 'na', t: 'N/A', tecla: 'N' },
+  { r: 'sin-info', t: '¿?', tecla: '?' },
+  { r: 'pendiente', t: '·', tecla: 'Supr' },
 ];
 
 function Digital({ negocioId }: { negocioId: string }) {
-  const { db, campana } = useContexto();
+  const { db, campana, prefs } = useContexto();
   const aplicar = useStore((s) => s.aplicar);
-  const { actual, anterior } = digitalDe(db, negocioId, campana!.id);
+  const rev = revisionDigitalEn(db, negocioId, campana!.id);
+  const ant = revisionDigitalAnterior(db, negocioId, campana!.id);
+  const estado = estadoDigital(db, negocioId, campana!.id);
+  const problemas = problemasDigitales(rev);
+  const registrar = (v: VariableDigital, respuesta: Respuesta, valor?: number) =>
+    aplicar((d) => registrarDatoDigital(d, negocioId, campana!.id, v, { respuesta, valor }, prefs.personaId), 'Dato digital', { silencioso: true });
   const neg = db.negocios[negocioId];
-  const valor = (m: MetricaDigital | undefined, k: keyof MetricaDigital) => {
-    const v = m?.[k];
-    if (v === undefined || v === '') return '—';
-    if (typeof v === 'boolean') return v ? 'Sí' : 'No';
-    return String(v);
-  };
-  const cambiar = (k: keyof MetricaDigital, v: string | boolean | number | undefined) => aplicar((d) => guardarMetrica(d, negocioId, campana!.id, { [k]: v, verificada: false }), 'Dato digital', { silencioso: true });
+  const ESTADO_TXT = { 'sin-datos': 'Sin datos', 'solo-historico': 'Solo datos históricos', borrador: `Borrador ${campana!.anio}`, verificada: 'Verificada' } as const;
   return (
     <div className="col" style={{ gap: 10 }}>
       <div className="fila" style={{ flexWrap: 'wrap' }}>
-        {actual?.verificada ? (
-          <span className="chip ok"><ShieldCheck size={12} /> Verificado {fmtFecha(actual.fechaComprobacion)}</span>
-        ) : actual ? (
-          <span className="chip aviso">Borrador {campana!.anio} · sin verificar</span>
-        ) : (
-          <span className="chip">Sin medición en {campana!.anio}</span>
-        )}
+        <span className={`chip ${estado === 'verificada' ? 'ok' : estado === 'borrador' ? 'aviso' : ''}`}>
+          {estado === 'verificada' ? <ShieldCheck size={12} /> : null} {ESTADO_TXT[estado]}
+          {estado === 'verificada' && rev?.verificadaEn ? ` · ${db.personas[rev.verificadaPor ?? '']?.nombre ?? ''} ${fmtFecha(rev.verificadaEn)}` : ''}
+        </span>
         <span className="esp" />
-        {anterior && !actual && (
-          <button className="btn s" onClick={() => aplicar((d) => partirDeAnterior(d, negocioId, campana!.id, anterior), `Copiado de ${db.campanas[anterior.campanaId]?.anio} como borrador sin verificar`)}>
-            <Copy size={13} /> Partir de {db.campanas[anterior.campanaId]?.anio}
+        {ant && (
+          <button className="btn s" onClick={() => aplicar((d) => partirDeDigitalAnterior(d, negocioId, campana!.id, prefs.personaId), `Copiado de ${db.campanas[ant.campanaId]?.anio} como borrador sin verificar`)}>
+            <Copy size={13} /> Partir de {db.campanas[ant.campanaId]?.anio}
           </button>
         )}
         <button
           className="btn s primario"
-          onClick={() => aplicar((d) => actualizarRevisiones(guardarMetrica(d, negocioId, campana!.id, {}, true), campana!.id, Object.values(d.ocupaciones).filter((o) => o.negocioId === negocioId).map((o) => o.localId), { digital: 'revisado' }), `Presencia digital verificada en ${campana!.anio}`)}
+          disabled={!rev || problemas.length > 0 || estado === 'verificada'}
+          title={problemas.map((p) => p.mensaje).join('\n') || undefined}
+          onClick={() => aplicar((d) => verificarDigital(d, negocioId, campana!.id, prefs.personaId), `Presencia digital verificada en ${campana!.anio}`)}
         >
-          <ShieldCheck size={13} /> Marcar verificado hoy
+          <ShieldCheck size={13} /> Verificar
         </button>
       </div>
-      {!anterior && <p className="muted" style={{ fontSize: 12, margin: 0 }}>{neg?.procedencia === 'manual' ? 'Negocio nuevo: no hereda perfiles del negocio que ocupaba antes el local.' : 'Sin mediciones anteriores de este negocio.'}</p>}
+      {!ant && <p className="muted" style={{ fontSize: 12, margin: 0 }}>{neg?.procedencia === 'manual' ? 'Negocio nuevo: no hereda perfiles del negocio que ocupaba antes el local.' : 'Sin revisiones anteriores de este negocio.'}</p>}
+      {problemas.length > 0 && rev && (
+        <div className="t-info aviso" style={{ margin: 0, flexDirection: 'column', gap: 2 }}>
+          {problemas.slice(0, 6).map((p) => <span key={p.variable + p.tipo}>{p.tipo === 'contradiccion' ? '⚠ ' : '· '}{p.mensaje}</span>)}
+          {problemas.length > 6 && <span>… y {problemas.length - 6} más</span>}
+        </div>
+      )}
       <table className="tabla of-digital">
         <thead>
-          <tr>
-            <th>Variable</th>
-            <th>{campana!.anio}</th>
-            {anterior && <th title="Solo referencia: no se considera verificado en esta campaña">{db.campanas[anterior.campanaId]?.anio} <span className="muted">(ref.)</span></th>}
-          </tr>
+          <tr><th>Variable</th><th>{campana!.anio}</th>{ant && <th title="Solo referencia: no cuenta como verificado en esta campaña">{db.campanas[ant.campanaId]?.anio} <span className="muted">(ref.)</span></th>}</tr>
         </thead>
         <tbody>
-          {CAMPOS.map(({ k, t, tipo }) => (
-            <tr key={k}>
-              <td className="muted">{t}</td>
-              <td>
-                {tipo === 'bool' ? (
-                  <select className="input of-mini" value={actual?.[k] === undefined ? '' : actual?.[k] ? 'si' : 'no'} onChange={(e) => cambiar(k, e.target.value === '' ? undefined : e.target.value === 'si')}>
-                    <option value="">—</option>
-                    <option value="si">Sí</option>
-                    <option value="no">No</option>
-                  </select>
-                ) : (
-                  <input
-                    className="input of-mini"
-                    inputMode={tipo === 'numero' ? 'decimal' : undefined}
-                    value={actual?.[k] === undefined ? '' : String(actual[k])}
-                    onChange={(e) => cambiar(k, tipo === 'numero' ? (e.target.value === '' ? undefined : +e.target.value.replace(',', '.')) : e.target.value || undefined)}
-                  />
-                )}
-              </td>
-              {anterior && <td className="of-ref">{valor(anterior, k)}</td>}
-            </tr>
-          ))}
+          {VARIABLES_DIGITALES.map((def) => {
+            const d = rev?.datos[def.id];
+            const exigible = esExigible(rev, def.id);
+            const r = d?.respuesta ?? 'pendiente';
+            const da = ant?.datos[def.id];
+            return (
+              <tr key={def.id} className={!exigible ? 'of-dig-opcional' : ''}>
+                <td className="muted">
+                  {def.etiqueta}
+                  {exigible && r === 'pendiente' && <span className="of-req" title="Obligatoria con las respuestas actuales">•</span>}
+                  {d?.origen === 'heredado' && <span className="tag naranja" title="Copiado de otra campaña: confírmalo">heredado</span>}
+                </td>
+                <td>
+                  <div className="of-resp">
+                    {def.tipo === 'numero' && (
+                      <input
+                        className="input of-mini"
+                        style={{ width: 80 }}
+                        inputMode="decimal"
+                        value={d?.valor ?? ''}
+                        placeholder="valor"
+                        onChange={(e) => {
+                          const v = e.target.value.replace(',', '.');
+                          if (v === '') registrar(def.id, 'pendiente');
+                          else if (Number.isFinite(+v)) registrar(def.id, 'si', +v);
+                        }}
+                      />
+                    )}
+                    {OPCIONES.filter((o) => (def.tipo === 'numero' ? o.r !== 'si' && o.r !== 'no' : true)).filter((o) => o.r !== 'na' || def.admiteNa || def.depende).map((o) => (
+                      <button key={o.r} className={`of-r ${r === o.r ? 'on r-' + o.r : ''}`} title={`${o.t === '·' ? 'Pendiente' : o.t} (${o.tecla})`} onClick={() => registrar(def.id, o.r)}>
+                        {o.t}
+                      </button>
+                    ))}
+                  </div>
+                </td>
+                {ant && <td className="of-ref">{da ? (da.valor !== undefined ? String(da.valor) : RESPUESTA_TXT[da.respuesta]) : '—'}</td>}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
-      <p className="muted" style={{ fontSize: 11.5, margin: 0 }}>Los valores de campañas anteriores nunca se presentan como verificados en esta. La actualización automática de seguidores queda fuera de esta fase.</p>
+      <p className="muted" style={{ fontSize: 11.5, margin: 0 }}>«·» = pendiente (no equivale a «No»). N/A = no aplicable · ¿? = sin información disponible. Cambiar un dato tras verificar reabre la revisión.</p>
     </div>
   );
 }

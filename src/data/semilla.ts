@@ -1,4 +1,4 @@
-import { baseVacia, kCob, kMet, kRev, type BaseDatos } from '../domain/db';
+import { baseVacia, kCob, kNC, kRev, siguienteOrden, type BaseDatos } from '../domain/db';
 import { ACTIVIDADES_HOJA, buscarActividadPorNombre, rutaActividad } from '../domain/taxonomy';
 import { centroide, desplazarPerpendicular, distanciaM, puntoEnLinea } from '../domain/geo';
 import { claveCalle } from '../domain/text';
@@ -9,10 +9,10 @@ import {
 } from '../domain/campo';
 import { localesPrevios } from '../domain/consultas';
 import type {
-  Calle, Campana, Id, Itinerario, LngLat, LocalFisico, MetricaDigital, Negocio, Observacion, Ocupacion, Persona, TramoPlan,
+  Calle, Campana, Id, Itinerario, LngLat, LocalFisico, DatoDigital, RevisionDigital, Negocio, Observacion, Ocupacion, Persona, TramoPlan,
 } from '../domain/types';
 import { CALLES_DESDE_CERO_IT2, MEDINA, type FuenteCallejero } from './callejero';
-import { CADENAS_FICTICIAS, nombreNegocio, nombresCallesFicticias, slugRed } from './nombres';
+import { CADENAS_FICTICIAS, nombreNegocio, nombresCallesFicticias } from './nombres';
 import { crearRng, huella, type Rng } from './rng';
 
 /**
@@ -38,20 +38,27 @@ function actividadAleatoria(rng: Rng) {
   return rng.pick(hojas);
 }
 
-function metrica(rng: Rng, negocioId: Id, campanaId: Id, fecha: string, nivel: number, nombre: string): MetricaDigital {
+/** Revisión digital VERIFICADA ficticia de un negocio en una campaña ya cerrada. */
+function metrica(rng: Rng, negocioId: Id, campanaId: Id, fecha: string, nivel: number): RevisionDigital {
   const tieneIg = rng.chance(0.35 + nivel * 0.1);
   const tieneGbp = rng.chance(0.55 + nivel * 0.1);
+  const r = (b: boolean): DatoDigital => ({ respuesta: b ? 'si' : 'no', origen: 'importado', fecha });
+  const num = (v: number): DatoDigital => ({ respuesta: 'si', valor: v, origen: 'importado', fecha });
+  const na: DatoDigital = { respuesta: 'na', origen: 'importado', fecha };
+  const numResenas = rng.int(2, 240);
   return {
-    negocioId, campanaId, fechaComprobacion: fecha, verificada: true,
-    web: rng.chance(0.25 + nivel * 0.07) ? `https://${slugRed(nombre)}.example` : undefined,
-    ventaOnline: rng.chance(0.08 + nivel * 0.04),
-    googleBusiness: tieneGbp,
-    valoracion: tieneGbp ? Math.round((3.4 + rng.next() * 1.5) * 10) / 10 : undefined,
-    numResenas: tieneGbp ? rng.int(2, 240) : undefined,
-    respondeResenas: tieneGbp ? rng.chance(0.3) : undefined,
-    instagram: tieneIg ? `@${slugRed(nombre)}` : undefined,
-    seguidoresInstagram: tieneIg ? rng.int(40, 4200) : undefined,
-    facebook: rng.chance(0.3) ? slugRed(nombre) : undefined,
+    negocioId, campanaId, estado: 'verificada', verificadaEn: fecha, historial: [{ accion: 'verificar', fecha }],
+    datos: {
+      web: r(rng.chance(0.25 + nivel * 0.07)),
+      ventaOnline: r(rng.chance(0.08 + nivel * 0.04)),
+      googleBusiness: r(tieneGbp),
+      valoracion: tieneGbp ? num(Math.round((3.4 + rng.next() * 1.5) * 10) / 10) : na,
+      numResenas: tieneGbp ? num(numResenas) : na,
+      respondeResenas: tieneGbp ? r(rng.chance(0.3)) : na,
+      instagram: r(tieneIg),
+      seguidoresInstagram: tieneIg ? num(rng.int(40, 4200)) : na,
+      facebook: r(rng.chance(0.3)),
+    },
   };
 }
 
@@ -135,18 +142,20 @@ function generarMedina(db0: BaseDatos, { calles, fuente, detalleFuente }: Semill
       let negocio: Negocio | undefined;
       if (act) {
         negocio = {
-          id: `neg-${localId}`, nombre: nombreNegocio(rng, act.nombre), actividadId: act.id,
+          id: `neg-${localId}`, nombre: nombreNegocio(rng, act.nombre),
           cadena: rng.chance(0.07) ? rng.pick(CADENAS_FICTICIAS) : undefined, procedencia: 'simulado',
         };
         db.negocios[negocio.id] = negocio;
-        if (rng.chance(0.62)) db.metricas[kMet(negocio.id, c25.id)] = metrica(rng, negocio.id, c25.id, '2025-10-15', 0, negocio.nombre);
+        db.clasificaciones[kNC(negocio.id, c25.id)] = { negocioId: negocio.id, campanaId: c25.id, actividadId: act.id, origen: 'importado', confirmada: true };
+        if (rng.chance(0.62)) db.digital[kNC(negocio.id, c25.id)] = metrica(rng, negocio.id, c25.id, '2025-10-15', 0);
       }
       const metros = vacio ? rng.int(3, 14) : undefined;
-      const oc: Ocupacion = { id: `ocu-${localId}-25`, localId, negocioId: negocio?.id ?? null, metrosFachada: metros, desdeCampanaId: c25.id };
-      db.ocupaciones[oc.id] = oc;
       const regId = `reg-${imp25}-${filaN}`;
+      const oc: Ocupacion = { id: `ocu-${localId}-25`, localId, negocioId: negocio?.id ?? null, metrosFachada: metros, desdeCampanaId: c25.id, desdeObservacionId: `obs-${regId}`, orden: siguienteOrden(db) };
+      db.ocupaciones[oc.id] = oc;
       const ruta = rutaActividad(act?.id);
-      const m = negocio ? db.metricas[kMet(negocio.id, c25.id)] : undefined;
+      const m = negocio ? db.digital[kNC(negocio.id, c25.id)] : undefined;
+      const b01 = (v?: DatoDigital) => (v?.respuesta === 'si' ? '1' : v?.respuesta === 'no' ? '0' : '');
       db.registros[regId] = {
         id: regId, importacionId: imp25, fila: filaN,
         datos: {
@@ -154,13 +163,13 @@ function generarMedina(db0: BaseDatos, { calles, fuente, detalleFuente }: Semill
           Estado: vacio ? 'Vacío' : 'Ocupado', 'Metros fachada': metros ? String(metros) : '',
           'Grupo de actividad': ruta[0]?.nombre ?? '', 'Grupo de comercio': ruta[1]?.nombre ?? '',
           'Subgrupo de actividad': ruta[2]?.nombre ?? '', Actividad: ruta[3]?.nombre ?? '', Cadena: negocio?.cadena ?? '',
-          Web: m?.web ?? '', Instagram: m?.instagram ?? '', 'Seguidores IG': m?.seguidoresInstagram ? String(m.seguidoresInstagram) : '',
-          'Reseñas Google': m?.numResenas ? String(m.numResenas) : '', 'Valoración': m?.valoracion ? String(m.valoracion) : '',
+          web: b01(m?.datos.web), Instagram: b01(m?.datos.instagram), 'Seguidores IG': m?.datos.seguidoresInstagram?.valor !== undefined ? String(m.datos.seguidoresInstagram.valor) : '',
+          'Reseñas Google': m?.datos.numResenas?.valor !== undefined ? String(m.datos.numResenas.valor) : '', 'Valoración': m?.datos.valoracion?.valor !== undefined ? String(m.datos.valoracion.valor) : '',
         },
       };
       const obs: Observacion = {
-        id: `obs-${regId}`, campanaId: c25.id, localId, calleId: calle.id, registrado: '2026-02-10T10:00:00', fuente: 'importacion', tipo: 'confirmado',
-        datos: { numero: u.numero, sufijo: u.sufijo, nombre: negocio?.nombre, vacio, metrosFachada: metros }, verificacion: 'verificada',
+        id: `obs-${regId}`, campanaId: c25.id, localId, calleId: calle.id, registrado: '2026-02-10T10:00:00', orden: siguienteOrden(db), fuente: 'importacion', tipo: 'confirmado',
+        datos: { numero: u.numero, sufijo: u.sufijo, nombre: negocio?.nombre, negocioId: negocio?.id ?? null, vacio, metrosFachada: metros }, verificacion: 'verificada',
       };
       db.observaciones[obs.id] = obs;
       db.vinculos[`vin-${regId}`] = {
@@ -431,27 +440,30 @@ function generarValladolid(db: BaseDatos): BaseDatos {
   };
   const nuevoNegocio = (actNombre?: string): Negocio => {
     const act = actNombre ? buscarActividadPorNombre(actNombre)! : actividadAleatoria(rng);
-    const n: Negocio = { id: `neg-vll-${nl}-${rng.int(0, 1e6)}`, nombre: nombreNegocio(rng, act.nombre), actividadId: act.id, procedencia: 'simulado', cadena: rng.chance(0.08) ? rng.pick(CADENAS_FICTICIAS) : undefined };
+    const n: Negocio = { id: `neg-vll-${nl}-${rng.int(0, 1e6)}`, nombre: nombreNegocio(rng, act.nombre), procedencia: 'simulado', cadena: rng.chance(0.08) ? rng.pick(CADENAS_FICTICIAS) : undefined };
     db.negocios[n.id] = n;
+    actividadDe.set(n.id, act.id);
     return n;
   };
   const estadoLocal = new Map<Id, { negocioId: Id | null; ocId: Id; metros?: number }>();
+  const actividadDe = new Map<Id, Id>();
   const obs = (camp: Campana, l: LocalFisico, tipo: Observacion['tipo'], negocioId: Id | null, metros?: number) => {
     const d = l.direcciones[0];
     const o: Observacion = {
-      id: `obs-vll-${l.id}-${camp.anio}`, campanaId: camp.id, localId: l.id, calleId: d.calleId, fecha: `${camp.anio}-10-01`,
+      id: `obs-vll-${l.id}-${camp.anio}`, campanaId: camp.id, localId: l.id, calleId: d.calleId, fecha: `${camp.anio}-10-01`, orden: siguienteOrden(db),
       fuente: camp.anio === 2023 ? 'papel' : 'campo-app', tipo, verificacion: 'verificada',
-      datos: { numero: d.numero, nombre: negocioId ? db.negocios[negocioId].nombre : undefined, vacio: !negocioId, metrosFachada: metros },
+      datos: { numero: d.numero, nombre: negocioId ? db.negocios[negocioId].nombre : undefined, negocioId, vacio: !negocioId, metrosFachada: metros },
     };
     db.observaciones[o.id] = o;
+    if (negocioId) db.clasificaciones[kNC(negocioId, camp.id)] = { negocioId, campanaId: camp.id, actividadId: actividadDe.get(negocioId)!, origen: 'manual', confirmada: true };
     db.revisiones[kRev(camp.id, l.id)] = { campanaId: camp.id, localId: l.id, campo: 'terminado', categorizacion: 'revisado', digital: 'revisado', validacion: 'aprobada' };
     if (negocioId && rng.chance(0.5 + (camp.anio - 2023) * 0.1)) {
-      db.metricas[kMet(negocioId, camp.id)] = metrica(rng, negocioId, camp.id, `${camp.anio}-10-20`, camp.anio - 2023, db.negocios[negocioId].nombre);
+      db.digital[kNC(negocioId, camp.id)] = metrica(rng, negocioId, camp.id, `${camp.anio}-10-20`, camp.anio - 2023);
     }
   };
   const abrirOcupacion = (l: LocalFisico, negocioId: Id | null, camp: Campana, metros?: number) => {
     const id = `ocu-${l.id}-${camp.anio}`;
-    db.ocupaciones[id] = { id, localId: l.id, negocioId, metrosFachada: metros, desdeCampanaId: camp.id };
+    db.ocupaciones[id] = { id, localId: l.id, negocioId, metrosFachada: metros, desdeCampanaId: camp.id, orden: siguienteOrden(db) };
     estadoLocal.set(l.id, { negocioId, ocId: id, metros });
   };
   const cerrar = (l: LocalFisico, hasta: Campana) => {

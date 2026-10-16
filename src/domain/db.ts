@@ -1,9 +1,10 @@
 import type {
-  Calle, Campana, Cobertura, Id, Importacion, Itinerario, LocalFisico, MetricaDigital, Municipio, Negocio,
-  Observacion, Ocupacion, PendienteSync, Persona, RegistroOrigen, Revision, SituacionPrevia, VinculoHistorico,
+  Calle, Campana, ClasificacionCampana, Cobertura, EstadoOficinaItinerario, Id, Importacion, Itinerario, LocalFisico,
+  Municipio, Negocio, Observacion, Ocupacion, PendienteSync, Persona, RegistroOrigen, Revision, RevisionDigital,
+  SituacionPrevia, VinculoHistorico,
 } from './types';
 
-export const VERSION_DATOS = 7;
+export const VERSION_DATOS = 8;
 
 /** "Base de datos" del prototipo: normalizada, serializable y persistida en el navegador. */
 export interface BaseDatos {
@@ -28,8 +29,14 @@ export interface BaseDatos {
   importaciones: Record<Id, Importacion>;
   /** clave: campana|local */
   revisiones: Record<string, Revision>;
-  /** clave: negocio|campana */
-  metricas: Record<string, MetricaDigital>;
+  /** Revisión digital de un negocio en una campaña. clave: negocio|campana */
+  digital: Record<string, RevisionDigital>;
+  /** Clasificación de un negocio en una campaña. clave: negocio|campana */
+  clasificaciones: Record<string, ClasificacionCampana>;
+  /** Estado de oficina por itinerario. clave: itinerarioId */
+  oficinaItinerarios: Record<Id, EstadoOficinaItinerario>;
+  /** Contador de orden de registro (ocupaciones y observaciones). */
+  secuencia: number;
   personas: Record<Id, Persona>;
   colaSync: PendienteSync[];
   /** Metadatos de la demostración (fuente del callejero, ids de escenarios…). */
@@ -39,7 +46,9 @@ export interface BaseDatos {
 export const kCob = (campanaId: Id, calleId: Id, acera: string) => `${campanaId}|${calleId}|${acera}`;
 export const kCC = (campanaId: Id, calleId: Id) => `${campanaId}|${calleId}`;
 export const kRev = (campanaId: Id, localId: Id) => `${campanaId}|${localId}`;
-export const kMet = (negocioId: Id, campanaId: Id) => `${negocioId}|${campanaId}`;
+export const kNC = (negocioId: Id, campanaId: Id) => `${negocioId}|${campanaId}`;
+/** Alias histórico */
+export const kMet = kNC;
 
 export function baseVacia(): BaseDatos {
   return {
@@ -47,7 +56,8 @@ export function baseVacia(): BaseDatos {
     generado: new Date().toISOString(),
     municipios: {}, calles: {}, campanas: {}, itinerarios: {}, coberturas: {}, situacionesPrevias: {},
     callesRevisadasPlan: {}, locales: {}, negocios: {}, ocupaciones: {}, observaciones: {}, registros: {},
-    vinculos: {}, importaciones: {}, revisiones: {}, metricas: {}, personas: {}, colaSync: [], meta: {},
+    vinculos: {}, importaciones: {}, revisiones: {}, digital: {}, clasificaciones: {}, oficinaItinerarios: {}, secuencia: 0,
+    personas: {}, colaSync: [], meta: {},
   };
 }
 
@@ -55,4 +65,18 @@ let contador = 0;
 export function nuevoId(prefijo: string): Id {
   contador = (contador + 1) % 1e6;
   return `${prefijo}-${Date.now().toString(36)}${contador.toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
+}
+
+/** Siguiente número de orden de registro (muta la copia de trabajo `db`). */
+export function siguienteOrden(db: BaseDatos): number {
+  db.secuencia = (db.secuencia ?? 0) + 1;
+  return db.secuencia;
+}
+
+/** Error de regla de negocio: se muestra al usuario y no altera los datos. */
+export class ErrorDominio extends Error {
+  constructor(public codigo: 'bloqueado' | 'fuera-de-alcance' | 'verificacion-incompleta' | 'regla', mensaje: string, public detalles: string[] = []) {
+    super(mensaje);
+    this.name = 'ErrorDominio';
+  }
 }

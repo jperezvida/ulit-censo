@@ -1,5 +1,6 @@
 import type { BaseDatos } from './db';
-import { kCob, kRev, nuevoId } from './db';
+import { kCob, kRev, nuevoId, siguienteOrden } from './db';
+import { comprobarEditable } from './bloqueo';
 import { anioDe, direccionVigente, localesPrevios, ocupacionEn, revisionDe } from './consultas';
 import { proponerCandidatos } from './conciliacion';
 import type { Acera, Cobertura, EstadoCobertura, Id, LngLat, Observacion, TipoObservacion } from './types';
@@ -27,9 +28,10 @@ function marcarRevisionCampo(db: BaseDatos, campanaId: Id, localId: Id, extra?: 
   db.revisiones = { ...db.revisiones, [kRev(campanaId, localId)]: { ...r, campo: 'terminado', ...extra } };
 }
 
-function anadirObs(db: BaseDatos, ctx: Contexto, o: Omit<Observacion, 'id' | 'campanaId' | 'fecha' | 'fuente' | 'investigadorId' | 'verificacion'>): Observacion {
+function anadirObs(db: BaseDatos, ctx: Contexto, o: Omit<Observacion, 'id' | 'campanaId' | 'fecha' | 'fuente' | 'investigadorId' | 'verificacion' | 'orden'>, id = nuevoId('obs')): Observacion {
   const obs: Observacion = {
-    id: nuevoId('obs'),
+    id,
+    orden: siguienteOrden(db),
     campanaId: ctx.campanaId,
     fecha: ctx.fecha,
     registrado: new Date().toISOString(),
@@ -74,16 +76,16 @@ export const TIPO_OBS_TXT: Record<TipoObservacion, string> = {
 
 /** Confirmar sin cambios: no se pide nada que ya exista. */
 export function confirmarSinCambios(db0: BaseDatos, ctx: Contexto, localId: Id): BaseDatos {
+  comprobarEditable(db0, ctx.campanaId, { localId });
   const db = clonar(db0);
   const l = db.locales[localId];
-  const camp = db.campanas[ctx.campanaId];
-  const ref = camp.campanaReferenciaId ?? ctx.campanaId;
-  const oc = ocupacionEn(db, localId, ref);
+  // Situación vigente en ESTA campaña (puede haber cambiado ya en una visita anterior).
+  const oc = ocupacionEn(db, localId, ctx.campanaId);
   const neg = oc?.negocioId ? db.negocios[oc.negocioId] : undefined;
   const d = direccionVigente(l);
   anadirObs(db, ctx, {
     localId, calleId: d.calleId, tipo: 'confirmado',
-    datos: { numero: d.numero, sufijo: d.sufijo, nombre: neg?.nombre, vacio: !neg, metrosFachada: oc?.metrosFachada },
+    datos: { numero: d.numero, sufijo: d.sufijo, nombre: neg?.nombre, negocioId: neg?.id ?? null, vacio: !neg, metrosFachada: oc?.metrosFachada },
   });
   marcarRevisionCampo(db, ctx.campanaId, localId);
   return db;
@@ -94,11 +96,11 @@ export function modificarLocal(
   db0: BaseDatos, ctx: Contexto, localId: Id,
   cambios: { nombre?: string; metrosFachada?: number; numero?: number | null; sufijo?: string; nota?: string },
 ): BaseDatos {
+  comprobarEditable(db0, ctx.campanaId, { localId });
   const db = clonar(db0);
   const l = db.locales[localId];
   const d = direccionVigente(l);
-  const ref = db.campanas[ctx.campanaId].campanaReferenciaId ?? ctx.campanaId;
-  const oc = ocupacionEn(db, localId, ref);
+  const oc = ocupacionEn(db, localId, ctx.campanaId);
   if (cambios.nombre && oc?.negocioId) {
     db.negocios = { ...db.negocios, [oc.negocioId]: { ...db.negocios[oc.negocioId], nombre: cambios.nombre } };
   }
@@ -112,72 +114,82 @@ export function modificarLocal(
   const nombre = cambios.nombre ?? (oc?.negocioId ? db.negocios[oc.negocioId]?.nombre : undefined);
   anadirObs(db, ctx, {
     localId, calleId: d.calleId, tipo: 'modificado', nota: cambios.nota,
-    datos: { numero: cambios.numero ?? d.numero, sufijo: cambios.sufijo ?? d.sufijo, nombre, vacio: !oc?.negocioId, metrosFachada: cambios.metrosFachada ?? oc?.metrosFachada },
+    datos: { numero: cambios.numero ?? d.numero, sufijo: cambios.sufijo ?? d.sufijo, nombre, negocioId: oc?.negocioId ?? null, vacio: !oc?.negocioId, metrosFachada: cambios.metrosFachada ?? oc?.metrosFachada },
   });
   marcarRevisionCampo(db, ctx.campanaId, localId);
   return db;
 }
 
-/** Cierra la ocupación vigente al final de la campaña de referencia. */
-function cerrarOcupacion(db: BaseDatos, ctx: Contexto, localId: Id) {
+/**
+ * Cierra la ocupación vigente con la observación que la sustituye. NUNCA la borra:
+ * si se vio en esta campaña (o empezó en ella) se cierra en esta campaña; si no, se
+ * cierra en la última campaña en que consta (la de referencia).
+ */
+function cerrarOcupacion(db: BaseDatos, ctx: Contexto, localId: Id, observacionId: Id) {
   const camp = db.campanas[ctx.campanaId];
-  const ref = camp.campanaReferenciaId;
   const oc = ocupacionEn(db, localId, ctx.campanaId);
   if (!oc) return;
-  if (oc.desdeCampanaId === ctx.campanaId) {
-    // creada en esta misma campaña: se sustituye
-    const { [oc.id]: _, ...resto } = db.ocupaciones;
-    db.ocupaciones = resto;
-  } else {
-    db.ocupaciones = { ...db.ocupaciones, [oc.id]: { ...oc, hastaCampanaId: ref ?? oc.desdeCampanaId } };
-  }
+  const vistaEnCampana =
+    oc.desdeCampanaId === ctx.campanaId ||
+    Object.values(db.observaciones).some((o) => o.localId === localId && o.campanaId === ctx.campanaId && o.datos.negocioId === oc.negocioId && o.tipo !== 'posible-desaparicion');
+  const hasta = vistaEnCampana ? ctx.campanaId : camp.campanaReferenciaId ?? oc.desdeCampanaId;
+  db.ocupaciones = { ...db.ocupaciones, [oc.id]: { ...oc, hastaCampanaId: hasta, hastaObservacionId: observacionId } };
+}
+
+function abrirOcupacion(db: BaseDatos, ctx: Contexto, localId: Id, negocioId: Id | null, observacionId: Id, metrosFachada?: number) {
+  const id = nuevoId('ocu');
+  db.ocupaciones = { ...db.ocupaciones, [id]: { id, localId, negocioId, metrosFachada, desdeCampanaId: ctx.campanaId, desdeObservacionId: observacionId, orden: siguienteOrden(db) } };
 }
 
 export function registrarVacio(db0: BaseDatos, ctx: Contexto, localId: Id, metrosFachada?: number, nota?: string): BaseDatos {
+  comprobarEditable(db0, ctx.campanaId, { localId });
   const db = clonar(db0);
-  cerrarOcupacion(db, ctx, localId);
-  const id = nuevoId('ocu');
-  db.ocupaciones = { ...db.ocupaciones, [id]: { id, localId, negocioId: null, metrosFachada, desdeCampanaId: ctx.campanaId } };
+  const obsId = nuevoId('obs');
+  cerrarOcupacion(db, ctx, localId, obsId);
   const d = direccionVigente(db.locales[localId]);
-  anadirObs(db, ctx, { localId, calleId: d.calleId, tipo: 'vacio', nota, datos: { numero: d.numero, sufijo: d.sufijo, vacio: true, metrosFachada } });
+  anadirObs(db, ctx, { localId, calleId: d.calleId, tipo: 'vacio', nota, datos: { numero: d.numero, sufijo: d.sufijo, negocioId: null, vacio: true, metrosFachada } }, obsId);
+  abrirOcupacion(db, ctx, localId, null, obsId, metrosFachada);
   marcarRevisionCampo(db, ctx.campanaId, localId);
   return db;
 }
 
 /** Nuevo negocio en un local existente. NO hereda perfiles digitales del anterior. */
 export function registrarNuevoNegocio(db0: BaseDatos, ctx: Contexto, localId: Id, nombre: string, nota?: string): BaseDatos {
+  comprobarEditable(db0, ctx.campanaId, { localId });
   const db = clonar(db0);
-  cerrarOcupacion(db, ctx, localId);
+  const obsId = nuevoId('obs');
+  cerrarOcupacion(db, ctx, localId, obsId);
   const negId = nuevoId('neg');
   db.negocios = { ...db.negocios, [negId]: { id: negId, nombre, procedencia: 'manual' } };
-  const id = nuevoId('ocu');
-  db.ocupaciones = { ...db.ocupaciones, [id]: { id, localId, negocioId: negId, desdeCampanaId: ctx.campanaId } };
   const d = direccionVigente(db.locales[localId]);
-  anadirObs(db, ctx, { localId, calleId: d.calleId, tipo: 'nuevo-negocio', nota, datos: { numero: d.numero, sufijo: d.sufijo, nombre, vacio: false } });
+  anadirObs(db, ctx, { localId, calleId: d.calleId, tipo: 'nuevo-negocio', nota, datos: { numero: d.numero, sufijo: d.sufijo, nombre, negocioId: negId, vacio: false } }, obsId);
+  abrirOcupacion(db, ctx, localId, negId, obsId);
   marcarRevisionCampo(db, ctx.campanaId, localId, { categorizacion: 'pendiente', digital: 'pendiente' });
   return db;
 }
 
 /** Posible desaparición física: NO es un cierre; queda para revisión humana. */
 export function marcarPosibleDesaparicion(db0: BaseDatos, ctx: Contexto, localId: Id, nota?: string): BaseDatos {
+  comprobarEditable(db0, ctx.campanaId, { localId });
   const db = clonar(db0);
   const l = db.locales[localId];
   db.locales = { ...db.locales, [localId]: { ...l, estado: 'posible-desaparicion' } };
   const d = direccionVigente(l);
+  // La ocupación NO se cierra: una posible desaparición no es un cierre.
   anadirObs(db, ctx, { localId, calleId: d.calleId, tipo: 'posible-desaparicion', nota, datos: { numero: d.numero, sufijo: d.sufijo, vacio: true } });
   marcarRevisionCampo(db, ctx.campanaId, localId, { pendienteComprobacion: true });
   return db;
 }
 
 export function marcarDudoso(db0: BaseDatos, ctx: Contexto, localId: Id, nota: string, tipo: 'dudoso' | 'incidencia' = 'dudoso'): BaseDatos {
+  comprobarEditable(db0, ctx.campanaId, { localId });
   const db = clonar(db0);
   const l = db.locales[localId];
   const d = direccionVigente(l);
-  const ref = db.campanas[ctx.campanaId].campanaReferenciaId ?? ctx.campanaId;
-  const oc = ocupacionEn(db, localId, ref);
+  const oc = ocupacionEn(db, localId, ctx.campanaId);
   anadirObs(db, ctx, {
     localId, calleId: d.calleId, tipo, nota,
-    datos: { numero: d.numero, sufijo: d.sufijo, nombre: oc?.negocioId ? db.negocios[oc.negocioId]?.nombre : undefined, vacio: !oc?.negocioId },
+    datos: { numero: d.numero, sufijo: d.sufijo, nombre: oc?.negocioId ? db.negocios[oc.negocioId]?.nombre : undefined, negocioId: oc?.negocioId ?? null, vacio: !oc?.negocioId },
   });
   marcarRevisionCampo(db, ctx.campanaId, localId, { pendienteComprobacion: true });
   return db;
@@ -199,6 +211,7 @@ export interface NuevoLocal {
  * compatibles, se proponen como candidatos de conciliación (sin aplicarlos).
  */
 export function registrarLocalNuevo(db0: BaseDatos, ctx: Contexto, n: NuevoLocal): { db: BaseDatos; localId: Id; candidatos: number } {
+  comprobarEditable(db0, ctx.campanaId, { calleId: n.calleId });
   const db = clonar(db0);
   const camp = db.campanas[ctx.campanaId];
   const localId = nuevoId('loc');
@@ -211,12 +224,11 @@ export function registrarLocalNuevo(db0: BaseDatos, ctx: Contexto, n: NuevoLocal
     negocioId = nuevoId('neg');
     db.negocios = { ...db.negocios, [negocioId]: { id: negocioId, nombre: n.nombre, procedencia: 'manual' } };
   }
-  const ocId = nuevoId('ocu');
-  db.ocupaciones = { ...db.ocupaciones, [ocId]: { id: ocId, localId, negocioId, metrosFachada: n.metrosFachada, desdeCampanaId: ctx.campanaId } };
   const obs = anadirObs(db, ctx, {
     localId, calleId: n.calleId, tipo: 'nuevo-local', nota: n.nota,
-    datos: { numero: n.numero, sufijo: n.sufijo, nombre: n.nombre, vacio: n.vacio, metrosFachada: n.metrosFachada },
+    datos: { numero: n.numero, sufijo: n.sufijo, nombre: n.nombre, negocioId, vacio: n.vacio, metrosFachada: n.metrosFachada },
   });
+  abrirOcupacion(db, ctx, localId, negocioId, obs.id, n.metrosFachada);
   marcarRevisionCampo(db, ctx.campanaId, localId);
   // Candidatos: locales anteriores de la calle aún no observados en esta campaña.
   const previos = localesPrevios(db, camp.campanaReferenciaId, n.calleId).filter(
@@ -249,6 +261,7 @@ export function finalizarCalle(
   db0: BaseDatos, ctx: Contexto, calleId: Id,
   opciones: { acera?: Acera; par: boolean; impar: boolean; resultado: ResultadoCalle; nota?: string },
 ): BaseDatos {
+  comprobarEditable(db0, ctx.campanaId, { calleId });
   const validacion = validarFinalizacion(db0, ctx.campanaId, calleId, opciones);
   if (!validacion.ok) throw new Error(validacion.motivo);
   const db = clonar(db0);
