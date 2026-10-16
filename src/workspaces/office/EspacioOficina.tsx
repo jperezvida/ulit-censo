@@ -32,7 +32,10 @@ export default function EspacioOficina({ municipal = false }: { municipal?: bool
   const [modal, setModal] = useState<'cerrar' | 'reabrir' | 'validar' | 'cronologia' | null>(null);
   const filasIt = useFilas(it?.id);
   const estado = it ? estadoOficina(db, it.id) : 'en-revision';
-  const bloqueado = estado === 'revision-cerrada' || estado === 'validado';
+  const itCerrado = estado === 'revision-cerrada' || estado === 'validado';
+  // Una campaña histórica o ya validada no se edita desde Oficina (evita tocar otra campaña por descuido).
+  const campanaCerrada = !!campana && (campana.tipo === 'historico-importado' || campana.estados.validacion === 'terminado');
+  const bloqueado = itCerrado || campanaCerrada;
 
   const setParam = (k: string, v: string | null) =>
     setParams((p) => {
@@ -103,11 +106,16 @@ export default function EspacioOficina({ municipal = false }: { municipal?: bool
             ]}
           />
           {it && !bloqueado && <button className="btn s" onClick={() => setModal('cerrar')}><Lock size={13} /> Cerrar revisión (provisional)</button>}
-          {it && bloqueado && <button className="btn s" onClick={() => setModal('reabrir')}><LockOpen size={13} /> Reabrir</button>}
+          {it && itCerrado && <button className="btn s" onClick={() => setModal('reabrir')}><LockOpen size={13} /> Reabrir</button>}
           {it && <button className="btn s fantasma" onClick={() => setModal('validar')} title="Requiere los controles del bloque C"><ShieldCheck size={13} /> Validación definitiva</button>}
         </header>
 
-        {bloqueado && (
+        {campanaCerrada && (
+          <div className="ofi-banda-bloqueo" role="status">
+            <Lock size={14} /> {campana.nombre} es una campaña histórica o ya validada: se consulta en modo de solo lectura.
+          </div>
+        )}
+        {itCerrado && (
           <div className="ofi-banda-bloqueo" role="status">
             <Lock size={14} /> {it?.codigo} tiene la revisión cerrada de forma provisional: sus registros de {campana.anio} no se pueden modificar. <b>No es apto para la exportación municipal.</b> Reábrelo con un motivo para corregir.
           </div>
@@ -144,7 +152,7 @@ export default function EspacioOficina({ municipal = false }: { municipal?: bool
         {def.aviso && <div className="t-info" style={{ margin: '0 12px 8px' }}>{def.aviso}</div>}
 
         {modo === 'tareas' ? (
-          <VistaTareas tarea={tarea} filas={filas} sel={filaSel?.localId ?? null} onSel={elegir} onCronologia={(id) => { elegir(id); setModal('cronologia'); }} />
+          <VistaTareas tarea={tarea} filas={filas} todas={filasIt} sel={filaSel?.localId ?? null} onSel={elegir} onCronologia={(id) => { elegir(id); setModal('cronologia'); }} />
         ) : (
           <div className="ofi-establecimiento">
             <ListaRegistros filas={filas} sel={filaSel?.localId ?? null} onSel={elegir} etiqueta={`Registros · ${def.titulo}`} />

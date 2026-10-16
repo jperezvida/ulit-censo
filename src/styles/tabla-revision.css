@@ -1,0 +1,287 @@
+/* ───────── Tabla de revisión rápida (B3) ───────── */
+.tab-revision {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+}
+.tab-grid {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  outline: none;
+  border-top: 1px solid var(--linea);
+}
+.tab-grid:focus-visible .tab-c.activa {
+  box-shadow: inset 0 0 0 2px var(--azul);
+}
+.tab-scroll {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+.tab-cab {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  height: 34px;
+  background: var(--superficie-2);
+  border-bottom: 1px solid var(--linea-2);
+}
+.tab-fila {
+  position: absolute;
+  left: 0;
+  display: flex;
+  border-bottom: 1px solid #edf0f4;
+  background: var(--superficie);
+}
+.tab-fila.sin-visitar {
+  background: #fafbfc;
+  color: var(--tinta-3);
+}
+.tab-fila.bloqueada .tab-c.editable {
+  cursor: not-allowed;
+}
+.tab-c {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 0 7px;
+  font-size: 13px;
+  border-right: 1px solid #eef1f5;
+  overflow: hidden;
+  white-space: nowrap;
+  min-width: 0;
+  background: inherit;
+  cursor: cell;
+  user-select: none;
+}
+.tab-cab .tab-c {
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--tinta-2);
+  padding: 0;
+  cursor: default;
+}
+.tab-cab-btn {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: none;
+  text-align: left;
+  padding: 0 7px;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tab-c.fija {
+  position: sticky;
+  z-index: 1;
+}
+.tab-cab .tab-c.fija {
+  z-index: 4;
+  background: var(--superficie-2);
+}
+.tab-fila .tab-c.fija {
+  background: var(--superficie);
+}
+.tab-fila.activa .tab-c,
+.tab-fila.activa .tab-c.fija {
+  background: #f3f7ff;
+}
+.tab-c.ultima-fija {
+  border-right: 1px solid var(--linea-2);
+  box-shadow: 4px 0 6px -4px rgba(2, 30, 74, 0.18);
+}
+.tab-c.rango,
+.tab-fila .tab-c.rango.fija {
+  background: #e3edff;
+}
+.tab-c.activa {
+  box-shadow: inset 0 0 0 2px var(--azul-2);
+  background: #fff !important;
+}
+.tab-c.error {
+  box-shadow: inset 0 0 0 2px var(--e-error);
+  background: #fff1f1 !important;
+}
+.tab-c.atenuada .tab-v {
+  opacity: 0.4;
+}
+.tab-v {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.tab-meta {
+  gap: 5px;
+  padding: 0 4px;
+}
+.tab-ficha-btn,
+.tab-cols-btn {
+  border: 0;
+  background: none;
+  color: var(--tinta-3);
+  padding: 2px;
+  display: inline-flex;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.tab-ficha-btn:hover,
+.tab-cols-btn:hover {
+  color: var(--azul);
+  background: var(--azul-suave);
+}
+.tab-cols-btn {
+  margin: auto;
+}
+.tab-editor {
+  width: 100%;
+  height: 28px;
+  border: 0;
+  outline: none;
+  font: inherit;
+  font-size: 13px;
+  background: #fff;
+  padding: 0;
+}
+.tab-resp {
+  display: inline-block;
+  min-width: 28px;
+  text-align: center;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--tinta-4);
+}
+.tab-resp.r-si {
+  background: #e3f6ee;
+  color: #087a52;
+}
+.tab-resp.r-no {
+  background: #eef1f5;
+  color: var(--tinta-2);
+}
+.tab-resp.r-na,
+.tab-resp.r-sin-info {
+  background: #f4ecfb;
+  color: #7b2fa0;
+}
+.tab-resp.heredado {
+  outline: 1px dashed var(--e-aviso);
+}
+.tab-sin-confirmar {
+  color: var(--e-aviso);
+}
+.tab-incid {
+  display: flex;
+  gap: 4px;
+}
+.tab-estado {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 12px;
+  border-top: 1px solid var(--linea);
+  font-size: 12px;
+  min-height: 34px;
+  background: var(--superficie-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.tab-estado-celda {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 120px;
+  flex: 0 1 auto;
+}
+.tab-ok {
+  color: var(--e-ok);
+}
+.tab-msg {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tab-msg svg {
+  flex: none;
+}
+.tab-msg.error {
+  color: var(--e-error);
+  font-weight: 600;
+}
+.tab-msg.ok {
+  color: var(--e-ok);
+}
+.tab-msg.info {
+  color: var(--tinta-2);
+}
+.tab-guardado {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--e-ok);
+}
+.tab-guardado.pendiente {
+  color: var(--tinta-3);
+}
+.tab-guardado.error {
+  color: var(--e-error);
+}
+.girar {
+  animation: girar 1s linear infinite;
+}
+@keyframes girar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.tab-panel-cols {
+  position: absolute;
+  top: 38px;
+  left: 8px;
+  z-index: 20;
+  width: 280px;
+  max-height: 70%;
+  overflow: auto;
+  padding: 10px 12px;
+}
+.tab-panel-col {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  padding: 1px 0;
+}
+.tab-panel-col label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+/* Vista por tareas: tabla + ficha opcional a la derecha */
+.ofi-tareas-cuerpo {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+}
+.ofi-tareas-cuerpo.con-ficha {
+  grid-template-columns: minmax(0, 1fr) 440px;
+}
+@media (max-width: 1100px) {
+  .ofi-tareas-cuerpo.con-ficha {
+    grid-template-columns: 1fr;
+    grid-template-rows: 55% 45%;
+  }
+}

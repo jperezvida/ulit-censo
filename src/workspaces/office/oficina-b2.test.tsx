@@ -77,7 +77,7 @@ describe('B2 · Oficina organizada por itinerarios (interfaz)', () => {
     expect(est.estado).toBe('revision-cerrada');
     expect(est.historial[0]).toMatchObject({ accion: 'cerrar-revision', porId: 'p-marta' });
     expect(screen.getAllByText(/no apta para exportación municipal/).length).toBeGreaterThan(0);
-    expect(screen.getByRole('status')).toHaveTextContent(/No es apto para la exportación municipal/);
+    expect(document.querySelector('.ofi-banda-bloqueo')).toHaveTextContent(/No es apto para la exportación municipal/);
     // Reabrir exige motivo
     fireEvent.click(screen.getByRole('button', { name: /Reabrir/ }));
     const reabrir = screen.getAllByRole('button', { name: 'Reabrir' }).at(-1)!;

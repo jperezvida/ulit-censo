@@ -24,8 +24,8 @@ export interface Prefs {
 export type ModoOficina = 'tareas' | 'establecimiento';
 export interface PrefsOficina {
   modo: ModoOficina;
-  /** Por tarea: columnas ocultas y fijadas a la izquierda (además de las fijas por defecto). */
-  columnas?: Record<string, { ocultas: string[]; fijas: string[] }>;
+  /** Por tarea: columnas visibles (en orden) y columnas fijadas a la izquierda. */
+  columnas?: Record<string, { visibles: string[]; fijas: string[] }>;
 }
 
 const PREFS_INICIALES: Prefs = {
@@ -67,7 +67,11 @@ interface Estado {
   guardado: { estado: 'guardado' | 'pendiente' | 'error'; momento?: number };
   avisos: Aviso[];
   inicializar: (forzar?: boolean) => Promise<void>;
-  aplicar: (fn: (db: BaseDatos) => BaseDatos, etiqueta: string, opciones?: { silencioso?: boolean }) => boolean;
+  /**
+   * Aplica una operación de dominio como UN paso deshacible. Con `silencioso` no se muestra el
+   * aviso de éxito; con `sinAvisoError` el error lo presenta quien llama (p. ej. la tabla).
+   */
+  aplicar: (fn: (db: BaseDatos) => BaseDatos, etiqueta: string, opciones?: { silencioso?: boolean; sinAvisoError?: boolean }) => boolean;
   deshacer: () => void;
   rehacer: () => void;
   setPrefsOficina: (personaId: Id, p: Partial<PrefsOficina>) => void;
@@ -137,7 +141,7 @@ export const useStore = create<Estado>((set, get) => ({
       if (!opciones?.silencioso) get().avisar(etiqueta, 'ok', true);
       return true;
     } catch (e) {
-      get().avisar(e instanceof Error ? e.message : String(e), 'error');
+      if (!opciones?.sinAvisoError) get().avisar(e instanceof Error ? e.message : String(e), 'error');
       return false;
     }
   },

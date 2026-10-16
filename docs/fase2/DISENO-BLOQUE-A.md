@@ -496,3 +496,41 @@ Reglas para el diseño:
 3. **Aislamiento.** Las operaciones de Campo reciben el itinerario de trabajo (`Contexto.alcance`; la app de campo lo pasa siempre). `registrarLocalNuevo` comprueba bloqueo y alcance por **dirección** (calle y acera según la paridad del número), no por calle completa, y solo propone candidatos de conciliación del mismo itinerario y no cerrados. `resolverVinculo` comprueba los dos locales. Un negocio asociado a locales de varios itinerarios no se modifica desde uno solo. La planificación de calles de un itinerario cerrado queda bloqueada en su campaña. Todas las comprobaciones son previas: una operación rechazada no deja cambios parciales, tampoco una importación.
 4. **Privacidad del inspector.** El perfil solo enumera valores de una **lista explícita de columnas autorizadas** (catálogo, códigos territoriales, respuestas 0/1). El resto (p. ej. «Cadena», «Observaciones», «Fecha censo») aporta solo estructura y estadística.
 5. **Validación provisional** (§12.8).
+
+---
+
+## 13. B2 y B3 implementados (octubre de 2026)
+
+Detalle de uso y pruebas manuales en [`OFICINA-RAPIDA.md`](OFICINA-RAPIDA.md).
+
+### 13.1 B2 · Oficina organizada por itinerarios
+
+- **Pertenencia por ámbito efectivo** (`domain/ambito.ts`): calle, acera según la paridad del número y segmento más cercano cuando el tramo se limita a segmentos. La usan `filasOficina` y las comprobaciones de bloqueo y alcance. Si no se puede situar un local en un segmento, figura en todos los itinerarios posibles y se marca la incidencia «Pertenece a varios itinerarios»: nunca desaparece.
+- **Seguimiento completo.** `filasOficina` incluye los locales de la campaña de referencia aún no visitados (`situacion: 'pendiente-visita'`). `callesDeItinerario` conserva la cobertura de las calles sin locales.
+- **Entrada por itinerarios** con progreso independiente:
+  - campo y calles;
+  - categorización;
+  - digital;
+  - franquicias, marcada como «pendiente de B5», sin progreso inventado;
+  - incidencias, cronología incierta y revisión final.
+- **Vista municipal** como opción secundaria. Los enlaces antiguos `?vista=` siguen funcionando.
+- **Dos modos sobre los mismos datos.** «Por tareas» y «Por establecimientos» con «Siguiente pendiente». El modo y las columnas se guardan por persona (`prefs.oficina[personaId]`).
+- **Cierre provisional, reapertura con motivo y validación definitiva** explicada como no disponible.
+- **Asignación de fechas** a observaciones de cronología incierta.
+- **Solo lectura** para las campañas históricas o validadas.
+
+### 13.2 B3 · Tabla de revisión rápida
+
+- **Componente propio** (`office/tabla/TablaRevision.tsx`) sobre `@tanstack/react-virtual`, sin dependencias nuevas.
+- **Columnas** fijables, configurables y ordenables. El cursor se guarda por (local, columna), así que sobrevive a la virtualización, al filtrado y al desplazamiento horizontal.
+- **Columnas declarativas** (`office/tabla/columnas.tsx`): texto, presentación, motivo de no edición, intérprete y operación de dominio. **Así se incorporarán B4 y B5.**
+- **Cambios atómicos** (`aplicarCambiosCeldas`): primero se valida todo y luego se aplica en orden. Cualquier fallo descarta la operación completa y marca las celdas.
+- **Deshacer y rehacer por operación confirmada** (`pilaDeshacer` / `pilaRehacer`). Las fichas guardan al confirmar, no en cada pulsación. La barra inferior indica el guardado.
+
+### 13.3 Rendimiento medido
+
+| Medida | Resultado |
+|---|---|
+| Filas y resúmenes, 5.040 registros | ≈ 80 ms |
+| Tabla, 3.200 registros | Solo se pintan las filas visibles |
+| Pulsación de flecha en Chromium (compilación de producción) | Mediana ≈ 13 ms |

@@ -1,4 +1,5 @@
 import { baseVacia, kCob, kNC, kRev, type BaseDatos } from '../domain/db';
+import { registrarVacio } from '../domain/campo';
 import { longitudLinea } from '../domain/geo';
 import { ACTIVIDADES_HOJA } from '../domain/taxonomy';
 import type { Calle, Campana, Id, Itinerario, LngLat, TramoPlan } from '../domain/types';
@@ -187,4 +188,18 @@ export function escenarioOficina(op: OpcionesEscenario): Escenario {
     });
   });
   return { db, calleRepartida: rep, calleSegmentos: seg, calleSinLocales: sinLoc, itinerarios: its.map((i) => i.id) };
+}
+
+/**
+ * Casos para probar a mano: en un local de IT-1, una sustitución fechada y después una hoja
+ * en papel SIN fecha que queda con cronología incierta (aparece en «Incidencias»).
+ */
+export function conCasosDemostracion(esc: Escenario): Escenario {
+  const it1 = esc.db.itinerarios[esc.itinerarios[0]];
+  const local = Object.values(esc.db.locales).find((l) => l.direcciones[0].calleId === it1.tramos[2].calleId && esc.db.revisiones[kRev(C26_SINT, l.id)]);
+  if (!local) return esc;
+  let db = registrarVacio(esc.db, { campanaId: C26_SINT, investigadorId: 'p-ana', fecha: '2026-10-05T10:00:00' }, local.id, 4, 'Cerrado en octubre');
+  db = registrarVacio(db, { campanaId: C26_SINT, investigadorId: 'p-ana', fuente: 'papel' }, local.id, 6, 'Hoja en papel sin fecha');
+  db.meta.localCronologiaIncierta = local.id;
+  return { ...esc, db };
 }

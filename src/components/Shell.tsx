@@ -99,6 +99,12 @@ export function Shell() {
             </button>
             {menu === 'rol' && (
               <div className="menu panel-flotante derecha" role="menu" onMouseLeave={() => setMenu(null)}>
+                <div className="rotulo sin-linea">Persona de demostración (sin autenticación)</div>
+                <label className="menu-item">
+                  <select className="input" aria-label="Persona de escritorio" value={prefs.personaId} onChange={(e) => setPrefs({ personaId: e.target.value })}>
+                    {Object.values(db.personas).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                  </select>
+                </label>
                 <div className="rotulo sin-linea">Roles de demostración (sin autenticación)</div>
                 {ROLES.map(({ r, t, d }) => (
                   <label key={r} className="menu-item check">
