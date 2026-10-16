@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import ExcelJS from 'exceljs';
-import { cargarLibro, esAmarillo, esCabeceraProtegida, perfilarXlsx, rellenoDe, tipoDeCelda } from './perfil';
+import { cargarLibro, esAmarillo, esColumnaAutorizada, perfilarXlsx, rellenoDe, tipoDeCelda } from './perfil';
 import { escribirXlsx } from './escribir';
 // @ts-expect-error módulo JS sin tipos
 import { archivosProhibidos } from '../../../scripts/datos-reales.mjs';
@@ -81,10 +81,29 @@ describe('perfil estructural', () => {
     const json = JSON.stringify(p);
     for (const dato of ['Bar Ficticio Alfa', 'Peluquería Ficticia Beta', 'Tienda Ficticia Delta', 'Calle Ficticia Uno']) expect(json).not.toContain(dato);
     const h = p.hojas.find((x) => x.nombre === 'CENSO')!;
-    expect(h.columnas.find((c) => c.cabecera === 'Nombre del negocio')!.motivoSinValores).toBe('protegida');
-    expect(h.columnas.find((c) => c.cabecera === 'Calle')!.motivoSinValores).toBe('protegida');
-    expect(esCabeceraProtegida('Teléfono')).toBe(true);
-    expect(esCabeceraProtegida('GrActividad')).toBe(false);
+    expect(h.columnas.find((c) => c.cabecera === 'Nombre del negocio')!.motivoSinValores).toBe('no-autorizada');
+    expect(h.columnas.find((c) => c.cabecera === 'Calle')!.motivoSinValores).toBe('no-autorizada');
+    expect(esColumnaAutorizada('Teléfono')).toBe(false);
+    expect(esColumnaAutorizada('GrActividad')).toBe(true);
+    expect(esColumnaAutorizada('Gr Comercio                 ')).toBe(true);
+  });
+
+  it('una columna no autorizada (p. ej. «Cadena») solo aporta estructura, nunca sus valores', async () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Datos');
+    const cadenas = ['Cadena Ficticia Uno', 'Cadena Ficticia Dos', 'Cadena Ficticia Uno', 'Franquicia Ficticia Tres', 'Cadena Ficticia Dos', 'Cadena Ficticia Uno'];
+    ws.addRow(['Cadena', 'Observaciones', 'Fecha censo', 'Franquicia', 'Nº reseñas Google']);
+    cadenas.forEach((c, i) => ws.addRow([c, `Nota ficticia ${i}`, new Date(Date.UTC(2026, 8, 10 + i)), i % 2, 10 + i]));
+    const p = await perfilarXlsx(new Uint8Array((await wb.xlsx.writeBuffer()) as ArrayBuffer), 'cadenas.xlsx');
+    const json = JSON.stringify(p);
+    for (const c of [...new Set(cadenas)]) expect(json).not.toContain(c);
+    expect(json).not.toContain('Nota ficticia');
+    expect(json).not.toContain('2026-09-1');
+    const col = (n: string) => p.hojas[0].columnas.find((c) => c.cabecera === n)!;
+    expect(col('Cadena')).toMatchObject({ valores: null, motivoSinValores: 'no-autorizada', noVacias: 6, distintos: 3 });
+    expect(col('Franquicia').valores).toEqual([{ valor: '0', n: 3 }, { valor: '1', n: 3 }]);
+    expect(col('Nº reseñas Google').valores).toBeNull();
+    expect(col('Nº reseñas Google').numerico).toEqual({ min: 10, max: 15, soloEnteros: true });
   });
 
   it('extrae las combinaciones de los cuatro niveles y las listas auxiliares de Hoja1', async () => {

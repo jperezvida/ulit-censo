@@ -34,7 +34,7 @@ export function CapturaCalle() {
   const nav = useNavigate();
   const it = itId ? db.itinerarios[itId] : undefined;
   const calle = calleId ? db.calles[calleId] : undefined;
-  const ctx = useCtxCampo(it?.campanaId ?? '');
+  const ctx = useCtxCampo(it?.campanaId ?? '', it?.id);
   const [hoja, setHoja] = useState<Hoja | null>(null);
   const [pestana, setPestana] = useState<'anteriores' | 'hoy'>('anteriores');
   const camp = it ? db.campanas[it.campanaId] : undefined;

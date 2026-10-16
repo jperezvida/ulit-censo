@@ -14,7 +14,7 @@ import { compararCampanas } from './estadisticas';
 import { casarTrazosKML, compararImportacion, interpretarFilas, mapearCabecera, parsearCSV, parsearKML } from './importacion';
 import { aprobar, filasOficina } from './oficina';
 import { partirDeDigitalAnterior } from './digital';
-import { localesDeNegocioEnCampana } from './bloqueo';
+import { localesDeNegocio } from './bloqueo';
 import { aCSV } from './exportacion';
 import { distanciaPuntoLinea } from './geo';
 import { indiceObservaciones, indiceOcupaciones } from './consultas';
@@ -241,7 +241,7 @@ describe('oficina y exportación', () => {
   });
 
   it('copiar la revisión digital de 2025 crea un borrador sin verificar', () => {
-    const m = Object.values(base.digital).find((x) => x.campanaId === 'camp-medina-2025' && localesDeNegocioEnCampana(base, x.negocioId, C26, (c) => base.campanas[c!]?.anio ?? 0).length)!;
+    const m = Object.values(base.digital).find((x) => x.campanaId === 'camp-medina-2025' && localesDeNegocio(base, x.negocioId, C26).vigentes.length)!;
     const db = partirDeDigitalAnterior(base, m.negocioId, C26, 'p-marta');
     const nueva = db.digital[kMet(m.negocioId, C26)];
     expect(nueva.estado).toBe('borrador');

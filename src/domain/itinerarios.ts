@@ -1,6 +1,6 @@
 import type { BaseDatos } from './db';
 import { ErrorDominio, kCC, nuevoId } from './db';
-import { estadoOficina } from './bloqueo';
+import { comprobarEditable, estaBloqueado } from './bloqueo';
 import { ordenarPorProximidad } from './planificacion';
 import { longitudLinea } from './geo';
 import type { Acera, Calle, Id, Itinerario, LngLat, SituacionPrevia, TramoPlan } from './types';
@@ -10,7 +10,7 @@ import type { Acera, Calle, Id, Itinerario, LngLat, SituacionPrevia, TramoPlan }
 function conIt(db: BaseDatos, itId: Id, fn: (it: Itinerario) => Itinerario): BaseDatos {
   const it = db.itinerarios[itId];
   if (!it) return db;
-  if (estadoOficina(db, itId) === 'validado') throw new ErrorDominio('bloqueado', `${it.codigo} está validado: reábrelo para cambiar su planificación.`);
+  if (estaBloqueado(db, itId)) throw new ErrorDominio('bloqueado', `${it.codigo} está cerrado o validado: reábrelo para cambiar su planificación.`);
   return { ...db, itinerarios: { ...db.itinerarios, [itId]: fn(it) } };
 }
 
@@ -28,7 +28,7 @@ export function crearItinerario(db: BaseDatos, campanaId: Id, datos: { codigo: s
 }
 
 export function eliminarItinerario(db: BaseDatos, itId: Id): BaseDatos {
-  if (estadoOficina(db, itId) === 'validado') throw new ErrorDominio('bloqueado', 'No se puede eliminar un itinerario validado.');
+  if (estaBloqueado(db, itId)) throw new ErrorDominio('bloqueado', 'No se puede eliminar un itinerario cerrado o validado.');
   const { [itId]: _, ...resto } = db.itinerarios;
   return { ...db, itinerarios: resto };
 }
@@ -99,6 +99,7 @@ export function asegurarEnAmbito(db: BaseDatos, campanaId: Id, calleId: Id): Bas
 export function quitarDeAmbito(db: BaseDatos, campanaId: Id, calleId: Id): BaseDatos {
   const c = db.campanas[campanaId];
   if (!c) return db;
+  comprobarEditable(db, campanaId, { calleId });
   return {
     ...db,
     campanas: { ...db.campanas, [campanaId]: { ...c, ambitoCalleIds: c.ambitoCalleIds.filter((x) => x !== calleId), ampliacionCalleIds: c.ampliacionCalleIds.filter((x) => x !== calleId) } },
@@ -106,6 +107,7 @@ export function quitarDeAmbito(db: BaseDatos, campanaId: Id, calleId: Id): BaseD
 }
 
 export function fijarSituacionPrevia(db: BaseDatos, campanaId: Id, calleId: Id, s: SituacionPrevia | null): BaseDatos {
+  comprobarEditable(db, campanaId, { calleId });
   const k = kCC(campanaId, calleId);
   const m = { ...db.situacionesPrevias };
   if (s) m[k] = s;
@@ -115,6 +117,7 @@ export function fijarSituacionPrevia(db: BaseDatos, campanaId: Id, calleId: Id, 
 
 /** Marca una calle (p. ej. sin registros previos) como revisada en planificación. */
 export function marcarCalleRevisada(db: BaseDatos, campanaId: Id, calleId: Id, porId: Id, revisada: boolean, nota?: string): BaseDatos {
+  comprobarEditable(db, campanaId, { calleId });
   const k = kCC(campanaId, calleId);
   const m = { ...db.callesRevisadasPlan };
   if (revisada) m[k] = { porId, fecha: new Date().toISOString(), nota };

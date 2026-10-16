@@ -3,7 +3,7 @@ import { kNC, kRev } from './db';
 import {
   anioDe, direccionVigente, observacionEn, ocupacionEn, revisionDe, type IndiceObservaciones, type IndiceOcupaciones,
 } from './consultas';
-import { comprobarAlcance, comprobarEditable, localesDeNegocioEnCampana, type Alcance } from './bloqueo';
+import { comprobarAlcance, comprobarEditable, prepararOperacionNegocio, type Alcance } from './bloqueo';
 import { clasificar } from './clasificacion';
 import type { EstadoDigital } from './digital';
 import type { ClasificacionCampana, Confianza, Id, Negocio, Observacion, Revision } from './types';
@@ -128,9 +128,7 @@ export function asignarActividad(db: BaseDatos, campanaId: Id, filas: { localId:
  * mismo en todas las campañas; el histórico conserva lo observado en cada observación.
  */
 export function editarNegocio(db: BaseDatos, campanaId: Id, negocioId: Id, cambios: Partial<Pick<Negocio, 'nombre' | 'cadena' | 'descripcion'>>, alcance?: Alcance): BaseDatos {
-  const ids = localesDeNegocioEnCampana(db, negocioId, campanaId, (c) => anioDe(db, c));
-  comprobarAlcance(db, alcance, ids);
-  for (const id of ids) comprobarEditable(db, campanaId, { localId: id });
+  prepararOperacionNegocio(db, negocioId, campanaId, alcance);
   return { ...db, negocios: { ...db.negocios, [negocioId]: { ...db.negocios[negocioId], ...cambios } } };
 }
 

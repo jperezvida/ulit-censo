@@ -59,6 +59,8 @@ export const CAMPOS = {
   cadena: ['cadena', 'franquicia', 'cadena/franquicia'],
   web: ['web', 'pagina web', 'url'],
   instagram: ['instagram', 'ig'],
+  /** Fecha real de la visita («Fecha censo» en los Excel de la Cátedra). */
+  fecha: ['fecha censo', 'fecha', 'fecha de la visita', 'fecha visita'],
 } as const;
 export type CampoCanonico = keyof typeof CAMPOS;
 
@@ -74,6 +76,22 @@ export function valorBooleano(v: string): boolean | undefined {
   if (Number.isFinite(num)) return num !== 0;
   if (['si', 's', 'x', 'true', 'verdadero', 'vacio', 'v'].includes(n)) return true;
   if (['no', 'n', 'false', 'falso', 'ocupado', 'o'].includes(n)) return false;
+  return undefined;
+}
+
+/**
+ * Fecha de visita tal como llega del Excel: número de serie de Excel (p. ej. 46275),
+ * «dd/mm/aaaa» o «aaaa-mm-dd». Devuelve «aaaa-mm-dd» o undefined (nunca se inventa).
+ */
+export function fechaDesdeExcel(v: string): string | undefined {
+  const t = v.trim();
+  if (!t) return undefined;
+  const iso = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const dmy = t.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+  if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+  const n = Number(t.replace(',', '.'));
+  if (Number.isFinite(n) && n > 20000 && n < 80000) return new Date(Math.round((Math.floor(n) - 25569) * 86400000)).toISOString().slice(0, 10);
   return undefined;
 }
 
@@ -97,6 +115,8 @@ export interface FilaInterpretada {
   vacio: boolean;
   metros?: number;
   actividad?: string;
+  /** Fecha real de la visita si el archivo la aporta. */
+  fecha?: string;
   bruto: Record<string, string>;
 }
 
@@ -128,6 +148,7 @@ export function interpretarFilas(cab: string[], filas: string[][], mapa: Partial
       vacio,
       metros: Number.isFinite(metros) && metros > 0 ? metros : undefined,
       actividad: get('actividad') || undefined,
+      fecha: fechaDesdeExcel(get('fecha')),
       bruto,
     };
   });

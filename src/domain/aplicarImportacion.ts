@@ -1,4 +1,5 @@
 import type { BaseDatos } from './db';
+import type { Alcance } from './bloqueo';
 import { kNC, kRev, nuevoId, siguienteOrden } from './db';
 import { confirmarSinCambios, registrarLocalNuevo, registrarNuevoNegocio, registrarVacio, type Contexto } from './campo';
 import type { FilaDiff } from './importacion';
@@ -20,11 +21,14 @@ function coordAproximada(db: BaseDatos, calleId: Id, numero: number | null): Lng
  * C/D · Aplica un Excel de itinerario (resultados de campo pasados a limpio) a la campaña.
  * Solo se aplican filas «nuevo», «modificado» y «sin cambios»; el resto se conserva sin tocar nada.
  */
-export function aplicarResultadosPapel(db0: BaseDatos, campanaId: Id, filas: FilaDiff[], archivo: string, tipo: Importacion['tipo'], porId: Id): { db: BaseDatos; resumen: Record<string, number> } {
+export function aplicarResultadosPapel(
+  db0: BaseDatos, campanaId: Id, filas: FilaDiff[], archivo: string, tipo: Importacion['tipo'], porId: Id, opciones: { alcance?: Alcance } = {},
+): { db: BaseDatos; resumen: Record<string, number> } {
   let db = db0;
   const impId = nuevoId('imp');
-  // La fecha real de la visita en papel no consta en el archivo: no se inventa (queda sin fecha).
-  const ctx: Contexto = { campanaId, investigadorId: porId, fuente: 'papel' };
+  // Si una operación se rechaza (bloqueo o alcance) se lanza la excepción y no se aplica NADA:
+  // todas las operaciones son puras y el resultado parcial se descarta.
+  const base: Contexto = { campanaId, investigadorId: porId, fuente: 'papel', alcance: opciones.alcance };
   const resumen: Record<string, number> = {};
   const registros = { ...db.registros };
   for (const f of filas) {
@@ -32,6 +36,9 @@ export function aplicarResultadosPapel(db0: BaseDatos, campanaId: Id, filas: Fil
     const regId = `reg-${impId}-${f.fila}`;
     registros[regId] = { id: regId, importacionId: impId, fila: f.fila, datos: f.bruto };
     if (!f.calleId) continue;
+    // Fecha real de la visita si consta en el archivo; si no, queda sin fecha (no se inventa) y,
+    // si hay otros cambios en la campaña, la cronología queda «incierta» para la oficina.
+    const ctx: Contexto = { ...base, fecha: f.fecha };
     if (f.clase === 'sin-cambios' && f.localId) db = confirmarSinCambios(db, ctx, f.localId);
     else if (f.clase === 'modificado' && f.localId) db = f.vacio ? registrarVacio(db, ctx, f.localId, f.metros) : registrarNuevoNegocio(db, ctx, f.localId, f.nombre ?? '');
     else if (f.clase === 'ambiguo') db = registrarAmbiguo(db, ctx, f);

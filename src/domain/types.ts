@@ -178,7 +178,9 @@ export interface Ocupacion {
   /** Observación que la abrió / la cerró (si constan). */
   desdeObservacionId?: Id;
   hastaObservacionId?: Id;
-  /** Orden global de registro: desempata ocupaciones de la misma campaña aunque falten fechas. */
+  /** Fecha real del evento que la abrió (si consta). Es la que ordena la cronología. */
+  desdeFecha?: string;
+  /** Orden global de registro: solo desempata cuando las fechas no deciden. */
   orden: number;
 }
 
@@ -208,8 +210,16 @@ export interface Observacion {
   tipo: TipoObservacion;
   /** Instantánea de lo observado EN ESE MOMENTO (no se recalcula después). */
   datos: { numero: number | null; sufijo?: string; nombre?: string; negocioId?: Id | null; vacio: boolean; metrosFachada?: number };
-  /** Orden global de registro (las fechas pueden faltar). */
+  /** Orden global de registro (las fechas pueden faltar). NO es la cronología del censo. */
   orden?: number;
+  /**
+   * «incierta»: no se pudo situar el evento respecto a otros cambios de la misma campaña
+   * (falta la fecha o coincide el día). Queda registrado pero no altera las ocupaciones
+   * hasta que la oficina le asigne fecha (`ubicarEnCronologia`).
+   */
+  cronologia?: 'incierta';
+  /** Quién y cuándo fijó en oficina la fecha de un evento de cronología incierta. */
+  fechaAsignada?: { porId: Id; registrado: string };
   nota?: string;
   verificacion: 'pendiente' | 'verificada' | 'devuelta';
   sync?: 'local' | 'sincronizada' | 'conflicto';
@@ -266,6 +276,8 @@ export interface Revision {
   validacion: 'pendiente' | 'aprobada' | 'devuelta';
   motivoDevolucion?: string;
   pendienteComprobacion?: boolean;
+  /** Motivo de la comprobación pendiente (p. ej. «cronología incierta»). */
+  motivoComprobacion?: string;
 }
 
 /**
@@ -306,7 +318,10 @@ export interface RevisionDigital {
 export interface ClasificacionCampana {
   negocioId: Id;
   campanaId: Id;
+  /** Nodo del catálogo elegido: no siempre es el cuarto nivel (véase el procedimiento 2026). */
   actividadId: Id;
+  /** Breve descripción cuando la actividad no encaja en una predefinida (o para un subgrupo de Servicios). */
+  descripcion?: string;
   /** importado: tal como venía · heredado: copiado de otra campaña como borrador · manual: decidido en oficina */
   origen: 'importado' | 'heredado' | 'manual';
   /** Solo una clasificación confirmada por una persona cuenta como «categorización revisada». */
@@ -319,8 +334,13 @@ export interface ClasificacionCampana {
 export interface EstadoOficinaItinerario {
   itinerarioId: Id;
   campanaId: Id;
-  estado: 'en-revision' | 'validado' | 'reabierto';
-  historial: { accion: 'validar' | 'reabrir'; porId: Id; fecha: string; motivo?: string }[];
+  /**
+   * en-revision · revision-cerrada (cierre PROVISIONAL: bloquea la edición y registra quién y
+   * cuándo hizo la revisión final, pero NO habilita la exportación municipal) · validado
+   * (definitivo: solo tras superar los controles del bloque C) · reabierto.
+   */
+  estado: 'en-revision' | 'revision-cerrada' | 'validado' | 'reabierto';
+  historial: { accion: 'cerrar-revision' | 'validar' | 'reabrir'; porId: Id; fecha: string; motivo?: string }[];
 }
 
 // ───────────────────────── Personas y actividad ─────────────────────────

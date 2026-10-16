@@ -4,7 +4,7 @@
  *   npm run perfilar -- "CENSO COMPLETO MEDINA 2025.xlsx" "ITINERARIO 1 MEDINA.xlsx"
  *
  * Genera, junto a cada archivo, «<archivo>.perfil.json» con hojas, cabeceras exactas, tipos,
- * formatos, rellenos (amarillo), validaciones y valores de columnas CATEGÓRICAS no protegidas.
+ * formatos, rellenos (amarillo), validaciones y valores SOLO de las columnas autorizadas (categorías, códigos y respuestas 0/1).
  * No incluye nombres de negocio, direcciones ni otros datos identificativos.
  * El archivo Excel no se modifica ni se envía a ningún sitio.
  */
@@ -31,4 +31,4 @@ for (const ruta of archivos) {
   }
   for (const a of perfil.avisos) console.log(`  ! ${a}`);
 }
-console.log('\nRevisa el JSON antes de compartirlo. Las columnas protegidas no incluyen valores.');
+console.log('\nRevisa el JSON antes de compartirlo. Solo las columnas autorizadas incluyen valores; el resto, únicamente estructura y recuentos.');

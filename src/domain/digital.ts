@@ -1,7 +1,7 @@
 import type { BaseDatos } from './db';
 import { ErrorDominio, kNC, kRev } from './db';
 import { anioDe, revisionDe } from './consultas';
-import { comprobarAlcance, comprobarEditable, localesDeNegocioEnCampana, type Alcance } from './bloqueo';
+import { prepararOperacionNegocio, type Alcance } from './bloqueo';
 import { estaResuelta } from './respuesta';
 import type { DatoDigital, Id, Respuesta, RevisionDigital, VariableDigital } from './types';
 
@@ -104,12 +104,8 @@ export function estadoDigital(db: BaseDatos, negocioId: Id, campanaId: Id): Esta
   return revisionDigitalAnterior(db, negocioId, campanaId) ? 'solo-historico' : 'sin-datos';
 }
 
-function preparar(db: BaseDatos, negocioId: Id, campanaId: Id, alcance?: Alcance): Id[] {
-  const ids = localesDeNegocioEnCampana(db, negocioId, campanaId, (c) => anioDe(db, c));
-  comprobarAlcance(db, alcance, ids);
-  for (const id of ids) comprobarEditable(db, campanaId, { localId: id });
-  return ids;
-}
+/** Alcance y bloqueo sobre todos los locales del negocio; devuelve solo aquellos donde es vigente. */
+const preparar = prepararOperacionNegocio;
 
 function marcarRevisiones(db: BaseDatos, campanaId: Id, localIds: Id[], digital: 'pendiente' | 'revisado') {
   const revisiones = { ...db.revisiones };

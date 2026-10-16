@@ -1,6 +1,6 @@
 # ULIT Censo · Fase 2 · Bloque A: auditoría y diseño
 
-**Estado:** propuesta pendiente de aprobación. Los bloques B, C y D no se programan hasta que se apruebe.
+**Estado:** aprobado con decisiones (B0 y B1 implementados). **La §12 recoge el procedimiento funcional confirmado por la Cátedra y prevalece sobre lo anterior en caso de conflicto.** B2–B5, C y D no se programan sin autorización expresa.
 
 **Rama:** `claude/fase2-oficina-itinerarios`, creada a partir de `claude/inspiring-cori-0ljncm`.
 
@@ -83,17 +83,18 @@ Causa raíz en el **modelo**, no solo en la presentación:
 - incidencias pendientes;
 - validación final.
 
-Cada tarjeta lleva tres accesos directos: «Abrir pendientes», «Abrir contradicciones» y «Validar».
+Cada tarjeta lleva tres accesos directos: «Abrir pendientes», «Abrir contradicciones» y «Cerrar revisión» (provisional hasta el bloque C).
 
 ### 2.2 Estado de oficina del itinerario (nuevo)
 
 ```
-campo-pendiente → campo-terminado → en-revision → validado (bloqueado)
-                                          ↑              │
-                                          └── reabierto ←┘   (con motivo, quién y cuándo)
+en-revision → revision-cerrada (provisional, bloqueada) → validado (definitivo, bloque C)
+      ↑                    │                                   │
+      └──── reabierto ←────┴───────────────────────────────────┘   (con motivo, quién y cuándo)
 ```
 
-- **Validado = bloqueado.** Cualquier operación de dominio que toque un local de una calle del itinerario se rechaza en el propio dominio (no solo en la interfaz), salvo que antes se reabra explícitamente.
+- **Revisión cerrada ≠ validado.** El cierre provisional registra quién hace la revisión final y cuándo, y bloquea la edición, pero **no habilita la exportación municipal**. La validación definitiva se rechaza mientras no existan los controles del bloque C (véase §12.8).
+- **Cerrado o validado = bloqueado.** Cualquier operación de dominio que toque un local de una calle del itinerario se rechaza en el propio dominio (no solo en la interfaz), salvo que antes se reabra explícitamente.
 - **Aislamiento entre itinerarios.** Las operaciones reciben el `itinerarioId` de contexto y no pueden modificar locales de calles ajenas. Hay prueba específica de esto.
 
 ### 2.3 Registro de trabajo del itinerario
@@ -382,9 +383,9 @@ Garantías:
 |---|---|---|
 | **B0** | Inspector estructural (script + pestaña) · ExcelJS · `.gitignore` y comprobación de XLSX | El perfil no contiene filas de datos |
 | **B1** | Modelo: `Respuesta`, `RevisionDigital`, estado de itinerario y bloqueo, aislamiento entre itinerarios, instantánea en observaciones | Pendiente ≠ 0; cambiar tras verificar reabre; un itinerario no altera otro; un itinerario validado no se puede editar |
-| **B2** | Panel de itinerarios en Oficina y vista municipal | — |
-| **B3** | Tabla editable por teclado (navegación, edición, copiar/pegar, deshacer por celda, columnas fijas) | Pruebas de interacción con Testing Library |
-| **B4** | Autocompletado de actividades y avisos de sospecha | «clín» → actividades del catálogo; las sugerencias no se aplican sin Enter |
+| **B2** | Panel de itinerarios en Oficina y vista municipal · **vista por tareas y vista por establecimiento** (§12.2) · cierre provisional · ubicar eventos de cronología incierta | — |
+| **B3** | Tabla editable por teclado (navegación, edición, copiar/pegar, deshacer por celda, columnas fijas), usada por la vista por tareas | Pruebas de interacción con Testing Library |
+| **B4** | Catálogo 2026 por estructura de grupo (§12.5) · autocompletado de actividades y avisos de sospecha | «clín» → actividades del catálogo; las sugerencias no se aplican sin Enter |
 | **B5** | Respuestas 1/0/N/?, edición múltiple, «Partir de 2025» | Lo heredado queda en borrador; negocio distinto ⇒ no se hereda |
 | **C1** | Perfiles versionados (a partir del perfil real) · lectura y comparación del XLSX del itinerario | Amarillo = solo etiqueta; ambiguo no aplicado; el origen sigue intacto |
 | **C2** | Validación de itinerario (bloqueantes, advertencias, justificaciones, reapertura) | — |
@@ -403,3 +404,95 @@ Cada paso es un commit (o varios) con pruebas, comprobación de tipos y compilac
 2. **Catálogo de actividades.** ¿Existe una lista maestra oficial de los cuatro niveles, o el catálogo inicial se obtiene de los valores del Excel de 2025 y lo depuráis vosotros? Ese Excel tiene errores, así que lo segundo exige una revisión previa.
 3. **Variables digitales obligatorias.** ¿Cuáles lo son? ¿Cuándo es «no aplicable» la respuesta a reseñas, por ejemplo si no hay reseñas?
 4. **Perfil municipal 2026.** Mientras informática no lo confirme, ¿partimos de la estructura de 2025? ¿Las columnas propias del itinerario (`Municipio`, `itinerario`, `Orden Par`) deben pasar al consolidado o quedarse internas?
+
+---
+
+## 12. Procedimiento funcional confirmado (octubre de 2026)
+
+Aclaraciones de la Cátedra tras revisar B0 y B1. Fuentes: conversación con la Cátedra, el documento de procedimiento «Clasificación Censo 2026» y el perfil estructural sin registros de Medina 2025 y del Itinerario 1 de 2026. **Ninguno de esos archivos se incorpora al repositorio**: aquí solo se resume lo necesario para el diseño.
+
+### 12.1 Unidad de trabajo
+
+**El itinerario.** Se trabaja por itinerarios y al final se consolida en un único Excel municipal para informática y Power BI.
+
+### 12.2 Organización de Oficina: flexible según la persona
+
+Hay dos formas reales de trabajar y la Oficina rápida debe admitir las dos sobre los mismos datos:
+
+- **Vista por tareas (columnas).** Pasadas sucesivas sobre todo el itinerario: primero se categorizan todos los negocios; después se revisan las franquicias; después la presencia digital. Cada pasada muestra solo las columnas de esa tarea, con su progreso propio («Categorización 41/57»).
+- **Vista por establecimiento.** Ficha de un establecimiento con todas sus tareas y avance al siguiente.
+
+Requisitos:
+
+- cambiar de vista conserva el filtro y el registro seleccionado;
+- el estado de cada tarea es independiente (`categorizacion`, `franquicia`, `digital`), así se puede completar una tarea entera sin tocar las demás;
+- ninguna vista impone un orden de tareas.
+
+### 12.3 Revisión digital
+
+Se revisa **manualmente cada año para todos los establecimientos**. Los datos del año anterior se muestran como referencia (columna de solo lectura o «Partir de 2025» como borrador), **nunca se dan por comprobados**. Esto ya está en B1: lo heredado no permite verificar hasta que se confirma dato a dato.
+
+### 12.4 Participantes y revisión final
+
+- Pueden trabajar alumnos en prácticas u otras personas del equipo.
+- **No se impone separación entre autor y revisor.** Una misma persona puede categorizar y hacer la revisión final.
+- Cada cambio guarda quién y cuándo (ya en B1: `porId` y `fecha` en clasificación y datos digitales).
+- **Revisión final:** se registra quién la realiza y cuándo con independencia de quién hizo el trabajo previo. En B1 es el **cierre provisional** del itinerario (`cerrarRevisionItinerario`), que no requiere persona distinta.
+
+### 12.5 Clasificación y categorización 2026
+
+**Referencia funcional:** el documento «Clasificación Censo 2026». La lista de `Hoja1` de los Excel solo indica valores permitidos por columna y **no** define qué combinaciones son correctas. El censo 2025 contiene clasificaciones erróneas: **no se convierten en reglas del catálogo**.
+
+**Estructura por grupo de actividad** (no siempre cuatro niveles):
+
+| Grupo de actividad | Gr Comercio | Subgrupo | Actividad / Descripción |
+|---|---|---|---|
+| **Comercio** (C) | Obligatorio: Alimentación (A), Equipamiento del Hogar (EH), Equipamiento Personal (EP), Otros equipamientos (OE) | Obligatorio | Actividad de la tabla; descripción opcional (p. ej. Ultramarinos → «Conservas / Encurtidos y frutos secos») |
+| **Hostelería y Restauración** (HR) | No se usa | Obligatorio | Actividad cuando el subgrupo la tiene (Bares y cafeterías, Restaurantes, Hoteles y hospedaje). **Discotecas** no tiene actividades. «Otros», «Comida rápida» e «Internacional» llevan descripción (bar musical, karaoke; hamburguesería, pizzería, kebab; italiano, japonés…) |
+| **Servicios** (S) | No se usa | Obligatorio | **Subgrupo + breve descripción de actividad** (los ejemplos de la tabla, como «Bancos, servicios financieros», orientan pero no son una lista cerrada) |
+
+Reglas para el diseño:
+
+- **Si un negocio no encaja en una actividad predefinida, se admite una breve descripción.** No se rechaza automáticamente un texto que no figure literalmente en las listas: se marca como «descripción libre» para revisión.
+- **Excepciones de agrupación del ICM** que el catálogo debe respetar (productos «en rojo» del documento):
+  - Tabaco → Otros equipamientos (Estancos).
+  - Ordenadores → Otros equipamientos (Ocio › Informática).
+  - Papeles pintados → Equipamiento del hogar (Materiales de construcción › Revestimientos).
+  - Revestimiento de suelos (alfombras, moquetas…) → Equipamiento del hogar (Ropa del hogar).
+  - Bisutería → Equipamiento personal (Complementos).
+  - Artículos de viaje de cuero o imitación → Equipamiento personal (Complementos).
+- **Normas de cumplimentación** del documento: Distrito y Zona «No rellenar» (Medina); Dirección sin la palabra «calle»; Local vacío 0/1; Long fachada solo si el local está vacío; respuestas 0 = No, 1 = Sí; **Nº redes = Instagram + Facebook + Twitter** (valor calculado, no se teclea).
+- **Diferencias entre el documento y `Hoja1`** que debe resolver la Cátedra (el código no decide): «Internacional» en el documento frente a «Italiano» en `Hoja1`; «Albergue» y «Pisos turísticos» no figuran en `Hoja1`; «Mascotas» aparece como subgrupo de Servicios y como actividad de Otros bienes; «Almacenaje y guardamuebles» no figura en `Hoja1`; `Hoja1` contiene «Ocio» y «Ocio y Cines», «Gran Establecimiento» y «Grandes Almacenes»; erratas en `Hoja1` («Iluminación y Eelctricidad», «Porveedor»); «Otro Equipamiento (OE)» / «Otros equipamientos (EO)» / «Otros Equipamientos».
+- **Valores de 2025 fuera de lista** (según el perfil): subgrupos «Bancas y finanzas» y «Peluquerias»; 15 actividades (p. ej. «Asesorias», «Veterinario», «Residencias de ancianos»). Se tratarán con una **tabla de equivalencias** confirmada por una persona, nunca de forma automática.
+
+**Modelo previsto (bloque de catálogo, B4):** catálogo versionado `clasificacion-2026@v1` con nodos tipados (grupo, grupo de comercio, subgrupo, actividad), reglas de niveles obligatorios **por grupo**, descripciones de apoyo, excepciones y equivalencias. **Ya en B1:** `ClasificacionCampana.descripcion` y `clasificar()` deja de exigir siempre el cuarto nivel: acepta un nodo sin hijos o un subgrupo con descripción. El catálogo actual sigue siendo de demostración.
+
+### 12.6 Distrito, Zona y CP
+
+- **Medina del Campo:** Distrito y Zona no se cumplimentan (en 2025 las 889 filas están vacías), aunque las columnas figuran en el Excel final. CP sí (numérico).
+- **Valladolid:** se usan y son **códigos numéricos**. Ejemplo de estructura: Distrito `5`, Zona `3`, CP `47003`, dirección Conde Ansúrez.
+- **Modelo previsto:** tabla de **correspondencia territorial** versionada por municipio y validada por la Cátedra, por **tramo de calle** (calle + rango de números + paridad) → {distrito, zona, CP}. **No se presupone que una calle completa pertenezca a la misma zona.**
+- Autocompletado desde la correspondencia (origen `correspondencia`) con **corrección manual** registrada (origen `manual`, quién y cuándo). Sin correspondencia, la celda queda vacía y con aviso; nunca se inventa.
+- En la exportación son números; en Medina, celdas vacías.
+
+### 12.7 Formato de entrega
+
+- El Excel completo de **Medina 2025 es la referencia provisional de compatibilidad** (27 columnas, hoja `Datos`), sabiendo que contiene errores.
+- Cabeceras exactas, incluidas las rarezas: «Gr Comercio» con espacios finales en 2025 (sin ellos en el itinerario), «Google My Bussines», «Twitter»/«Segu T», «Nº redes».
+- El Excel de itinerario 2026 (hoja `Datos 25`, 28 columnas) sustituye Distrito y Zona por «Municipio», «itinerario» y añade «Orden Par»: **esas columnas organizativas no pasan al Excel final**.
+- **El archivo final no incorpora columnas ni hojas adicionales sin autorización de informática.**
+- Anomalías visibles en el perfil de 2025 (valores 4, 23, 247 o 379 en columnas 0/1; texto en columnas numéricas): el importador las marcará como incidencia; no las convertirá en 1.
+
+### 12.8 Validación provisional (implementado en esta corrección de B1)
+
+- `cerrarRevisionItinerario` → estado `revision-cerrada`: bloquea la edición en esa campaña y registra quién y cuándo. Etiqueta: «Revisión cerrada (provisional, no apta para exportación municipal)».
+- `validarItinerario` (definitiva) consulta `controlesValidacion`. Hasta el bloque C devuelve `disponibles: false` y la validación **se rechaza siempre** sin cambiar el estado.
+- La consolidación municipal (C3) solo aceptará itinerarios `validado`.
+
+### 12.9 Correcciones técnicas de B0 y B1 (esta revisión)
+
+1. **Ocupante vigente frente a histórico.** `localesDeNegocio` distingue `todos` (cualquier ocupación del negocio en la campaña: sirve para bloqueo y alcance) de `vigentes` (donde es el ocupante al final de la campaña: los únicos cuyos estados de revisión se actualizan). Revisar Bar Delia tras la llegada de Perfumería Sol ya no cambia la revisión de Perfumería Sol. Un negocio que no consta en la campaña no se puede revisar en ella.
+2. **Cronología efectiva.** Las ocupaciones guardan la fecha real del evento (`desdeFecha`) y se ordenan por ella; el orden de introducción solo desempata con la misma fecha y hora. Un evento introducido tarde (papel) se inserta en su lugar como etapa intermedia. Una confirmación con fecha registra el negocio de esa fecha. Si la fecha falta o no decide (mismo día sin hora), el evento queda con **cronología incierta**: se registra, no altera las ocupaciones y deja el registro «pendiente de comprobación» hasta que la oficina le asigna fecha (`ubicarEnCronologia`, que guarda quién y cuándo). El importador lee «Fecha censo» (número de serie de Excel o fecha escrita).
+3. **Aislamiento.** Las operaciones de Campo reciben el itinerario de trabajo (`Contexto.alcance`; la app de campo lo pasa siempre). `registrarLocalNuevo` comprueba bloqueo y alcance por **dirección** (calle y acera según la paridad del número), no por calle completa, y solo propone candidatos de conciliación del mismo itinerario y no cerrados. `resolverVinculo` comprueba los dos locales. Un negocio asociado a locales de varios itinerarios no se modifica desde uno solo. La planificación de calles de un itinerario cerrado queda bloqueada en su campaña. Todas las comprobaciones son previas: una operación rechazada no deja cambios parciales, tampoco una importación.
+4. **Privacidad del inspector.** El perfil solo enumera valores de una **lista explícita de columnas autorizadas** (catálogo, códigos territoriales, respuestas 0/1). El resto (p. ej. «Cadena», «Observaciones», «Fecha censo») aporta solo estructura y estadística.
+5. **Validación provisional** (§12.8).

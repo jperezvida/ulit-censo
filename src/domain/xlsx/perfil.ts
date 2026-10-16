@@ -4,10 +4,10 @@ import { normalizar } from '../text';
 /**
  * Perfil ESTRUCTURAL de un libro Excel.
  *
- * Describe hojas, cabeceras exactas, tipos, formatos, rellenos (amarillo) y validaciones,
- * y solo enumera valores de columnas categóricas NO protegidas. Nunca incluye nombres de
- * negocio, direcciones, teléfonos ni otros datos identificativos: está pensado para poder
- * compartirse y versionarse sin exponer datos censales.
+ * Describe hojas, cabeceras exactas, tipos, formatos, rellenos (amarillo) y validaciones.
+ * Solo enumera valores de las columnas de una LISTA EXPLÍCITA DE AUTORIZADAS (categorías,
+ * códigos y respuestas 0/1). Cualquier otra columna —aunque su cabecera parezca inocua,
+ * como «Cadena»— aporta únicamente estructura y recuentos: nunca sus valores.
  */
 
 export type TipoCelda =
@@ -37,9 +37,9 @@ export interface PerfilColumna {
   distintos: number;
   formatosNumero: Record<string, number>;
   numerico?: { min: number; max: number; soloEnteros: boolean };
-  /** Valores distintos con frecuencia; null si la columna está protegida o no es categórica. */
+  /** Valores distintos con frecuencia; null si la columna no está autorizada o no es categórica. */
   valores: { valor: string; n: number }[] | null;
-  motivoSinValores?: 'protegida' | 'no-categorica' | 'numerica';
+  motivoSinValores?: 'no-autorizada' | 'no-categorica' | 'numerica';
   rellenos: { amarillo: number; otros: Record<string, number> };
 }
 
@@ -72,9 +72,28 @@ export interface OpcionesPerfil {
   maxProporcion?: number;
 }
 
-/** Cabeceras cuyo contenido NUNCA se enumera (identifica personas, negocios o direcciones). */
-const PROTEGIDAS =
-  /(nombre|negocio|rotulo|razon social|titular|propietari|direcc|domicilio|calle|via\b|portal|numero|n[ºo°]\b|telefono|movil|tlf|mail|correo|nif|cif|dni|observ|coment|nota|url|http|instagram|facebook|twitter|tiktok|usuario|coordenad|latitud|longitud|x\b|y\b)/;
+/**
+ * Columnas AUTORIZADAS para enumerar valores (cabecera normalizada, coincidencia exacta).
+ * Solo categorías del catálogo, códigos territoriales y respuestas codificadas que hace falta
+ * analizar. Ampliar esta lista exige revisión: cualquier otra columna queda en modo estadístico.
+ */
+export const COLUMNAS_AUTORIZADAS: readonly string[] = [
+  // Situación y catálogo de actividad
+  'local vacio',
+  'gractividad', 'gr actividad', 'grupo de actividad', 'grupo actividad',
+  'gr comercio', 'grcomercio', 'grupo de comercio', 'grupo comercio', 'comercio grupos',
+  'subgrupo de actividad', 'subgrupo actividad', 'subgrupo',
+  'actividad',
+  // Códigos territoriales y organizativos
+  'distrito', 'zona', 'cp', 'codigo postal', 'municipio', 'itinerario',
+  // Respuestas 0/1
+  'franquicia', 'web', 'google my bussines', 'google my business', 'vende internet',
+  'responde resenas g', 'instagram', 'facebook', 'twitter', 'twiter',
+];
+
+export function esColumnaAutorizada(cabecera: string): boolean {
+  return COLUMNAS_AUTORIZADAS.includes(normalizar(cabecera));
+}
 
 const NIVELES_ACTIVIDAD: RegExp[] = [
   /^(gr ?actividad|grupo de actividad|grupo actividad)$/,
@@ -91,10 +110,6 @@ export function letraColumna(n: number): string {
     n = Math.floor((n - 1) / 26);
   }
   return s;
-}
-
-export function esCabeceraProtegida(cabecera: string): boolean {
-  return PROTEGIDAS.test(normalizar(cabecera));
 }
 
 /** Valor «plano» de una celda de ExcelJS (resultado de fórmula, texto enriquecido, hipervínculo…). */
@@ -212,7 +227,7 @@ export async function perfilarXlsx(datos: ArrayBuffer | Uint8Array, nombreArchiv
 
     for (let col = 1; col <= ncols; col++) {
       const cabecera = cabeceras.get(col) ?? '';
-      const protegida = esCabeceraProtegida(cabecera) || cabecera === '';
+      const autorizada = cabecera !== '' && esColumnaAutorizada(cabecera);
       const tipos: Partial<Record<TipoCelda, number>> = {};
       const formatos: Record<string, number> = {};
       const cuenta = new Map<string, number>();
@@ -245,6 +260,8 @@ export async function perfilarXlsx(datos: ArrayBuffer | Uint8Array, nombreArchiv
           if (v > max) max = v;
           if (!Number.isInteger(v)) soloEnteros = false;
         }
+        // Los valores se cuentan en memoria para conocer la cardinalidad, pero solo se devuelven
+        // los de columnas autorizadas.
         const clave = v instanceof Date ? v.toISOString().slice(0, 10) : String(v).trim();
         cuenta.set(clave, (cuenta.get(clave) ?? 0) + 1);
       }
@@ -254,7 +271,7 @@ export async function perfilarXlsx(datos: ArrayBuffer | Uint8Array, nombreArchiv
       const numerica = numericas > 0 && numericas >= noVacias * 0.9 && !(tipos['numero-01'] && Object.keys(tipos).filter((k) => k !== 'vacia').length === 1);
       let valores: PerfilColumna['valores'] = null;
       let motivo: PerfilColumna['motivoSinValores'];
-      if (protegida) motivo = 'protegida';
+      if (!autorizada) motivo = 'no-autorizada';
       else if (numerica && distintos > 12) motivo = 'numerica';
       else if (distintos > maxCategorias || (noVacias > 20 && distintos / noVacias > maxProporcion)) motivo = 'no-categorica';
       else valores = [...cuenta.entries()].map(([valor, n]) => ({ valor, n })).sort((a, b) => b.n - a.n || a.valor.localeCompare(b.valor, 'es'));
@@ -265,7 +282,7 @@ export async function perfilarXlsx(datos: ArrayBuffer | Uint8Array, nombreArchiv
     }
 
     let tuplasActividad: PerfilHoja['tuplasActividad'];
-    if (indicesNivel.every((i) => i !== undefined)) {
+    if (indicesNivel.every((i) => i !== undefined && esColumnaAutorizada(cabeceras.get(i) ?? ''))) {
       const t = new Map<string, number>();
       for (let r = primera; r <= ws.rowCount; r++) {
         const fila = ws.getRow(r);

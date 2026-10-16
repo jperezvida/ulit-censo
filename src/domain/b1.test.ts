@@ -9,7 +9,7 @@ import {
   confirmarDatoHeredado, esExigible, partirDeDigitalAnterior, problemasDigitales, registrarDatoDigital, revisionDigitalAnterior, verificarDigital,
 } from './digital';
 import { codificarRespuesta, respuestaDesdeValor } from './respuesta';
-import { comprobarEditable, itinerariosDeLocal, reabrirItinerario, validarItinerario } from './bloqueo';
+import { cerrarRevisionItinerario, comprobarEditable, itinerariosDeLocal, reabrirItinerario } from './bloqueo';
 import { actualizarRevisiones } from './oficina';
 import { alternarCalle } from './itinerarios';
 import { ACTIVIDADES_HOJA } from './taxonomy';
@@ -110,9 +110,11 @@ describe('clasificación por campaña', () => {
     expect(partirDeClasificacionAnterior(db, nuevo, C26, 'p-marta')).toBe(db);
   });
 
-  it('rechaza actividades que no son del cuarto nivel del catálogo', () => {
+  it('rechaza nodos inexistentes y grupos con actividades por debajo sin descripción', () => {
     const { negocioId } = localOcupadoSinVisitar(base, 'IT-B');
-    expect(() => clasificar(base, negocioId, C26, 'a1-comercio', 'p-marta')).toThrow(ErrorDominio);
+    expect(() => clasificar(base, negocioId, C26, 'no-existe', 'p-marta')).toThrow(ErrorDominio);
+    expect(() => clasificar(base, negocioId, C26, 'a1-comercio', 'p-marta')).toThrow(/actividades por debajo/);
+    expect(() => clasificar(base, negocioId, C26, 'a1-comercio', 'p-marta', { descripcion: 'algo' })).toThrow(/actividades por debajo/);
   });
 });
 
@@ -212,16 +214,16 @@ describe('revisión digital', () => {
   });
 });
 
-describe('bloqueo de itinerarios validados', () => {
-  it('bloquea solo el itinerario y la campaña validados', () => {
+describe('bloqueo de itinerarios con la revisión cerrada', () => {
+  it('bloquea solo el itinerario y la campaña cerrados', () => {
     const a = localOcupadoSinVisitar(base, 'IT-A');
     const b = localOcupadoSinVisitar(base, 'IT-B');
     const itA = itinerariosDe(base, C26).find((i) => i.codigo === 'IT-A')!;
-    const db = validarItinerario(base, itA.id, 'p-elena');
-    expect(() => confirmarSinCambios(db, ctx('2026-10-01'), a.local.id)).toThrow(/IT-A está validado/);
+    const db = cerrarRevisionItinerario(base, itA.id, 'p-elena');
+    expect(() => confirmarSinCambios(db, ctx('2026-10-01'), a.local.id)).toThrow(/IT-A tiene la revisión cerrada/);
     expect(() => clasificar(db, a.negocioId, C26, ACTIVIDADES_HOJA[0].id, 'p-marta')).toThrow(ErrorDominio);
     expect(() => registrarDatoDigital(db, a.negocioId, C26, 'web', { respuesta: 'si' }, 'p-marta')).toThrow(ErrorDominio);
-    expect(() => alternarCalle(db, itA.id, itA.tramos[0].calleId)).toThrow(/validado/);
+    expect(() => alternarCalle(db, itA.id, itA.tramos[0].calleId)).toThrow(/cerrado o validado/);
     // otro itinerario de la misma campaña sigue editable
     expect(() => confirmarSinCambios(db, ctx('2026-10-01'), b.local.id)).not.toThrow();
   });
@@ -229,7 +231,7 @@ describe('bloqueo de itinerarios validados', () => {
   it('el mismo local puede revisarse en una campaña posterior', () => {
     const a = localOcupadoSinVisitar(base, 'IT-A');
     const itA = itinerariosDe(base, C26).find((i) => i.codigo === 'IT-A')!;
-    let db = validarItinerario(base, itA.id, 'p-elena');
+    let db = cerrarRevisionItinerario(base, itA.id, 'p-elena');
     const c27: Campana = { ...db.campanas[C26], id: 'camp-medina-2027', anio: 2027, nombre: 'Censo 2027', campanaReferenciaId: C26, procedencia: 'manual' };
     db = { ...db, campanas: { ...db.campanas, [c27.id]: c27 } };
     expect(() => comprobarEditable(db, c27.id, { localId: a.local.id })).not.toThrow();
@@ -240,10 +242,10 @@ describe('bloqueo de itinerarios validados', () => {
   it('reabrir exige motivo y queda registrado', () => {
     const a = localOcupadoSinVisitar(base, 'IT-A');
     const itA = itinerariosDe(base, C26).find((i) => i.codigo === 'IT-A')!;
-    let db = validarItinerario(base, itA.id, 'p-elena', '2026-11-01');
+    let db = cerrarRevisionItinerario(base, itA.id, 'p-elena', '2026-11-01');
     expect(() => reabrirItinerario(db, itA.id, 'p-elena', '  ')).toThrow(/motivo/);
     db = reabrirItinerario(db, itA.id, 'p-elena', 'Error en un número de portal', '2026-11-02');
-    expect(db.oficinaItinerarios[itA.id].historial.map((h) => h.accion)).toEqual(['validar', 'reabrir']);
+    expect(db.oficinaItinerarios[itA.id].historial.map((h) => h.accion)).toEqual(['cerrar-revision', 'reabrir']);
     expect(() => confirmarSinCambios(db, ctx('2026-11-03'), a.local.id)).not.toThrow();
   });
 });

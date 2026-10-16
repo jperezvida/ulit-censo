@@ -1,8 +1,8 @@
 import type { BaseDatos } from './db';
 import { ErrorDominio, kNC, kRev } from './db';
 import { anioDe, revisionDe } from './consultas';
-import { comprobarAlcance, comprobarEditable, localesDeNegocioEnCampana, type Alcance } from './bloqueo';
-import { TAXONOMIA_POR_ID } from './taxonomy';
+import { prepararOperacionNegocio, type Alcance } from './bloqueo';
+import { hijosDe, TAXONOMIA_POR_ID } from './taxonomy';
 import type { ClasificacionCampana, Id } from './types';
 
 /**
@@ -26,27 +26,33 @@ export function clasificacionAnterior(db: BaseDatos, negocioId: Id, campanaId: I
   return mejor;
 }
 
-function locales(db: BaseDatos, negocioId: Id, campanaId: Id) {
-  return localesDeNegocioEnCampana(db, negocioId, campanaId, (c) => anioDe(db, c));
-}
-
-/** Clasificación decidida por una persona: confirma la categorización de esos registros. */
+/**
+ * Clasificación decidida por una persona: confirma la categorización de los registros donde
+ * el negocio es el ocupante VIGENTE (no la de quien le sustituyó en el mismo local).
+ *
+ * No se exige siempre el cuarto nivel: el procedimiento 2026 admite nodos sin actividades
+ * (p. ej. Discotecas) y, en Servicios, el subgrupo con una breve descripción. Un nodo con
+ * actividades por debajo solo se acepta acompañado de descripción. La validación completa
+ * del catálogo depurado llega con el bloque de catálogo.
+ */
 export function clasificar(
   db: BaseDatos, negocioId: Id, campanaId: Id, actividadId: Id, porId: Id,
-  opciones: { alcance?: Alcance; fecha?: string } = {},
+  opciones: { alcance?: Alcance; fecha?: string; descripcion?: string } = {},
 ): BaseDatos {
   const nodo = TAXONOMIA_POR_ID[actividadId];
-  if (!nodo || nodo.nivel !== 4) throw new ErrorDominio('regla', 'Elige una actividad del catálogo (cuarto nivel).');
-  const ids = locales(db, negocioId, campanaId);
-  comprobarAlcance(db, opciones.alcance, ids);
-  for (const id of ids) comprobarEditable(db, campanaId, { localId: id });
+  const descripcion = opciones.descripcion?.trim() || undefined;
+  if (!nodo) throw new ErrorDominio('regla', 'Elige un nodo del catálogo de actividades.');
+  if (hijosDe(nodo.id).length && (!descripcion || nodo.nivel < 3)) {
+    throw new ErrorDominio('regla', `«${nodo.nombre}» tiene actividades por debajo: elige una o añade una breve descripción al subgrupo.`);
+  }
+  const ids = prepararOperacionNegocio(db, negocioId, campanaId, opciones.alcance);
   const fecha = opciones.fecha ?? new Date().toISOString();
   const revisiones = { ...db.revisiones };
   for (const id of ids) revisiones[kRev(campanaId, id)] = { ...revisionDe(db, campanaId, id), categorizacion: 'revisado' };
   return {
     ...db,
     revisiones,
-    clasificaciones: { ...db.clasificaciones, [kNC(negocioId, campanaId)]: { negocioId, campanaId, actividadId, origen: 'manual', confirmada: true, porId, fecha } },
+    clasificaciones: { ...db.clasificaciones, [kNC(negocioId, campanaId)]: { negocioId, campanaId, actividadId, descripcion, origen: 'manual', confirmada: true, porId, fecha } },
   };
 }
 
@@ -55,14 +61,12 @@ export function partirDeClasificacionAnterior(db: BaseDatos, negocioId: Id, camp
   const ant = clasificacionAnterior(db, negocioId, campanaId);
   if (!ant) return db;
   if (clasificacionEn(db, negocioId, campanaId)) return db; // nunca pisa una clasificación de la campaña
-  const ids = locales(db, negocioId, campanaId);
-  comprobarAlcance(db, opciones.alcance, ids);
-  for (const id of ids) comprobarEditable(db, campanaId, { localId: id });
+  prepararOperacionNegocio(db, negocioId, campanaId, opciones.alcance);
   return {
     ...db,
     clasificaciones: {
       ...db.clasificaciones,
-      [kNC(negocioId, campanaId)]: { negocioId, campanaId, actividadId: ant.actividadId, origen: 'heredado', confirmada: false, porId, fecha: new Date().toISOString() },
+      [kNC(negocioId, campanaId)]: { negocioId, campanaId, actividadId: ant.actividadId, descripcion: ant.descripcion, origen: 'heredado', confirmada: false, porId, fecha: new Date().toISOString() },
     },
   };
 }
