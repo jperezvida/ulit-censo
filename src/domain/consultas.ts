@@ -1,7 +1,7 @@
 import type { BaseDatos } from './db';
-import { kCC, kCob, kMet, kRev } from './db';
+import { kCC, kCob, kRev } from './db';
 import type {
-  Acera, Campana, EstadoCobertura, Id, Itinerario, LocalFisico, MetricaDigital, Negocio, Observacion, Ocupacion,
+  Acera, Campana, EstadoCobertura, Id, Itinerario, LocalFisico, Negocio, Observacion, Ocupacion,
   Revision, SituacionPrevia,
 } from './types';
 
@@ -28,17 +28,49 @@ export function direccionVigente(l: LocalFisico) {
   return l.direcciones[l.direcciones.length - 1];
 }
 
-/** Ocupación vigente de un local en una campaña (por año). */
-export function ocupacionEn(db: BaseDatos, localId: Id, campanaId: Id, indice?: IndiceOcupaciones): Ocupacion | undefined {
+/**
+ * Compara dos fechas reales de evento. Devuelve null cuando NO se puede decidir: falta alguna
+ * fecha, o ambas caen el mismo día y al menos una no tiene hora. El orden de introducción
+ * nunca sustituye a la cronología: solo desempata eventos con la misma fecha y hora.
+ */
+export function compararFechas(a?: string, b?: string): number | null {
+  if (!a || !b) return null;
+  if (a.length > 10 && b.length > 10) return a < b ? -1 : a > b ? 1 : 0;
+  const da = a.slice(0, 10);
+  const dbb = b.slice(0, 10);
+  return da < dbb ? -1 : da > dbb ? 1 : null;
+}
+
+/** Orden cronológico de ocupaciones: campaña de inicio, fecha real y, solo si empatan, orden de registro. */
+export function compararOcupaciones(db: BaseDatos, a: Ocupacion, b: Ocupacion): number {
+  const dy = anioDe(db, a.desdeCampanaId) - anioDe(db, b.desdeCampanaId);
+  if (dy) return dy;
+  const c = compararFechas(a.desdeFecha, b.desdeFecha);
+  return c ? c : a.orden - b.orden;
+}
+
+/** ¿La ocupación abarca la campaña? */
+export function abarca(db: BaseDatos, o: Ocupacion, campanaId: Id): boolean {
   const anio = anioDe(db, campanaId);
+  return anioDe(db, o.desdeCampanaId) <= anio && (!o.hastaCampanaId || anio <= anioDe(db, o.hastaCampanaId));
+}
+
+/**
+ * Ocupación vigente de un local en una campaña: de las que abarcan esa campaña, la
+ * cronológicamente última (por fecha real del evento, no por orden de introducción).
+ * Una campaña puede contener varias ocupaciones sucesivas; las anteriores siguen
+ * existiendo y forman el histórico.
+ */
+export function ocupacionEn(db: BaseDatos, localId: Id, campanaId: Id, indice?: IndiceOcupaciones): Ocupacion | undefined {
   const lista = indice ? indice.get(localId) ?? [] : Object.values(db.ocupaciones).filter((o) => o.localId === localId);
   let mejor: Ocupacion | undefined;
-  for (const o of lista) {
-    const desde = anioDe(db, o.desdeCampanaId);
-    const hasta = o.hastaCampanaId ? anioDe(db, o.hastaCampanaId) : Infinity;
-    if (desde <= anio && anio <= hasta && (!mejor || desde > anioDe(db, mejor.desdeCampanaId))) mejor = o;
-  }
+  for (const o of lista) if (abarca(db, o, campanaId) && (!mejor || compararOcupaciones(db, o, mejor) > 0)) mejor = o;
   return mejor;
+}
+
+/** Todas las ocupaciones de un local en orden cronológico. */
+export function ocupacionesDeLocal(db: BaseDatos, localId: Id): Ocupacion[] {
+  return Object.values(db.ocupaciones).filter((o) => o.localId === localId).sort((a, b) => compararOcupaciones(db, a, b));
 }
 
 export type IndiceOcupaciones = Map<Id, Ocupacion[]>;
@@ -61,12 +93,20 @@ export function indiceObservaciones(db: BaseDatos): IndiceObservaciones {
     if (l) l.push(o);
     else m.set(o.localId, [o]);
   }
-  for (const l of m.values()) l.sort((a, b) => (a.fecha ?? '').localeCompare(b.fecha ?? ''));
+  for (const l of m.values()) l.sort((a, b) => compararObservaciones(db, a, b));
   return m;
 }
 
 export function observacionesDeLocal(db: BaseDatos, localId: Id): Observacion[] {
-  return Object.values(db.observaciones).filter((o) => o.localId === localId).sort((a, b) => (a.fecha ?? '').localeCompare(b.fecha ?? ''));
+  return Object.values(db.observaciones).filter((o) => o.localId === localId).sort((a, b) => compararObservaciones(db, a, b));
+}
+
+/** Orden cronológico de observaciones: campaña, fecha real y, si no decide, orden de registro. */
+export function compararObservaciones(db: BaseDatos, a: Observacion, b: Observacion): number {
+  const dy = anioDe(db, a.campanaId) - anioDe(db, b.campanaId);
+  if (dy) return dy;
+  const c = compararFechas(a.fecha, b.fecha);
+  return c ? c : (a.orden ?? 0) - (b.orden ?? 0);
 }
 
 /** Observación del local en una campaña concreta (la más reciente). */
@@ -99,25 +139,6 @@ export function textoDireccion(db: BaseDatos, l: LocalFisico): string {
 export function negocioEn(db: BaseDatos, localId: Id, campanaId: Id, idx?: IndiceOcupaciones): Negocio | null {
   const o = ocupacionEn(db, localId, campanaId, idx);
   return o?.negocioId ? db.negocios[o.negocioId] ?? null : null;
-}
-
-// ───────────── Información digital (del negocio, con campaña y verificación) ─────────────
-
-export interface DigitalVista {
-  actual?: MetricaDigital; // de esta campaña
-  anterior?: MetricaDigital; // la más reciente de campañas previas (solo referencia)
-}
-
-export function digitalDe(db: BaseDatos, negocioId: Id, campanaId: Id): DigitalVista {
-  const anio = anioDe(db, campanaId);
-  const actual = db.metricas[kMet(negocioId, campanaId)];
-  let anterior: MetricaDigital | undefined;
-  for (const m of Object.values(db.metricas)) {
-    if (m.negocioId !== negocioId || m.campanaId === campanaId) continue;
-    const a = anioDe(db, m.campanaId);
-    if (a < anio && (!anterior || a > anioDe(db, anterior.campanaId))) anterior = m;
-  }
-  return { actual, anterior };
 }
 
 // ───────────── Cobertura ─────────────

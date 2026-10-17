@@ -148,3 +148,12 @@ vite.config.ts.timestamp-*
 # Turbo Repo
 .turbo
 public/maplibre/
+
+# ── Datos censales reales: NUNCA en el repositorio ──
+datos-reales/
+*.xlsx
+*.xls
+*.xlsm
+*.xlsb
+*.ods
+*.perfil.json

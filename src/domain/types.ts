@@ -149,24 +149,39 @@ export interface LocalFisico {
   procedencia: Procedencia;
 }
 
-/** Negocio / establecimiento. Los perfiles digitales le pertenecen a él, no al local. */
+/**
+ * Negocio / establecimiento. Los perfiles digitales le pertenecen a él, no al local.
+ * La clasificación NO vive aquí: se guarda por campaña (ClasificacionCampana) para que
+ * corregir 2026 no reescriba 2025.
+ */
 export interface Negocio {
   id: Id;
   nombre: string;
-  actividadId?: Id;
   cadena?: string;
   descripcion?: string;
   procedencia: Procedencia;
 }
 
-/** Qué negocio ocupa un local en un periodo (o si está vacío). */
+/**
+ * Qué negocio ocupa un local (o si está vacío) entre dos observaciones.
+ * Una campaña puede contener varias ocupaciones sucesivas del mismo local: nunca se
+ * borra una intermedia; se cierra con la observación que la sustituye.
+ */
 export interface Ocupacion {
   id: Id;
   localId: Id;
   negocioId: Id | null; // null = vacío
   metrosFachada?: number;
   desdeCampanaId: Id;
+  /** Campaña en la que se vio por última vez antes de cerrarse (puede ser la misma de inicio). */
   hastaCampanaId?: Id;
+  /** Observación que la abrió / la cerró (si constan). */
+  desdeObservacionId?: Id;
+  hastaObservacionId?: Id;
+  /** Fecha real del evento que la abrió (si consta). Es la que ordena la cronología. */
+  desdeFecha?: string;
+  /** Orden global de registro: solo desempata cuando las fechas no deciden. */
+  orden: number;
 }
 
 export type FuenteObservacion = 'campo-app' | 'papel' | 'importacion' | 'oficina';
@@ -193,7 +208,18 @@ export interface Observacion {
   fuente: FuenteObservacion;
   investigadorId?: Id;
   tipo: TipoObservacion;
-  datos: { numero: number | null; sufijo?: string; nombre?: string; vacio: boolean; metrosFachada?: number };
+  /** Instantánea de lo observado EN ESE MOMENTO (no se recalcula después). */
+  datos: { numero: number | null; sufijo?: string; nombre?: string; negocioId?: Id | null; vacio: boolean; metrosFachada?: number };
+  /** Orden global de registro (las fechas pueden faltar). NO es la cronología del censo. */
+  orden?: number;
+  /**
+   * «incierta»: no se pudo situar el evento respecto a otros cambios de la misma campaña
+   * (falta la fecha o coincide el día). Queda registrado pero no altera las ocupaciones
+   * hasta que la oficina le asigne fecha (`ubicarEnCronologia`).
+   */
+  cronologia?: 'incierta';
+  /** Quién y cuándo fijó en oficina la fecha de un evento de cronología incierta. */
+  fechaAsignada?: { porId: Id; registrado: string };
   nota?: string;
   verificacion: 'pendiente' | 'verificada' | 'devuelta';
   sync?: 'local' | 'sincronizada' | 'conflicto';
@@ -250,24 +276,71 @@ export interface Revision {
   validacion: 'pendiente' | 'aprobada' | 'devuelta';
   motivoDevolucion?: string;
   pendienteComprobacion?: boolean;
+  /** Motivo de la comprobación pendiente (p. ej. «cronología incierta»). */
+  motivoComprobacion?: string;
 }
 
-/** Medición digital de un NEGOCIO en una campaña concreta. */
-export interface MetricaDigital {
+/**
+ * Respuesta de una variable de comprobación. «pendiente» NO equivale a «no».
+ *  si / no        → comprobado (1 / 0)
+ *  pendiente      → todavía no se ha mirado
+ *  na             → no aplicable a este establecimiento
+ *  sin-info       → se buscó y no hay información disponible
+ */
+export type Respuesta = 'si' | 'no' | 'pendiente' | 'na' | 'sin-info';
+
+export type VariableDigital =
+  | 'web' | 'ventaOnline' | 'googleBusiness' | 'valoracion' | 'numResenas' | 'respondeResenas'
+  | 'instagram' | 'seguidoresInstagram' | 'facebook' | 'seguidoresFacebook' | 'twitter' | 'seguidoresTwitter' | 'otrasRedes';
+
+/** Una variable digital de un negocio en una campaña, con su trazabilidad. */
+export interface DatoDigital {
+  respuesta: Respuesta;
+  /** Solo para variables numéricas (valoración, nº de reseñas, seguidores). */
+  valor?: number;
+  origen: 'manual' | 'heredado' | 'importado' | 'google-maps-manual';
+  porId?: Id;
+  fecha?: string;
+}
+
+/** Revisión de la presencia digital de un NEGOCIO en una campaña. */
+export interface RevisionDigital {
   negocioId: Id;
   campanaId: Id;
-  fechaComprobacion?: string;
-  verificada: boolean;
-  web?: string;
-  ventaOnline?: boolean;
-  googleBusiness?: boolean;
-  valoracion?: number;
-  numResenas?: number;
-  respondeResenas?: boolean;
-  instagram?: string;
-  seguidoresInstagram?: number;
-  facebook?: string;
-  otrasRedes?: string;
+  datos: Partial<Record<VariableDigital, DatoDigital>>;
+  estado: 'borrador' | 'verificada';
+  verificadaPor?: Id;
+  verificadaEn?: string;
+  historial: { accion: 'verificar' | 'reabrir' | 'partir-de-anterior'; porId?: Id; fecha: string; motivo?: string }[];
+}
+
+/** Clasificación de un negocio en una campaña concreta. */
+export interface ClasificacionCampana {
+  negocioId: Id;
+  campanaId: Id;
+  /** Nodo del catálogo elegido: no siempre es el cuarto nivel (véase el procedimiento 2026). */
+  actividadId: Id;
+  /** Breve descripción cuando la actividad no encaja en una predefinida (o para un subgrupo de Servicios). */
+  descripcion?: string;
+  /** importado: tal como venía · heredado: copiado de otra campaña como borrador · manual: decidido en oficina */
+  origen: 'importado' | 'heredado' | 'manual';
+  /** Solo una clasificación confirmada por una persona cuenta como «categorización revisada». */
+  confirmada: boolean;
+  porId?: Id;
+  fecha?: string;
+}
+
+/** Estado de oficina de un itinerario (cada itinerario pertenece a una sola campaña). */
+export interface EstadoOficinaItinerario {
+  itinerarioId: Id;
+  campanaId: Id;
+  /**
+   * en-revision · revision-cerrada (cierre PROVISIONAL: bloquea la edición y registra quién y
+   * cuándo hizo la revisión final, pero NO habilita la exportación municipal) · validado
+   * (definitivo: solo tras superar los controles del bloque C) · reabierto.
+   */
+  estado: 'en-revision' | 'revision-cerrada' | 'validado' | 'reabierto';
+  historial: { accion: 'cerrar-revision' | 'validar' | 'reabrir'; porId: Id; fecha: string; motivo?: string }[];
 }
 
 // ───────────────────────── Personas y actividad ─────────────────────────

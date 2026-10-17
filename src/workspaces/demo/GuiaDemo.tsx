@@ -4,6 +4,7 @@ import { useStore } from '../../store/store';
 import { localesPrevios, situacionPrevia } from '../../domain/consultas';
 import { estadoTramo } from '../../domain/planificacion';
 import type { Prefs } from '../../store/store';
+import { C26_SINT, MUN_SINT, conCasosDemostracion, escenarioOficina } from '../../data/escenarioOficina';
 
 interface Escenario {
   n: number;
@@ -37,9 +38,13 @@ export function GuiaDemo({ onCerrar }: { onCerrar: () => void }) {
     { n: 7, t: 'Registrar un local nuevo', d: '«Local nuevo»: la calle se recuerda, el número avanza ±2 en la misma acera, «Guardar y siguiente».', ir: () => campo(calleActualizar?.calleId) },
     { n: 8, t: 'Calle censada sin locales', d: 'Calle sin registros previos: «Finalizar calle» declarando ambas aceras → «Completada sin locales».', ir: () => campo(calleSinLocales?.calleId) },
     { n: 9, t: 'Progreso de varios investigadores', d: 'Personas, calles cerradas, registros sin sincronizar y un conflicto simulado entre dos móviles.', ir: () => ({ ruta: '/territorio?tab=equipo', prefs: MEDINA }) },
-    { n: 10, t: 'Bandeja de oficina', d: 'Vistas «Pendiente de categorizar» y «Presencia digital». Prueba J/K, C, G, A y la edición múltiple.', ir: () => ({ ruta: '/oficina?vista=categorizar', prefs: MEDINA }) },
+    { n: 10, t: 'Oficina por itinerarios', d: 'Entra en IT-C (campo terminado) → «Categorización». Tabla por teclado: flechas, Enter/F2, Tab, Esc, Ctrl+C/Ctrl+V, Ctrl+Z/Ctrl+Y y Ctrl+Enter para la ficha. Cambia a «Por establecimientos».', ir: () => ({ ruta: '/oficina', prefs: MEDINA }) },
     { n: 11, t: 'Histórico de un local', d: 'Valladolid (demo): zapatería 2023 → vacío 2024 → peluquería 2025, cada negocio con sus propios perfiles.', ir: () => (db.meta.localHistoricoValladolid ? { ruta: `/campanas?local=${db.meta.localHistoricoValladolid}`, prefs: { municipioId: 'mun-valladolid', campanaId: 'camp-vll-2025' } } : null) },
     { n: 12, t: 'Exportación: mapa y listado', d: 'Hoja de campo A4 del itinerario y Excel (CSV) con la estructura tradicional.', ir: () => (itC ? { ruta: `/imprimir/${itC}`, prefs: MEDINA } : null) },
+    { n: 13, t: 'Oficina con 5.000 registros ficticios', d: 'Sustituye la demo por un municipio inventado (Villaficticia): calle repartida pares/impares, calle por segmentos, calle sin locales y un caso de cronología incierta en IT-1. «Restablecer demo» vuelve a Medina.', ir: () => {
+      useStore.setState({ db: conCasosDemostracion(escenarioOficina({ calles: 64, localesPorCalle: 80, visitados: (i) => (i % 3) / 2 })).db, pilaDeshacer: [], pilaRehacer: [] });
+      return { ruta: '/oficina', prefs: { municipioId: MUN_SINT, campanaId: C26_SINT } };
+    } },
   ];
 
   const ir = (e: Escenario) => {
@@ -55,7 +60,7 @@ export function GuiaDemo({ onCerrar }: { onCerrar: () => void }) {
       <div className="guia-cab">
         <div className="esp">
           <div className="rotulo sin-linea">Guion de demostración</div>
-          <b>12 escenarios para probar</b>
+          <b>{escenarios.length} escenarios para probar</b>
         </div>
         <button className="btn fantasma icono s" onClick={onCerrar} aria-label="Cerrar"><X size={16} /></button>
       </div>

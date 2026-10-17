@@ -5,6 +5,7 @@ import {
 } from '../../domain/consultas';
 import type { Campana, Id, Itinerario } from '../../domain/types';
 import { COLOR_GRUPO, grupoActividad } from '../../domain/taxonomy';
+import { clasificacionEn } from '../../domain/clasificacion';
 
 export type Capa = 'plan' | 'cobertura' | 'actividad';
 
@@ -72,7 +73,7 @@ export function geojsonLocales(
     const campDatos = actual ? campana.id : ref!;
     const oc = ocupacionEn(db, l.id, campDatos, ix.ocu);
     const neg = oc?.negocioId ? db.negocios[oc.negocioId] : undefined;
-    const g = grupoActividad(neg?.actividadId);
+    const g = grupoActividad(clasificacionEn(db, neg?.id, campDatos)?.actividadId);
     features.push({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: l.coord },

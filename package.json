@@ -13,12 +13,16 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "callejero": "node scripts/descargar-callejero.mjs"
+    "callejero": "node scripts/descargar-callejero.mjs",
+    "perfilar": "tsx scripts/perfilar-excel.ts",
+    "comprobar-datos": "node scripts/comprobar-datos-reales.mjs",
+    "hooks": "git config core.hooksPath .githooks"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.1.0",
     "@fontsource/jetbrains-mono": "^5.1.0",
     "@tanstack/react-virtual": "^3.10.9",
+    "exceljs": "^4.4.0",
     "fflate": "0.8.3",
     "idb-keyval": "^6.2.1",
     "lucide-react": "^0.460.0",
@@ -39,8 +43,12 @@
     "@vitejs/plugin-react": "6.1.1",
     "fake-indexeddb": "^6.0.0",
     "jsdom": "26.1.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.6.3",
     "vite": "8.3.1",
     "vitest": "5.0.3"
+  },
+  "overrides": {
+    "uuid": "11.1.1"
   }
 }

@@ -7,6 +7,7 @@ import { MapaBase } from '../../components/mapa/MapaBase';
 import { direccionVigente, indiceObservaciones, indiceOcupaciones, localesPrevios, ocupacionEn, situacionPrevia } from '../../domain/consultas';
 import { estimarCarga, longitudTramo } from '../../domain/planificacion';
 import { rutaActividad } from '../../domain/taxonomy';
+import { clasificacionEn } from '../../domain/clasificacion';
 import { formatoDistancia } from '../../domain/geo';
 import { aCSV, descargar, filasExport } from '../../domain/exportacion';
 import type { LocalFisico } from '../../domain/types';
@@ -211,7 +212,7 @@ export default function HojaCampo() {
                             <tr key={l.id}>
                               <td className="nn">{d.numero ?? 's/n'}{d.sufijo ? ` ${d.sufijo}` : ''}</td>
                               <td>{neg?.nombre ?? <i>Vacío{oc?.metrosFachada ? ` (${oc.metrosFachada} m)` : ''}</i>}</td>
-                              {o.actividad && <td className="act">{rutaActividad(neg?.actividadId)[3]?.nombre ?? ''}</td>}
+                              {o.actividad && <td className="act">{rutaActividad(clasificacionEn(db, neg?.id, ref!)?.actividadId)[3]?.nombre ?? ''}</td>}
                               <td className="caja">☐</td>
                               <td className="caja">☐</td>
                               <td className="caja">☐</td>
