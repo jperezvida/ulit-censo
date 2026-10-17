@@ -69,7 +69,29 @@ Botón **Guion** (arriba a la derecha) → **Restablecer demo**.
 
 **Pegado atómico:** si alguna celda no es válida o no se puede editar (solo lectura, itinerario cerrado, local pendiente de visita), **no se aplica ninguna**. La barra inferior explica el motivo y marca la celda en rojo.
 
-## 4. Reglas que se respetan
+## 4. Ficha del establecimiento
+
+- **Ficha lateral compacta** (Ctrl+Enter o el icono ⓘ de la fila):
+  - nombre y botón **Ampliar ficha** en la primera línea;
+  - en la segunda, indicadores compactos de Campo, Categoría, Digital y Revisión, junto con la dirección y la última observación;
+  - pestañas Ficha, Digital, Histórico y Conciliación.
+- **Ficha ampliada:** ocupa el área central de Oficina y oculta las pestañas de tarea y los filtros para ganar altura. **Reducir ficha** (o Esc fuera de un campo) vuelve a la tabla con el cursor donde estaba.
+- **Pie siempre visible**, a la izquierda:
+  - anterior / siguiente (Alt+↑ / Alt+↓);
+  - **Siguiente pendiente** (Alt+P);
+  - la posición en la vista.
+- **Pie siempre visible**, a la derecha:
+  - **Devolver**;
+  - **Aprobar registro**, que es la revisión general del registro.
+- **Presencia digital** en dos grupos:
+  - **Web y Google:** web, venta por internet, Google Business Profile, nº de reseñas, responde reseñas y valoración;
+  - **Redes sociales:** Instagram, Facebook y Twitter / X con sus seguidores, otras redes y **Nº redes**, calculado como Instagram + Facebook + Twitter.
+  - El botón **Verificar presencia digital · «nombre»** está en la barra de la pestaña. Solo verifica lo digital de ese establecimiento y es distinto de «Aprobar registro».
+- **Tras verificar** la ficha permanece en el mismo establecimiento, aunque salga del filtro «Pendientes». Para avanzar se usa «Siguiente pendiente».
+- **Nada se pierde** al ampliar, reducir o cambiar de ficha: lo tecleado se guarda aunque no se haya pulsado Enter. La pestaña activa se conserva.
+- **En móvil** la ficha ocupa toda la pantalla, con el pie por encima de la barra de navegación.
+
+## 5. Reglas que se respetan
 
 - **Ámbito efectivo del itinerario.** La pertenencia se calcula por calle, acera según el número y segmento. Desde un itinerario no se puede modificar un registro de otro: el dominio lo rechaza aunque la interfaz lo intentara.
 - **Seguimiento completo.** Los locales de la campaña anterior todavía no visitados aparecen como «Sin visitar» con sus datos de referencia. Las calles sin locales conservan su cobertura.
@@ -77,7 +99,7 @@ Botón **Guion** (arriba a la derecha) → **Restablecer demo**.
 - **Sin separación obligatoria de funciones.** Quien categoriza puede hacer también la revisión final.
 - **Solo lectura en campañas cerradas.** Las campañas históricas o validadas se consultan, pero no se editan desde Oficina.
 
-## 5. Pendiente para B4 y B5
+## 6. Pendiente para B4 y B5
 
 - **B4 · Catálogo 2026 y autocompletado.**
   - Catálogo depurado por estructura de grupo (Comercio, Hostelería y Restauración, Servicios), con excepciones y equivalencias.

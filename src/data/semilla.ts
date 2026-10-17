@@ -57,7 +57,14 @@ function metrica(rng: Rng, negocioId: Id, campanaId: Id, fecha: string, nivel: n
       respondeResenas: tieneGbp ? r(rng.chance(0.3)) : na,
       instagram: r(tieneIg),
       seguidoresInstagram: tieneIg ? num(rng.int(40, 4200)) : na,
-      facebook: r(rng.chance(0.3)),
+      ...(() => {
+        const fb = rng.chance(0.3);
+        const tw = rng.chance(0.08);
+        return {
+          facebook: r(fb), seguidoresFacebook: fb ? num(rng.int(30, 3000)) : na,
+          twitter: r(tw), seguidoresTwitter: tw ? num(rng.int(10, 900)) : na,
+        };
+      })(),
     },
   };
 }

@@ -379,3 +379,398 @@ button.ofi-fila-dato:not(:disabled):hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* ───────── Ficha de establecimiento compacta / ampliada ───────── */
+.ofp {
+  min-height: 0;
+  min-width: 0;
+}
+.ofp .of-panel-cuerpo {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 14px 14px;
+}
+.ofp-cab {
+  padding: 6px 10px 6px 14px;
+  border-bottom: 1px solid var(--linea);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: none;
+}
+.ofp-fila1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.ofp-titulo {
+  flex: 1 1 auto !important;
+  margin: 0;
+  font-size: 15.5px;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 60px;
+  flex: 0 1 auto;
+}
+.ofp-estados {
+  display: inline-flex;
+  gap: 4px;
+  flex: none;
+}
+.ofp-ind {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--linea);
+  background: var(--superficie);
+  color: var(--tinta-2);
+  font-family: inherit;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+button.ofp-ind {
+  cursor: pointer;
+}
+button.ofp-ind:hover {
+  border-color: var(--azul-borde);
+}
+.ofp-ind i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--e-pendiente);
+  opacity: 0.6;
+}
+.ofp-ind.ok {
+  background: #eaf7f1;
+  border-color: #b9e6d2;
+  color: #0b7a52;
+}
+.ofp-ind.ok i {
+  background: var(--e-ok);
+  opacity: 1;
+}
+.ofp-ind.pend i {
+  background: var(--e-aviso);
+  opacity: 1;
+}
+.ofp-ind.na {
+  color: var(--tinta-4);
+}
+.ofp-ind.na i {
+  background: transparent;
+  border: 1px solid var(--linea-2);
+}
+.ofp-ind.error {
+  background: #fff1f1;
+  border-color: #f5b8b8;
+  color: var(--e-error);
+}
+.ofp-ind.error i {
+  background: var(--e-error);
+  opacity: 1;
+}
+.ofp-fila2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--tinta-3);
+  min-width: 0;
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+.ofp-dir {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.ofp-obs {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.ofp-fila2 .chip {
+  font-size: 11px;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ofp-chip-btn {
+  cursor: pointer;
+  border: 0;
+  font-family: inherit;
+}
+.ofp-tabs {
+  flex: none;
+}
+.ofp-tabs button {
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+.ofp-pie {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-top: 1px solid var(--linea);
+  background: var(--superficie-2);
+  flex-wrap: wrap;
+}
+.ofp-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.ofp-pos {
+  font-size: 11px;
+  margin-left: 4px;
+}
+.ofp-falta {
+  font-size: 11.5px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Presencia digital */
+.ofp-dig {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ofp-dig-barra {
+  position: sticky;
+  top: -10px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 0 6px;
+  margin-top: -10px;
+  background: var(--superficie);
+  border-bottom: 1px solid var(--linea);
+}
+.ofp-verificar {
+  background: #eaf7f1;
+  border-color: #8fd3b5;
+  color: #0b6b48;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ofp-verificar:not(:disabled):hover {
+  background: #d8f1e5;
+}
+.ofp-verificar-nombre {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ofp-problemas {
+  font-size: 12px;
+  background: #fff8ec;
+  border: 1px solid #f6d8a8;
+  border-radius: var(--radio-s);
+  padding: 5px 9px;
+  color: #7a4100;
+}
+.ofp-problemas summary {
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ofp-problemas ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+.ofp-nota {
+  font-size: 11.5px;
+  margin: 0;
+}
+.ofp-dig-grupos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 10px 18px;
+  align-items: start;
+}
+.ofp-grupo {
+  border: 1px solid var(--linea);
+  border-radius: var(--radio-s);
+  padding: 4px 10px 6px;
+}
+.ofp-grupo h4 {
+  margin: 4px 0 4px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--tinta-2);
+}
+.ofp-var {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) auto 52px;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  border-top: 1px solid #f0f2f6;
+  font-size: 12.5px;
+}
+.ofp-var.dependiente .ofp-var-t {
+  padding-left: 12px;
+}
+.ofp-var.opcional .ofp-var-t {
+  color: var(--tinta-4);
+}
+.ofp-var-t {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.ofp-var-c {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  justify-content: flex-end;
+}
+.ofp-var-ref {
+  font-size: 11px;
+  color: var(--tinta-3);
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ofp-num {
+  width: 74px !important;
+  height: 26px;
+}
+.ofp-calc b {
+  font-size: 14px;
+}
+
+/* Ficha ampliada: ocupa el área central y oculta pestañas y filtros de la tabla */
+.ofi-tabla-zona {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+}
+.ofi-tabla-zona[hidden] {
+  display: none;
+}
+.ofi-tareas-cuerpo.ampliada {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+.ofi-tareas-cuerpo.ampliada .of-panel {
+  border-left: 0;
+}
+.ofi-espacio.ficha-ampliada .ofi-tareas,
+.ofi-espacio.ficha-ampliada .ofi-filtros,
+.ofi-espacio.ficha-ampliada > .t-info {
+  display: none;
+}
+.ofp-ampliada .of-panel-cuerpo {
+  padding: 12px 22px 16px;
+}
+.ofp-ampliada .ofp-cab,
+.ofp-ampliada .ofp-pie {
+  padding-left: 22px;
+  padding-right: 22px;
+}
+.ofp-ampliada .ofp-var {
+  grid-template-columns: minmax(130px, 1fr) auto 72px;
+}
+.ofp-ampliada .ofp-titulo {
+  font-size: 17px;
+}
+
+/* Pantallas bajas (≈680 px): todo más compacto */
+@media (max-height: 760px) {
+  .ofi-cab {
+    padding-top: 5px;
+    padding-bottom: 5px;
+  }
+  .ofi-tarea {
+    padding-top: 4px;
+    padding-bottom: 5px;
+  }
+  .ofi-filtros {
+    padding-top: 5px;
+    padding-bottom: 5px;
+  }
+}
+
+/* Móvil y ventanas estrechas: la ficha ocupa toda la pantalla */
+@media (max-width: 820px) {
+  /* Cabecera del espacio de trabajo más compacta */
+  .ofi-cab {
+    gap: 6px;
+    row-gap: 4px;
+  }
+  .ofi-cab .sim,
+  .ofi-cab .ofi-cierre,
+  .ofi-cab .ofi-validar-txt {
+    display: none;
+  }
+  .ofi-filtros {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+  .ofi-filtros .of-busca {
+    min-width: 170px;
+    flex: 1 0 170px;
+  }
+  .ofi-chips {
+    flex-wrap: nowrap;
+  }
+  .ofi-filtros > .muted {
+    display: none;
+  }
+}
+@media (max-width: 760px) {
+  .ofi-tareas-cuerpo.con-ficha .of-panel {
+    position: fixed;
+    inset: 52px 0 calc(60px + env(safe-area-inset-bottom)) 0;
+    z-index: 40;
+    border-left: 0;
+  }
+  .ofp-ampliar {
+    display: none;
+  }
+  .ofp-fila1 {
+    flex-wrap: wrap;
+  }
+  .ofp-titulo {
+    flex: 1 1 100%;
+    white-space: normal;
+  }
+  .ofp-dig-grupos {
+    grid-template-columns: 1fr;
+  }
+  .ofp-var {
+    grid-template-columns: 1fr auto;
+  }
+  .ofp-var-ref {
+    display: none;
+  }
+  .ofp-falta {
+    display: none;
+  }
+  .ofp-pie .btn {
+    min-height: 36px;
+  }
+}

@@ -85,3 +85,17 @@ export function filasDeTarea(filas: FilaOficina[], tarea: Tarea, filtro: Filtro)
   const t = TAREA_POR_ID[tarea];
   return filas.filter((f) => t.aplica(f) && aplicaFiltro(t, filtro, f));
 }
+
+/**
+ * Siguiente registro (después de `desde`, dando la vuelta) que tiene pendiente la tarea activa;
+ * en «Todos» o tareas sin estado propio, cualquier tarea pendiente. undefined si no queda ninguno.
+ */
+export function siguientePendiente(filas: FilaOficina[], desde: number, tarea: Tarea): FilaOficina | undefined {
+  const t = TAREA_POR_ID[tarea];
+  const pendiente = (f: FilaOficina) => (tarea !== 'todos' && t.pendiente ? t.aplica(f) && t.pendiente(f) : tareasPendientes(f).length > 0);
+  for (let k = 1; k <= filas.length; k++) {
+    const f = filas[(Math.max(desde, -1) + k + filas.length) % filas.length];
+    if (f && pendiente(f) && (filas.length === 1 || filas.indexOf(f) !== desde)) return f;
+  }
+  return undefined;
+}

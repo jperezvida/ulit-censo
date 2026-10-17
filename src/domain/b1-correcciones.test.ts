@@ -77,7 +77,7 @@ describe('negocios sustituidos en el mismo local', () => {
   it('clasificar o revisar lo digital de Bar Delia no cambia los estados de revisión de Perfumería Sol', () => {
     const s = sustituciones();
     let db = clasificar(s.db, s.perfumeria, C26, ACTIVIDADES_HOJA[0].id, 'p-marta');
-    for (const v of ['web', 'ventaOnline', 'googleBusiness', 'instagram', 'facebook'] as VariableDigital[]) {
+    for (const v of ['web', 'ventaOnline', 'googleBusiness', 'instagram', 'facebook', 'twitter'] as VariableDigital[]) {
       db = registrarDatoDigital(db, s.perfumeria, C26, v, { respuesta: 'no' }, 'p-marta');
     }
     db = verificarDigital(db, s.perfumeria, C26, 'p-marta');

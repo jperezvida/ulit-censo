@@ -135,7 +135,7 @@ describe('revisión digital', () => {
   it('las obligaciones son condicionales (sin GBP no se exigen reseñas; sin Instagram, seguidores)', () => {
     const { negocioId } = localOcupadoSinVisitar(base, 'IT-B');
     let db = base;
-    for (const v of ['web', 'ventaOnline', 'facebook'] as VariableDigital[]) db = reg(db, negocioId, v, 'no');
+    for (const v of ['web', 'ventaOnline', 'facebook', 'twitter'] as VariableDigital[]) db = reg(db, negocioId, v, 'no');
     db = reg(db, negocioId, 'googleBusiness', 'no');
     db = reg(db, negocioId, 'instagram', 'si');
     let rev = db.digital[kNC(negocioId, C26)];
@@ -171,7 +171,7 @@ describe('revisión digital', () => {
   it('cambiar un dato tras verificar reabre la revisión y la deja pendiente', () => {
     const { local, negocioId } = localOcupadoSinVisitar(base, 'IT-B');
     let db = base;
-    for (const v of ['web', 'ventaOnline', 'googleBusiness', 'instagram', 'facebook'] as VariableDigital[]) db = reg(db, negocioId, v, 'no');
+    for (const v of ['web', 'ventaOnline', 'googleBusiness', 'instagram', 'facebook', 'twitter'] as VariableDigital[]) db = reg(db, negocioId, v, 'no');
     db = verificarDigital(db, negocioId, C26, 'p-marta');
     expect(revisionDe(db, C26, local.id).digital).toBe('revisado');
     db = reg(db, negocioId, 'web', 'si');

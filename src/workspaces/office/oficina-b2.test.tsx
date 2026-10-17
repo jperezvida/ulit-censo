@@ -103,7 +103,7 @@ describe('B2 · Oficina organizada por itinerarios (interfaz)', () => {
     expect(db.revisiones[kRev(C26_SINT, local)].pendienteComprobacion).toBe(true);
     montar(`/oficina/it/${esc.itinerarios[0]}?tarea=incidencias&filtro=pendientes&sel=${local}`);
     fireEvent.click(screen.getByText('Por establecimientos'));
-    fireEvent.click(screen.getByRole('button', { name: /Asignar fechas/ }));
+    fireEvent.click(screen.getByRole('button', { name: /asignar fechas/i }));
     fireEvent.change(screen.getByLabelText('Fecha real del evento'), { target: { value: '2026-09-25T09:30' } });
     fireEvent.click(screen.getByRole('button', { name: /Asignar fecha$/ }));
     const tras = useStore.getState().db!;

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, Clock, LayoutList, Lock, LockOpen, Search, ShieldCheck, SkipForward, Table2, X } from 'lucide-react';
+import { ChevronLeft, LayoutList, Lock, LockOpen, Search, ShieldCheck, Table2, X } from 'lucide-react';
 import { useContexto } from '../../store/contexto';
 import { estadoOficina } from '../../domain/bloqueo';
 import { normalizar } from '../../domain/text';
@@ -8,10 +8,10 @@ import type { FilaOficina } from '../../domain/oficina';
 import type { Id } from '../../domain/types';
 import { Segmentado, Sim, fmt, fmtFecha } from '../../components/ui';
 import { OficinaContext, useFilas, useModoOficina, type CtxOficina } from './contextoOficina';
-import { FILTROS, TAREAS, TAREA_POR_ID, aplicaFiltro, tareasPendientes, type Filtro, type Tarea } from './tareas';
+import { FILTROS, TAREAS, TAREA_POR_ID, aplicaFiltro, siguientePendiente, tareasPendientes, type Filtro, type Tarea } from './tareas';
 import { EstadoRevision } from './PanelItinerarios';
 import { ListaRegistros } from './ListaRegistros';
-import { PanelRevision } from './PanelRevision';
+import { PanelRevision, type Pestana } from './PanelRevision';
 import { VistaTareas } from './VistaTareas';
 import { ModalCerrarRevision, ModalCronologia, ModalReabrir, ModalValidacion } from './ModalesOficina';
 import '../../styles/oficina-b2.css';
@@ -29,6 +29,8 @@ export default function EspacioOficina({ municipal = false }: { municipal?: bool
   const soloSinIt = params.get('sinIt') === '1';
   const [q, setQ] = useState('');
   const [modo, setModo] = useModoOficina();
+  const [ampliada, setAmpliada] = useState(false);
+  const [pestana, setPestana] = useState<Pestana>(() => (tarea === 'digital' ? 'digital' : tarea === 'incidencias' ? 'conciliacion' : 'ficha'));
   const [modal, setModal] = useState<'cerrar' | 'reabrir' | 'validar' | 'cronologia' | null>(null);
   const filasIt = useFilas(it?.id);
   const estado = it ? estadoOficina(db, it.id) : 'en-revision';
@@ -70,19 +72,16 @@ export default function EspacioOficina({ municipal = false }: { municipal?: bool
     const i = Math.max(0, Math.min(filas.length - 1, idx + d));
     if (filas[i]) elegir(filas[i].localId);
   };
-  const siguientePendiente = () => {
-    const n = filas.length;
-    for (let k = 1; k <= n; k++) {
-      const f = filas[(Math.max(idx, -1) + k) % n];
-      if (f && tareasPendientes(f).length) return elegir(f.localId);
-    }
+  const irSiguientePendiente = () => {
+    const f = siguientePendiente(filas, idx, tarea);
+    if (f) elegir(f.localId);
   };
   const cierre = it ? [...(db.oficinaItinerarios[it.id]?.historial ?? [])].reverse().find((h) => h.accion !== 'validar') : undefined;
   const pendientesTotales = filasIt.filter((f) => tareasPendientes(f).length || f.situacion === 'pendiente-visita').length;
 
   return (
     <OficinaContext.Provider value={ctx}>
-      <div className={`ofi-espacio modo-${modo}`}>
+      <div className={`ofi-espacio modo-${modo} ${modo === 'tareas' && ampliada ? 'ficha-ampliada' : ''}`}>
         <header className="ofi-cab">
           <Link to="/oficina" className="btn s fantasma" aria-label="Volver a los itinerarios"><ChevronLeft size={15} /> Itinerarios</Link>
           <div className="ofi-cab-tit">
@@ -107,7 +106,7 @@ export default function EspacioOficina({ municipal = false }: { municipal?: bool
           />
           {it && !bloqueado && <button className="btn s" onClick={() => setModal('cerrar')}><Lock size={13} /> Cerrar revisión (provisional)</button>}
           {it && itCerrado && <button className="btn s" onClick={() => setModal('reabrir')}><LockOpen size={13} /> Reabrir</button>}
-          {it && <button className="btn s fantasma" onClick={() => setModal('validar')} title="Requiere los controles del bloque C"><ShieldCheck size={13} /> Validación definitiva</button>}
+          {it && <button className="btn s fantasma" onClick={() => setModal('validar')} title="Requiere los controles del bloque C" aria-label="Validación definitiva"><ShieldCheck size={13} /> <span className="ofi-validar-txt">Validación definitiva</span></button>}
         </header>
 
         {campanaCerrada && (
@@ -152,29 +151,25 @@ export default function EspacioOficina({ municipal = false }: { municipal?: bool
         {def.aviso && <div className="t-info" style={{ margin: '0 12px 8px' }}>{def.aviso}</div>}
 
         {modo === 'tareas' ? (
-          <VistaTareas tarea={tarea} filas={filas} todas={filasIt} sel={filaSel?.localId ?? null} onSel={elegir} onCronologia={(id) => { elegir(id); setModal('cronologia'); }} />
+          <VistaTareas tarea={tarea} filas={filas} todas={filasIt} sel={filaSel?.localId ?? null} onSel={elegir} pestana={pestana} onPestana={setPestana} ampliada={ampliada} onAmpliada={setAmpliada} onCronologia={(id) => { elegir(id); setModal('cronologia'); }} />
         ) : (
           <div className="ofi-establecimiento">
             <ListaRegistros filas={filas} sel={filaSel?.localId ?? null} onSel={elegir} etiqueta={`Registros · ${def.titulo}`} />
             <div className="ofi-ficha">
               {filaSel ? (
                 <>
-                  <div className="ofi-ficha-nav">
-                    <span className="muted mono">{idx >= 0 ? `${idx + 1} / ${filas.length}` : 'fuera del filtro'}</span>
-                    <span className="esp" />
-                    {filaSel.cronologiaIncierta.length > 0 && <button className="btn s" onClick={() => setModal('cronologia')}><Clock size={13} /> Asignar fechas</button>}
-                    <span className="muted" style={{ fontSize: 12 }}>Pendiente: {tareasPendientes(filaSel).map((t) => TAREA_POR_ID[t].titulo).join(', ') || 'nada'}</span>
-                    <button className="btn s primario" onClick={siguientePendiente}><SkipForward size={13} /> Siguiente pendiente</button>
-                  </div>
                   <PanelRevision
                     key={filaSel.localId}
                     variante="pagina"
                     fila={filaSel}
-                    pestanaInicial={tarea === 'digital' ? 'digital' : tarea === 'incidencias' ? 'conciliacion' : 'ficha'}
+                    pestana={pestana}
+                    onPestana={setPestana}
                     onCerrar={() => elegir(null)}
                     onAnterior={() => mover(-1)}
                     onSiguiente={() => mover(1)}
-                    posicion=""
+                    onSiguientePendiente={irSiguientePendiente}
+                    onCronologia={() => setModal('cronologia')}
+                    posicion={idx >= 0 ? `${idx + 1} / ${filas.length}` : 'fuera del filtro'}
                   />
                 </>
               ) : (

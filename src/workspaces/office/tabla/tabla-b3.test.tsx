@@ -271,8 +271,8 @@ describe('B3 · columnas, ficha y campañas cerradas', () => {
     tecla(grid, 'ArrowDown');
     tecla(grid, 'Enter', { ctrlKey: true });
     const panel = screen.getByRole('complementary', { name: 'Revisión del registro' });
-    expect(within(panel).getByRole('button', { name: 'Histórico' })).toBeInTheDocument();
-    expect(within(panel).getByRole('button', { name: /Conciliación/ })).toBeInTheDocument();
+    expect(within(panel).getByRole('tab', { name: 'Histórico' })).toBeInTheDocument();
+    expect(within(panel).getByRole('tab', { name: /Conciliación/ })).toBeInTheDocument();
     expect(grid).toBeInTheDocument();
   });
 

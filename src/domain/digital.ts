@@ -41,8 +41,31 @@ export const VARIABLES_DIGITALES: DefVariable[] = [
   { id: 'instagram', etiqueta: 'Instagram', tipo: 'respuesta', obligatoria: true },
   { id: 'seguidoresInstagram', etiqueta: 'Seguidores Instagram', tipo: 'numero', depende: 'instagram', obligatoria: true, rango: [0, 1e9] },
   { id: 'facebook', etiqueta: 'Facebook', tipo: 'respuesta', obligatoria: true },
+  { id: 'seguidoresFacebook', etiqueta: 'Seguidores Facebook', tipo: 'numero', depende: 'facebook', obligatoria: true, rango: [0, 1e9] },
+  { id: 'twitter', etiqueta: 'Twitter / X', tipo: 'respuesta', obligatoria: true },
+  { id: 'seguidoresTwitter', etiqueta: 'Seguidores Twitter / X', tipo: 'numero', depende: 'twitter', obligatoria: true, rango: [0, 1e9] },
   { id: 'otrasRedes', etiqueta: 'Otras redes', tipo: 'respuesta', obligatoria: false, admiteNa: true },
 ];
+/**
+ * Grupos de presentación (procedimiento 2026): web y Google / redes sociales. «Valoración media»
+ * y «Otras redes» no figuran en el procedimiento 2026; se conservan a la espera de decisión.
+ */
+export const GRUPOS_DIGITALES: { titulo: string; variables: VariableDigital[] }[] = [
+  { titulo: 'Web y Google', variables: ['web', 'ventaOnline', 'googleBusiness', 'numResenas', 'respondeResenas', 'valoracion'] },
+  { titulo: 'Redes sociales', variables: ['instagram', 'seguidoresInstagram', 'facebook', 'seguidoresFacebook', 'twitter', 'seguidoresTwitter', 'otrasRedes'] },
+];
+
+/** «Nº redes» del procedimiento 2026 = Instagram + Facebook + Twitter. null si alguna sigue pendiente. */
+export function numeroRedes(rev: RevisionDigital | undefined): number | null {
+  let n = 0;
+  for (const v of ['instagram', 'facebook', 'twitter'] as VariableDigital[]) {
+    const r = rev?.datos[v]?.respuesta ?? 'pendiente';
+    if (r === 'pendiente') return null;
+    if (r === 'si') n++;
+  }
+  return n;
+}
+
 export const DEF_VARIABLE: Record<VariableDigital, DefVariable> = Object.fromEntries(VARIABLES_DIGITALES.map((v) => [v.id, v])) as Record<VariableDigital, DefVariable>;
 
 const resp = (r: RevisionDigital | undefined, v: VariableDigital): Respuesta => r?.datos[v]?.respuesta ?? 'pendiente';

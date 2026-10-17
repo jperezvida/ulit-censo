@@ -291,7 +291,7 @@ export type Respuesta = 'si' | 'no' | 'pendiente' | 'na' | 'sin-info';
 
 export type VariableDigital =
   | 'web' | 'ventaOnline' | 'googleBusiness' | 'valoracion' | 'numResenas' | 'respondeResenas'
-  | 'instagram' | 'seguidoresInstagram' | 'facebook' | 'otrasRedes';
+  | 'instagram' | 'seguidoresInstagram' | 'facebook' | 'seguidoresFacebook' | 'twitter' | 'seguidoresTwitter' | 'otrasRedes';
 
 /** Una variable digital de un negocio en una campaña, con su trazabilidad. */
 export interface DatoDigital {

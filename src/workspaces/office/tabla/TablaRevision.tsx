@@ -100,6 +100,8 @@ export function TablaRevision({ filas, tarea, sel, onSel, onAbrirFicha, onCronol
   const [mensaje, setMensaje] = useState<{ t: string; tipo: 'error' | 'info' | 'ok' } | null>(null);
   const [panelCols, setPanelCols] = useState(false);
   const ultimoIndice = useRef(0);
+  /** El cursor se movió porque el registro activo salió de la vista (no por la persona). */
+  const movidoSolo = useRef(false);
   const grid = useRef<HTMLDivElement>(null);
   const scroll = useRef<HTMLDivElement>(null);
 
@@ -114,6 +116,7 @@ export function TablaRevision({ filas, tarea, sel, onSel, onAbrirFicha, onCronol
     const colOk = cols.some((c) => c.id === activo.c) ? activo.c : cols[0].id;
     if (!indice.has(activo.f)) {
       const f = filasOrd[Math.min(ultimoIndice.current, filasOrd.length - 1)];
+      movidoSolo.current = true; // no arrastra a la ficha abierta: la persona decide cuándo avanzar
       setActivo({ f: f.localId, c: colOk });
       setEdicion(null);
     } else if (colOk !== activo.c) setActivo({ ...activo, c: colOk });
@@ -122,6 +125,10 @@ export function TablaRevision({ filas, tarea, sel, onSel, onAbrirFicha, onCronol
   // Sincroniza el registro seleccionado (URL) con la fila activa, sin hacerlo en cada pulsación.
   useEffect(() => {
     if (!activo || activo.f === sel || !indice.has(activo.f)) return;
+    if (movidoSolo.current) {
+      movidoSolo.current = false;
+      return;
+    }
     const t = setTimeout(() => onSel(activo.f), 250);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -485,9 +492,10 @@ export function TablaRevision({ filas, tarea, sel, onSel, onAbrirFicha, onCronol
               setMensaje(ok ? { t: `Presencia digital verificada · ${filaActiva.nombre}`, tipo: 'ok' } : { t: 'No se puede verificar: revisa las variables pendientes o incoherentes (ver ficha).', tipo: 'error' });
               enfocar();
             }}
-            title="Verifica la revisión digital del establecimiento activo (exige variables completas y coherentes)"
+            title={`Verifica solo la presencia digital de ${filaActiva.nombre} (${filaActiva.calle} ${filaActiva.numero ?? 's/n'}); no aprueba el registro`}
+            aria-label={`Verificar presencia digital de ${filaActiva.nombre}`}
           >
-            <ShieldCheck size={13} /> Verificar digital
+            <ShieldCheck size={13} /> Verificar digital · <b className="tab-verificar-nombre">{filaActiva.nombre}</b>
           </button>
         )}
         <button className="btn s fantasma" disabled={!ultimaOp} onClick={deshacer} title={ultimaOp ? `Deshacer: ${ultimaOp} (Ctrl+Z)` : 'Nada que deshacer'} aria-label="Deshacer"><Undo2 size={13} /></button>
