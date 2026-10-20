@@ -16,7 +16,9 @@
     "callejero": "node scripts/descargar-callejero.mjs",
     "perfilar": "tsx scripts/perfilar-excel.ts",
     "comprobar-datos": "node scripts/comprobar-datos-reales.mjs",
-    "hooks": "git config core.hooksPath .githooks"
+    "hooks": "git config core.hooksPath .githooks",
+    "analizar": "tsx scripts/analizar-xlsx.ts",
+    "xlsx-ficticio": "tsx scripts/generar-xlsx-ficticio.ts"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.1.0",

@@ -157,3 +157,4 @@ datos-reales/
 *.xlsb
 *.ods
 *.perfil.json
+*.informe-estructural.json

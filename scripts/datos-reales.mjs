@@ -6,6 +6,7 @@ export const PATRONES_PROHIBIDOS = [
   /(^|\/)datos-reales\//i,
   /\.(xlsx|xls|xlsm|xlsb|ods)$/i,
   /\.perfil\.json$/i, // los perfiles se revisan y se incorporan a mano, con otro nombre
+  /\.informe-estructural\.json$/i, // informes de C1a: se generan junto al Excel, fuera del repositorio
 ];
 
 /** Excepciones explícitas (ninguna por ahora: las pruebas generan sus XLSX en memoria). */

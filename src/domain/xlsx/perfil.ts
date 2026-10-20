@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
 import { normalizar } from '../text';
+import { leerLibro } from './lector';
 
 /**
  * Perfil ESTRUCTURAL de un libro Excel.
@@ -198,11 +199,9 @@ async function sha256(datos: Uint8Array): Promise<string> {
   return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+/** Carga un libro con el lector de C1a (admite también SpreadsheetML con prefijo de espacio de nombres). */
 export async function cargarLibro(datos: ArrayBuffer | Uint8Array): Promise<ExcelJS.Workbook> {
-  const wb = new ExcelJS.Workbook();
-  const buf = datos instanceof Uint8Array ? datos : new Uint8Array(datos);
-  await wb.xlsx.load(buf as unknown as ArrayBuffer);
-  return wb;
+  return (await leerLibro(datos)).libro;
 }
 
 export async function perfilarXlsx(datos: ArrayBuffer | Uint8Array, nombreArchivo: string, opciones: OpcionesPerfil = {}): Promise<PerfilEstructural> {

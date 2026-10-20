@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, FileCheck2, FileSearch, FileSpreadsheet, FileUp, FlaskConical, GitMerge, Map as MapIcon, Upload } from 'lucide-react';
+import { ArrowRight, FileCheck2, FileScan, FileSearch, FileSpreadsheet, FileUp, FlaskConical, GitMerge, Map as MapIcon, Upload } from 'lucide-react';
 import { InspectorExcel } from './InspectorExcel';
+import { AnalisisPrevio } from './AnalisisPrevio';
 import { useContexto } from '../../store/contexto';
 import { useStore } from '../../store/store';
 import { CAMPOS, compararImportacion, interpretarFilas, mapearCabecera, parsearCSV, type CampoCanonico, type ClaseDiff, type FilaDiff } from '../../domain/importacion';
@@ -35,6 +36,7 @@ export default function DatosPage() {
   const [sel, setSel] = useState<string | null>(null);
   const [asistente, setAsistente] = useState(false);
   const [inspector, setInspector] = useState(false);
+  const [analisis, setAnalisis] = useState(false);
   const imps = useMemo(() => Object.values(db.importaciones).filter((i) => i.municipioId === municipio.id).sort((a, b) => b.fecha.localeCompare(a.fecha)), [db.importaciones, municipio.id]);
   const imp = sel ? db.importaciones[sel] : imps[0];
 
@@ -47,6 +49,7 @@ export default function DatosPage() {
           <p>Todo lo que entra se revisa antes de incorporarse. Los archivos originales se conservan fila a fila; una fila que desaparece nunca se interpreta como un cierre.</p>
         </div>
         <button className="btn" onClick={() => setInspector(true)}><FileSearch size={16} /> Inspeccionar estructura de Excel</button>
+        <button className="btn" onClick={() => setAnalisis(true)}><FileScan size={16} /> Análisis previo de importación</button>
         <button className="btn primario" onClick={() => setAsistente(true)}><Upload size={16} /> Nueva importación</button>
       </div>
 
@@ -73,6 +76,7 @@ export default function DatosPage() {
       </div>
       {asistente && campana && <Asistente onCerrar={() => setAsistente(false)} />}
       {inspector && <InspectorExcel onCerrar={() => setInspector(false)} />}
+      {analisis && <AnalisisPrevio municipioId={municipio.id} onCerrar={() => setAnalisis(false)} />}
     </div>
   );
 }

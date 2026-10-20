@@ -2,6 +2,12 @@
 
 > **Estado:** análisis previo. **No** se ha programado C1, C2 ni C3, ni se ha modificado el exportador provisional.
 >
+> **Revisión tras las observaciones de la Cátedra (C1a autorizado):**
+> 1. Los originales de Medina 2025, Valladolid 2024 y Medina 2026 usan etiquetas OOXML **sin prefijo**. El prefijo `x:` procede del libro ficticio de pruebas. El lector de C1a usa ExcelJS y solo adapta, de forma acotada y probada, el XML válido con prefijo. Véase [`C1A-COMPATIBILIDAD.md`](C1A-COMPATIBILIDAD.md).
+> 2. Las cifras de clasificaciones del libro ficticio son de una **simulación**: no se extrapolan al censo real.
+> 3. Una dirección repetida con negocios distintos **no demuestra** que existan dos locales físicos. Se conservan todas las filas y la correspondencia física queda pendiente de conciliación cuando no sea inequívoca (sección 8 corregida).
+> 4. La conservación de los archivos originales queda sin implementar hasta aprobar una propuesta (sección 10 de `C1A-COMPATIBILIDAD.md`).
+>
 > **Fuentes:**
 > - `CENSO_MEDINA_2025_FICTICIO_PARA_CLAUDE.xlsx`: 889 registros **ficticios**, analizado fuera del repositorio y no incorporado a él.
 > - El perfil estructural sin registros del Excel real de Medina 2025 y de un itinerario de Medina 2026, ya aportado en la fase 2.
@@ -17,13 +23,13 @@
    - **Tablas Dinámicas**: resumen estático, sin fórmulas ni caché de tabla dinámica.
 
    Solo «Datos» es fuente de registros.
-2. **El lector actual no abre el libro.** El inspector de B0 (ExcelJS) falla con «Cannot read properties of undefined (reading 'sheets')».
+2. **El lector de B0 no abría el libro ficticio** (corregido en C1a). ExcelJS falla con «Cannot read properties of undefined (reading 'sheets')».
    - La causa comprobada es el XML de SpreadsheetML con **prefijo de espacio de nombres** (`<x:worksheet>`, `<x:workbook>`). Es válido en OOXML y lo generan herramientas como Open XML SDK.
    - Si se quitan los prefijos (sobre una copia), ExcelJS lo lee. Las rutas absolutas de las relaciones (`/xl/workbook.xml`) no son el problema.
    - Las cadenas están como `t="str"` y no como cadenas compartidas.
-   - **C1 necesita un lector tolerante a estas variantes.**
+   - **Los originales de la Cátedra no usan prefijo** (comprobado por la Cátedra): el prefijo procede del libro ficticio. C1a mantiene ExcelJS con una adaptación acotada para el XML con prefijo.
 3. **El libro reproduce las anomalías del perfil real.** Los mismos valores imposibles en campos 0/1 (4, 23, 247, 379) y las mismas variantes de escritura indican que es un buen banco de pruebas.
-4. **De los 609 locales ocupados, solo unos 232 (38 %) tienen una clasificación directamente válida en el catálogo 2026.**
+4. **En el libro FICTICIO (simulación, no extrapolable al censo real), de los 609 locales ocupados unos 232 tienen una clasificación directamente válida en el catálogo 2026.**
    - Otros 178 son diferencias de estructura, no errores: en Servicios, la «Actividad» de 2025 corresponde a un ejemplo o descripción en 2026.
    - Unos 199 tienen errores o lagunas reales.
 5. **El importador CSV provisional (B0/B2) no debe reutilizarse tal cual.** Hay tres problemas:
@@ -93,7 +99,9 @@ El importador debe comprobarlas igualmente, porque el perfil real muestra filas 
   - Se excluye siempre como origen.
   - En los archivos reales puede contener cachés desactualizadas: como mucho se cita en el informe de importación como «hoja de resumen ignorada».
 
-## 4. Clasificaciones de 2025 frente al catálogo 2026 (609 ocupados)
+## 4. Clasificaciones de 2025 frente al catálogo 2026 (609 ocupados del libro ficticio)
+
+> Cifras de una **simulación**: sirven para diseñar las reglas, no para estimar la calidad del censo real.
 
 | Situación | Locales | Tratamiento |
 |---|---:|---|
@@ -212,19 +220,19 @@ interface ConfigTerritorial {
   - `Nº redes` se recalcula y se conserva el original. Si difieren, se señala.
 - **Duplicados aparentes:**
   - **Nunca** hay deduplicación automática.
-  - Misma calle y número **con nombres distintos**: unidades comerciales distintas. Se crean locales separados con el vínculo «misma dirección».
-  - Misma calle, número y nombre: «posible duplicado». Se importan ambos y lo resuelve la conciliación de B2.
+  - Misma calle y número **con nombres distintos**: pueden ser locales distintos, una sustitución de actividad o un duplicado. **No demuestra que haya dos locales físicos.** Se conservan ambas filas de origen y la correspondencia física queda **pendiente de conciliación** cuando no sea inequívoca.
+  - Misma calle, número y nombre: «posible duplicado». Se conservan ambas filas y lo resuelve la conciliación de B2.
   - Fila idéntica en las 27 columnas: «duplicado exacto probable», con decisión humana antes de aplicar.
   - Se conserva siempre el número de fila de origen y el orden.
 
 ## 9. Propuesta técnica para C1 (compatible con B0–B5)
 
-1. **Lector OOXML tolerante (solo lectura).** Basado en `jszip` o `fflate` (ya en `node_modules`) y un análisis XML que respete los espacios de nombres. Debe leer:
+1. **Lector (solo lectura).** *Decidido en C1a tras comprobar ExcelJS:* se mantiene ExcelJS, con una adaptación acotada y probada solo para el XML con prefijo. Lo que sigue era la alternativa inicial, que ya no se aplica. Lector propio basado en `jszip` o `fflate` y un análisis XML que respete los espacios de nombres. Debe leer:
    - valores, tipos y formatos de número;
    - hojas visibles u ocultas y celdas combinadas.
 
    ExcelJS se mantiene para escribir (C3). Alternativa: normalizar los prefijos en memoria sobre una copia antes de ExcelJS, que es más frágil. Se descarta SheetJS por su distribución fuera de npm.
-2. **Archivo original intacto.** Se guardan nombre, tamaño, SHA-256 y los bytes en el almacenamiento local del navegador, **nunca en el repositorio**. Cada importación referencia la huella (`Importacion.huella`, ya existente).
+2. **Archivo original intacto.** Se registran nombre, tamaño y SHA-256, nunca en el repositorio. *Revisado:* no se guardan los bytes hasta aprobar una propuesta de capacidad, seguridad, conservación y recuperación (sección 10 de `C1A-COMPATIBILIDAD.md`; `localStorage` no es adecuado).
 3. **Detección de la hoja por estructura.**
    - Se puntúa cada hoja según cuántas cabeceras normalizadas del perfil aparecen en sus primeras 10 filas.
    - No depende del nombre ni de la posición.
