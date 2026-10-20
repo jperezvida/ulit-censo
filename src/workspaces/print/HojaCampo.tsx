@@ -212,7 +212,7 @@ export default function HojaCampo() {
                             <tr key={l.id}>
                               <td className="nn">{d.numero ?? 's/n'}{d.sufijo ? ` ${d.sufijo}` : ''}</td>
                               <td>{neg?.nombre ?? <i>Vacío{oc?.metrosFachada ? ` (${oc.metrosFachada} m)` : ''}</i>}</td>
-                              {o.actividad && <td className="act">{rutaActividad(clasificacionEn(db, neg?.id, ref!)?.actividadId)[3]?.nombre ?? ''}</td>}
+                              {o.actividad && <td className="act">{rutaActividad(clasificacionEn(db, neg?.id, ref!)?.actividadId).at(-1)?.nombre ?? ''}</td>}
                               <td className="caja">☐</td>
                               <td className="caja">☐</td>
                               <td className="caja">☐</td>

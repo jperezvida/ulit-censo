@@ -4,7 +4,7 @@ import type {
   SituacionPrevia, VinculoHistorico,
 } from './types';
 
-export const VERSION_DATOS = 9;
+export const VERSION_DATOS = 10;
 
 /** "Base de datos" del prototipo: normalizada, serializable y persistida en el navegador. */
 export interface BaseDatos {

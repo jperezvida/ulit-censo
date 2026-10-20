@@ -1,4 +1,4 @@
-# ULIT Censo · Oficina rápida (B2 y B3)
+# ULIT Censo · Oficina rápida (B2, B3 y B4)
 
 Guía para probar la Oficina organizada por itinerarios y la tabla de revisión rápida. **Todos los datos son ficticios**: la demostración de Medina del Campo es simulada y el escenario de rendimiento usa un municipio inventado (Villaficticia).
 
@@ -99,13 +99,25 @@ Botón **Guion** (arriba a la derecha) → **Restablecer demo**.
 - **Sin separación obligatoria de funciones.** Quien categoriza puede hacer también la revisión final.
 - **Solo lectura en campañas cerradas.** Las campañas históricas o validadas se consultan, pero no se editan desde Oficina.
 
-## 6. Pendiente para B4 y B5
+## 6. Selector de actividades (B4 · catálogo 2026)
 
-- **B4 · Catálogo 2026 y autocompletado.**
-  - Catálogo depurado por estructura de grupo (Comercio, Hostelería y Restauración, Servicios), con excepciones y equivalencias.
-  - Autocompletado avanzado con búsqueda por niveles y sugerencia por nombre del negocio.
-  - Avisos de clasificación sospechosa.
-  - Hoy la columna «Actividad» usa la lista provisional del navegador.
+Las campañas de 2026 usan el catálogo oficial `clasificacion-2026@v1`, transcrito del documento «Clasificación Censo 2026» (no de las clasificaciones de 2025). La lista completa de categorías y las discrepancias pendientes están en [`CATALOGO-2026.md`](CATALOGO-2026.md), generado desde el código.
+
+- **Niveles según el grupo.** Comercio: grupo › grupo de comercio › subgrupo › actividad. Hostelería y Restauración: grupo › subgrupo › actividad. Servicios: grupo › subgrupo y, si procede, una descripción. No se fuerzan cuatro niveles.
+- **Buscar.** En la columna «Actividad», escribe parte del nombre, una palabra clave del documento («kebab», «bisutería», «tabaco») o un ejemplo («fisio»). No distingue mayúsculas, tildes ni singular/plural. Cada sugerencia muestra la ruta completa.
+- **Teclado.** ↑/↓ recorre · Enter elige y baja · Tab elige y avanza · Esc cancela. Sin ratón.
+- **Nombres ambiguos** («Otros», «Mascotas»): ninguna opción queda marcada; hay que elegir con ↑/↓.
+- **Descripción libre.** Si eliges un subgrupo con actividades (p. ej. «Carnes») se pide una breve descripción, que se guarda dentro del subgrupo. Los ejemplos de Servicios se guardan como descripción del subgrupo.
+- **Propuestas por el nombre** («Estanco nº 9» → Estancos; «Hotel San Antón» → Hotel). Aparecen con una bombilla y **no se aplican solas**. «Parafarmacia» no se equipara a Farmacias.
+- **Recientes y frecuentes.** Con el editor vacío aparecen las últimas usadas (reloj). Solo desempatan: nunca adelantan a una coincidencia mejor.
+- **Copiar y pegar.** Se copia el nombre, o la ruta completa si es ambiguo, más « · descripción». Un valor ambiguo o inexistente rechaza el pegado completo.
+- **Ficha.** Muestra los niveles según el grupo, el estado (confirmada o propuesta) y las propuestas por el nombre. «Partir de 2025» solo propone un equivalente de nombre idéntico y único, sin confirmar.
+- **Histórico.** 2025 conserva su catálogo y sus valores. Los datos guardados en el navegador (versión 9) se migran: una clasificación 2026 del catálogo anterior pasa a **propuesta sin confirmar con traza**, o se señala como incidencia si no hay equivalente. Nada confirmado se reasigna en silencio.
+
+## 7. Pendiente
+
+- **Decisiones de la Cátedra** sobre las discrepancias D01–D14 de `CATALOGO-2026.md`.
+- **Avisos de clasificación sospechosa** (previstos en el diseño de B4): no implementados en este bloque.
 - **B5 · Operaciones rápidas.**
   - Teclas de respuesta inmediata (1/0/N/?) sin abrir el editor y edición múltiple con acciones masivas.
   - «Partir de 2025» por filas y columnas «2025» de solo lectura.

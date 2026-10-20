@@ -1,5 +1,6 @@
 import { baseVacia, kCob, kNC, kRev, siguienteOrden, type BaseDatos } from '../domain/db';
 import { ACTIVIDADES_HOJA, buscarActividadPorNombre, rutaActividad } from '../domain/taxonomy';
+import { asignarCatalogos } from '../domain/migraciones';
 import { centroide, desplazarPerpendicular, distanciaM, puntoEnLinea } from '../domain/geo';
 import { claveCalle } from '../domain/text';
 import { ordenarPorProximidad } from '../domain/planificacion';
@@ -82,7 +83,8 @@ export function generarDemo(medina: SemillaMedina): BaseDatos {
   db.personas = Object.fromEntries(PERSONAS.map((p) => [p.id, p]));
   db = generarMedina(db, medina);
   db = generarValladolid(db);
-  return db;
+  // Las campañas de 2026 usan el catálogo oficial de clasificación (el 2025 sigue siendo ficticio).
+  return asignarCatalogos(db).db;
 }
 
 function generarMedina(db0: BaseDatos, { calles, fuente, detalleFuente }: SemillaMedina): BaseDatos {

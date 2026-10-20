@@ -16,7 +16,7 @@ import { nuevoVinculo, resolverVinculo } from './conciliacion';
 import { crearItinerario, marcarCalleRevisada, quitarDeAmbito, registrarOmision } from './itinerarios';
 import { compararImportacion, fechaDesdeExcel, interpretarFilas } from './importacion';
 import { aplicarResultadosPapel } from './aplicarImportacion';
-import { ACTIVIDADES_HOJA, hijosDe, TAXONOMIA } from './taxonomy';
+import { ACTIVIDADES_2026 as ACTIVIDADES_HOJA, hijosDe, NODOS_2026 as TAXONOMIA } from './taxonomy';
 import type { Id, LocalFisico, VariableDigital } from './types';
 
 const C25 = 'camp-medina-2025';

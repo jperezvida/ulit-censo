@@ -79,6 +79,8 @@ export interface Campana {
   /** Calles añadidas respecto a la campaña de referencia (ampliación territorial). */
   ampliacionCalleIds: Id[];
   campanaReferenciaId?: Id;
+  /** Catálogo de clasificación de la campaña (ausente = catálogo de demostración). */
+  catalogoId?: string;
   itinerariosPrevistos?: number;
   estados: { planificacion: FaseEstado; campo: FaseEstado; revision: FaseEstado; validacion: FaseEstado };
   procedencia: Procedencia;
@@ -322,8 +324,15 @@ export interface ClasificacionCampana {
   actividadId: Id;
   /** Breve descripción cuando la actividad no encaja en una predefinida (o para un subgrupo de Servicios). */
   descripcion?: string;
+  /** Catálogo del nodo elegido (ausente = catálogo de demostración). */
+  catalogoId?: string;
+  /**
+   * Traza de una migración de catálogo: de dónde viene la propuesta. Una clasificación migrada
+   * NUNCA queda confirmada automáticamente: requiere confirmación humana.
+   */
+  migracion?: { desdeActividadId: Id; desdeCatalogo: string; fecha: string; criterio: string; estabaConfirmada: boolean };
   /** importado: tal como venía · heredado: copiado de otra campaña como borrador · manual: decidido en oficina */
-  origen: 'importado' | 'heredado' | 'manual';
+  origen: 'importado' | 'heredado' | 'manual' | 'migrado';
   /** Solo una clasificación confirmada por una persona cuenta como «categorización revisada». */
   confirmada: boolean;
   porId?: Id;
@@ -361,6 +370,18 @@ export interface NodoActividad {
   nivel: 1 | 2 | 3 | 4; // 1 grupo de actividad · 2 grupo de comercio · 3 subgrupo · 4 actividad
   nombre: string;
   padreId?: Id;
+  /** Catálogo al que pertenece: 'demo' (ficticio) o 'clasificacion-2026@v1'. */
+  catalogo?: string;
+  /** Código del documento (C, H, S · A, EH, EP, OE). */
+  codigo?: string;
+  /** Texto de la columna «Descripción» del documento (orientativo). */
+  descripcion?: string;
+  /** Palabras clave AUTORIZADAS para buscar (descripción del documento y excepciones ICM). */
+  claves?: string[];
+  /** Ejemplos del documento que pueden usarse como descripción de la actividad. */
+  ejemplos?: string[];
+  /** Nota sobre excepciones del ICM asignadas a este nodo. */
+  excepcion?: string;
 }
 
 // ───────────────────────── Sincronización (SIMULADA) ─────────────────────────

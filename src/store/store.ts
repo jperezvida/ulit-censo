@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { get as idbGet, set as idbSet, del as idbDel } from 'idb-keyval';
 import { VERSION_DATOS, type BaseDatos } from '../domain/db';
+import { migrarV9aV10 } from '../domain/migraciones';
 import type { Id, Rol } from '../domain/types';
 import { cargarCallejeroMedina } from '../data/callejero';
 import { generarDemo } from '../data/semilla';
@@ -26,6 +27,10 @@ export interface PrefsOficina {
   modo: ModoOficina;
   /** Por tarea: columnas visibles (en orden) y columnas fijadas a la izquierda. */
   columnas?: Record<string, { visibles: string[]; fijas: string[] }>;
+  /** Clasificaciones usadas recientemente, por catálogo (más reciente primero). Solo desempatan. */
+  recientesActividad?: Record<string, string[]>;
+  /** Número de usos por clasificación y catálogo (no indica corrección). */
+  usosActividad?: Record<string, Record<string, number>>;
 }
 
 const PREFS_INICIALES: Prefs = {
@@ -113,6 +118,16 @@ export const useStore = create<Estado>((set, get) => ({
         const guardada = await idbGet<BaseDatos>(CLAVE_DB).catch(() => undefined);
         if (guardada && guardada.version === VERSION_DATOS) {
           set({ db: guardada, carga: { fase: 'lista', mensaje: '' } });
+          return;
+        }
+        // v9 → v10: catálogo oficial 2026 con migración trazable (no se pierden los datos de prueba).
+        if (guardada && guardada.version === 9) {
+          const { db: migrada, informes } = migrarV9aV10(guardada);
+          set({ db: migrada, carga: { fase: 'lista', mensaje: '' } });
+          persistir(migrada);
+          const p = informes.reduce((a, i) => a + i.propuestas.length, 0);
+          const s = informes.reduce((a, i) => a + i.sinEquivalencia.length, 0);
+          if (p || s) get().avisar(`Catálogo 2026 aplicado: ${p} clasificación(es) convertidas en propuestas sin confirmar · ${s} sin equivalente (revisar en Oficina)`, 'info');
           return;
         }
       } else {

@@ -4,7 +4,7 @@ import { generarDemo } from '../data/semilla';
 import { ErrorDominio, kNC, type BaseDatos } from './db';
 import { itinerariosDe, localesPrevios, ocupacionEn, ocupacionesDeLocal, revisionDe } from './consultas';
 import { confirmarSinCambios, registrarNuevoNegocio, registrarVacio, type Contexto } from './campo';
-import { clasificacionAnterior, clasificacionEn, clasificar, partirDeClasificacionAnterior } from './clasificacion';
+import { clasificacionAnterior, clasificacionEn, clasificar, equivalenteEn, partirDeClasificacionAnterior } from './clasificacion';
 import {
   confirmarDatoHeredado, esExigible, partirDeDigitalAnterior, problemasDigitales, registrarDatoDigital, revisionDigitalAnterior, verificarDigital,
 } from './digital';
@@ -12,7 +12,8 @@ import { codificarRespuesta, respuestaDesdeValor } from './respuesta';
 import { cerrarRevisionItinerario, comprobarEditable, itinerariosDeLocal, reabrirItinerario } from './bloqueo';
 import { actualizarRevisiones } from './oficina';
 import { alternarCalle } from './itinerarios';
-import { ACTIVIDADES_HOJA } from './taxonomy';
+import { ACTIVIDADES_2026 } from './taxonomy';
+import { ID_CATALOGO_2026 } from './catalogo2026';
 import type { Campana, Id, LocalFisico, Respuesta, VariableDigital } from './types';
 
 const C25 = 'camp-medina-2025';
@@ -25,13 +26,13 @@ beforeAll(() => {
 });
 
 /** Local de un itinerario, ocupado en 2025 por un negocio y todavía no visitado en 2026. */
-function localOcupadoSinVisitar(db: BaseDatos, itCodigo: string): { local: LocalFisico; negocioId: Id } {
+function localOcupadoSinVisitar(db: BaseDatos, itCodigo: string, saltar = 0): { local: LocalFisico; negocioId: Id } {
   const it = itinerariosDe(db, C26).find((i) => i.codigo === itCodigo)!;
   for (const t of it.tramos) {
     for (const l of localesPrevios(db, C25, t.calleId)) {
       const oc = ocupacionEn(db, l.id, C25);
       const visitado = Object.values(db.observaciones).some((o) => o.localId === l.id && o.campanaId === C26);
-      if (oc?.negocioId && !visitado && itinerariosDeLocal(db, C26, l.id).length === 1) return { local: l, negocioId: oc.negocioId };
+      if (oc?.negocioId && !visitado && itinerariosDeLocal(db, C26, l.id).length === 1 && saltar-- <= 0) return { local: l, negocioId: oc.negocioId };
     }
   }
   throw new Error('sin local disponible');
@@ -80,7 +81,7 @@ describe('el histórico original permanece intacto', () => {
   it('clasificar, cambiar negocio y revisar lo digital en 2026 no altera 2025 ni los registros de origen', () => {
     const antes = instantanea(base);
     const { local, negocioId } = localOcupadoSinVisitar(base, 'IT-B');
-    const otra = ACTIVIDADES_HOJA.find((a) => a.id !== clasificacionEn(base, negocioId, C25)?.actividadId)!;
+    const otra = ACTIVIDADES_2026[0];
     let db = clasificar(base, negocioId, C26, otra.id, 'p-marta');
     db = registrarDatoDigital(db, negocioId, C26, 'web', { respuesta: 'si' }, 'p-marta');
     db = registrarNuevoNegocio(db, ctx('2026-10-01'), local.id, 'Otro negocio');
@@ -91,13 +92,21 @@ describe('el histórico original permanece intacto', () => {
 
 describe('clasificación por campaña', () => {
   it('confirmar una actividad marca la categorización; copiar la anterior solo crea un borrador', () => {
-    const { local, negocioId } = localOcupadoSinVisitar(base, 'IT-B');
+    // 2025 usa el catálogo de demostración y 2026 el oficial: solo se hereda un equivalente de nombre idéntico.
+    let elegido: ReturnType<typeof localOcupadoSinVisitar> | undefined;
+    for (let k = 0; k < 40 && !elegido; k++) {
+      const x = localOcupadoSinVisitar(base, 'IT-B', k);
+      const a = clasificacionAnterior(base, x.negocioId, C26);
+      if (a && equivalenteEn(ID_CATALOGO_2026, a.actividadId)) elegido = x;
+    }
+    const { local, negocioId } = elegido!;
     const ant = clasificacionAnterior(base, negocioId, C26)!;
     expect(ant.campanaId).toBe(C25);
+    const equivalente = equivalenteEn(ID_CATALOGO_2026, ant.actividadId)!;
     let db = partirDeClasificacionAnterior(base, negocioId, C26, 'p-marta');
-    expect(clasificacionEn(db, negocioId, C26)).toMatchObject({ actividadId: ant.actividadId, origen: 'heredado', confirmada: false });
+    expect(clasificacionEn(db, negocioId, C26)).toMatchObject({ actividadId: equivalente, origen: 'heredado', confirmada: false, migracion: { desdeActividadId: ant.actividadId } });
     expect(revisionDe(db, C26, local.id).categorizacion).toBe('pendiente');
-    db = clasificar(db, negocioId, C26, ant.actividadId, 'p-marta');
+    db = clasificar(db, negocioId, C26, equivalente, 'p-marta');
     expect(clasificacionEn(db, negocioId, C26)).toMatchObject({ origen: 'manual', confirmada: true, porId: 'p-marta' });
     expect(revisionDe(db, C26, local.id).categorizacion).toBe('revisado');
   });
@@ -113,8 +122,10 @@ describe('clasificación por campaña', () => {
   it('rechaza nodos inexistentes y grupos con actividades por debajo sin descripción', () => {
     const { negocioId } = localOcupadoSinVisitar(base, 'IT-B');
     expect(() => clasificar(base, negocioId, C26, 'no-existe', 'p-marta')).toThrow(ErrorDominio);
-    expect(() => clasificar(base, negocioId, C26, 'a1-comercio', 'p-marta')).toThrow(/actividades por debajo/);
-    expect(() => clasificar(base, negocioId, C26, 'a1-comercio', 'p-marta', { descripcion: 'algo' })).toThrow(/actividades por debajo/);
+    expect(() => clasificar(base, negocioId, C26, 'c26.C', 'p-marta')).toThrow(/es un grupo/);
+    expect(() => clasificar(base, negocioId, C26, 'c26.C.A.carnes', 'p-marta')).toThrow(/actividades por debajo/);
+    // Una actividad del catálogo de demostración no vale en una campaña con catálogo 2026
+    expect(() => clasificar(base, negocioId, C26, 'a1-comercio', 'p-marta', { descripcion: 'algo' })).toThrow(/no pertenece al catálogo/);
   });
 });
 
@@ -221,7 +232,7 @@ describe('bloqueo de itinerarios con la revisión cerrada', () => {
     const itA = itinerariosDe(base, C26).find((i) => i.codigo === 'IT-A')!;
     const db = cerrarRevisionItinerario(base, itA.id, 'p-elena');
     expect(() => confirmarSinCambios(db, ctx('2026-10-01'), a.local.id)).toThrow(/IT-A tiene la revisión cerrada/);
-    expect(() => clasificar(db, a.negocioId, C26, ACTIVIDADES_HOJA[0].id, 'p-marta')).toThrow(ErrorDominio);
+    expect(() => clasificar(db, a.negocioId, C26, ACTIVIDADES_2026[0].id, 'p-marta')).toThrow(ErrorDominio);
     expect(() => registrarDatoDigital(db, a.negocioId, C26, 'web', { respuesta: 'si' }, 'p-marta')).toThrow(ErrorDominio);
     expect(() => alternarCalle(db, itA.id, itA.tramos[0].calleId)).toThrow(/cerrado o validado/);
     // otro itinerario de la misma campaña sigue editable
@@ -257,8 +268,8 @@ describe('aislamiento entre itinerarios', () => {
     const itB = itinerariosDe(base, C26).find((i) => i.codigo === 'IT-B')!;
     const alcance = { itinerarioId: itB.id };
     expect(() => actualizarRevisiones(base, C26, [a.local.id], { pendienteComprobacion: true }, alcance)).toThrow(/no pertenecen a IT-B/);
-    expect(() => clasificar(base, a.negocioId, C26, ACTIVIDADES_HOJA[0].id, 'p-marta', { alcance })).toThrow(ErrorDominio);
-    const db = clasificar(base, b.negocioId, C26, ACTIVIDADES_HOJA[0].id, 'p-marta', { alcance });
+    expect(() => clasificar(base, a.negocioId, C26, ACTIVIDADES_2026[0].id, 'p-marta', { alcance })).toThrow(ErrorDominio);
+    const db = clasificar(base, b.negocioId, C26, ACTIVIDADES_2026[0].id, 'p-marta', { alcance });
     // el registro de IT-A queda exactamente igual
     expect(db.revisiones[`${C26}|${a.local.id}`]).toEqual(base.revisiones[`${C26}|${a.local.id}`]);
     expect(clasificacionEn(db, a.negocioId, C26)).toEqual(clasificacionEn(base, a.negocioId, C26));

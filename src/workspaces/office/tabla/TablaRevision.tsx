@@ -10,9 +10,12 @@ import { Puntos } from '../ListaRegistros';
 import { observarRectConRespaldo } from '../virtual';
 import type { Tarea } from '../tareas';
 import {
-  ACTIVIDADES_SELECCIONABLES, COLUMNAS, COLUMNAS_TAREA, COLUMNA_POR_ID, ErrorCeldas, aTSV, aplicarCambiosCeldas, motivoNoEditable, parseTSV,
+  COLUMNAS, COLUMNAS_TAREA, COLUMNA_POR_ID, ErrorCeldas, aTSV, aplicarCambiosCeldas, motivoNoEditable, parseTSV,
   type CambioCelda, type Columna, type CtxCelda,
 } from './columnas';
+import { BuscadorClasificacion } from '../BuscadorClasificacion';
+import { catalogoDeCampana } from '../../../domain/clasificacion';
+import { textoClasificacion } from '../../../domain/buscador';
 import '../../../styles/tabla-revision.css';
 
 const ALTO = 34;
@@ -228,14 +231,16 @@ export function TablaRevision({ filas, tarea, sel, onSel, onAbrirFicha, onCronol
     setEdicion({ texto: inicial ?? original, original });
   };
 
-  const confirmar = (despues: Despues) => {
+  /** Confirma la edición (con `textoElegido` cuando lo aporta un editor especial, p. ej. el buscador). */
+  const confirmar = (despues: Despues, textoElegido?: string) => {
     if (!edicion || !filaActiva || !colActiva || r0 === undefined) return;
-    const sinCambio = edicion.texto === edicion.original;
+    const texto = textoElegido ?? edicion.texto;
+    const sinCambio = texto === edicion.original;
     // Re-confirmar una actividad importada o heredada la deja confirmada.
     const confirmaClasificacion = colActiva.id === 'actividad' && !!filaActiva.clasificacion && !filaActiva.clasificacion.confirmada;
     const siguiente = despues === 'abajo' ? filasOrd[Math.min(r0 + 1, filasOrd.length - 1)]?.localId : undefined;
     if (!sinCambio || confirmaClasificacion) {
-      const ok = ejecutar([{ fila: filaActiva, col: colActiva, texto: edicion.texto }], `${colActiva.titulo}${edicion.texto ? `: ${edicion.texto}` : ' vaciado'}`);
+      const ok = ejecutar([{ fila: filaActiva, col: colActiva, texto }], `${colActiva.titulo}${texto ? `: ${texto}` : ' vaciado'}`);
       if (!ok) return; // el editor sigue abierto para corregir
     }
     setEdicion(null);
@@ -379,6 +384,8 @@ export function TablaRevision({ filas, tarea, sel, onSel, onAbrirFicha, onCronol
       },
       dobleClic: () => ultimo.current.empezarEdicion(),
       cambiarEdicion: (texto) => setEdicion((e) => (e ? { ...e, texto } : e)),
+      confirmarCon: (texto, despues) => ultimo.current.confirmar(despues, texto),
+      cancelarEdicion: () => ultimo.current.cancelar(),
       teclaEditor: (e) => {
         e.stopPropagation();
         const u = ultimo.current;
@@ -461,9 +468,6 @@ export function TablaRevision({ filas, tarea, sel, onSel, onAbrirFicha, onCronol
             </div>
           )}
         </div>
-        <datalist id="tab-catalogo">
-          {ACTIVIDADES_SELECCIONABLES.map((a) => <option key={a.id} value={a.nombre} />)}
-        </datalist>
       </div>
 
       <div className="tab-estado" role="status" aria-live="polite">
@@ -537,6 +541,8 @@ interface AccionesFila {
   pulsarCelda: (localId: Id, colId: string, shift: boolean) => void;
   dobleClic: () => void;
   cambiarEdicion: (texto: string) => void;
+  confirmarCon: (texto: string, despues: Despues) => void;
+  cancelarEdicion: () => void;
   teclaEditor: (e: KE<HTMLInputElement>) => void;
   abrirFicha: (id: Id) => void;
   cronologia: (id: Id) => void;
@@ -592,12 +598,21 @@ const FilaTabla = memo(function FilaTabla({ f, indice, top, cols, izq, nFijas, a
             }}
             onDoubleClick={acc.dobleClic}
           >
-            {esCelda && edicion ? (
+            {esCelda && edicion && col.editor === 'actividad' ? (
+              <BuscadorClasificacion
+                flotante
+                catalogo={catalogoDeCampana(ctx.db, ctx.campanaId)}
+                nombreNegocio={f.vacio ? undefined : f.nombre}
+                inicial={edicion.texto}
+                etiqueta={`Editar ${col.titulo}`}
+                onElegir={(e, tecla) => acc.confirmarCon(textoClasificacion(e.opcion.nodoId, e.descripcion), tecla === 'tab' ? 'derecha' : tecla === 'shift-tab' ? 'izquierda' : tecla === 'clic' ? 'nada' : 'abajo')}
+                onCancelar={acc.cancelarEdicion}
+              />
+            ) : esCelda && edicion ? (
               <input
                 className="tab-editor"
                 autoFocus
                 aria-label={`Editar ${col.titulo}`}
-                list={col.editor === 'actividad' ? 'tab-catalogo' : undefined}
                 value={edicion.texto}
                 inputMode={col.editor === 'numero' ? 'decimal' : undefined}
                 onChange={(e) => acc.cambiarEdicion(e.target.value)}

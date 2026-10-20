@@ -8,9 +8,12 @@ import { filasOficina } from '../../../domain/oficina';
 import { cerrarRevisionItinerario } from '../../../domain/bloqueo';
 import { kNC, kRev, type BaseDatos } from '../../../domain/db';
 import OficinaPage from '../OficinaPage';
-import { ACTIVIDADES_SELECCIONABLES, COLUMNA_POR_ID, ErrorCeldas, aplicarCambiosCeldas, parseNumeroDigital, parseRespuesta } from './columnas';
+import { COLUMNA_POR_ID, ErrorCeldas, aplicarCambiosCeldas, parseNumeroDigital, parseRespuesta } from './columnas';
+import { ACTIVIDADES_2026 } from '../../../domain/taxonomy';
+import { textoClasificacion } from '../../../domain/buscador';
 
-const ACT = ACTIVIDADES_SELECCIONABLES.filter((a) => /^[\p{L} ]+$/u.test(a.nombre)).slice(0, 4).map((a) => a.nombre);
+/** Actividades del catálogo 2026 con nombre único (se pueden escribir y pegar sin ruta). */
+const ACT = ACTIVIDADES_2026.filter((a) => /^[\p{L} ]+$/u.test(a.nombre) && textoClasificacion(a.id) === a.nombre).slice(0, 4).map((a) => a.nombre);
 
 let esc: ReturnType<typeof escenarioOficina>;
 const db = () => useStore.getState().db!;
@@ -89,12 +92,12 @@ describe('B3 · tabla de revisión rápida', () => {
     tecla(editor(), 'Escape');
     expect(editor()).toBeNull();
     expect(useStore.getState().pilaDeshacer).toHaveLength(3);
-    // Un valor inexistente se rechaza y el editor sigue abierto
+    // Un valor inexistente no se acepta: el buscador lo indica y sigue abierto
     tecla(grid, 'Enter');
     escribir('Actividad inventada');
     tecla(editor(), 'Enter');
     expect(editor()).not.toBeNull();
-    expect(estado()).toHaveTextContent(/no está en el catálogo/);
+    expect(screen.getByRole('alert')).toHaveTextContent(/Sin coincidencias/);
     expect(useStore.getState().pilaDeshacer).toHaveLength(3);
   });
 

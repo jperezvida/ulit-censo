@@ -2,6 +2,7 @@ import { baseVacia, kCob, kNC, kRev, type BaseDatos } from '../domain/db';
 import { registrarVacio } from '../domain/campo';
 import { longitudLinea } from '../domain/geo';
 import { ACTIVIDADES_HOJA } from '../domain/taxonomy';
+import { ID_CATALOGO_2026 } from '../domain/catalogo2026';
 import type { Calle, Campana, Id, Itinerario, LngLat, TramoPlan } from '../domain/types';
 
 /**
@@ -137,7 +138,7 @@ export function escenarioOficina(op: OpcionesEscenario): Escenario {
   });
   const ids = calles.map((c) => c.id);
   db.campanas[C25_SINT] = campana(C25_SINT, 2025, ids);
-  db.campanas[C26_SINT] = campana(C26_SINT, 2026, ids, C25_SINT);
+  db.campanas[C26_SINT] = { ...campana(C26_SINT, 2026, ids, C25_SINT), catalogoId: ID_CATALOGO_2026 };
 
   const [rep, seg, sinLoc, completa] = ids;
   const its: Itinerario[] = [

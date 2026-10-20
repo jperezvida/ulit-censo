@@ -1,0 +1,119 @@
+/* ───────── Buscador y selector de clasificación (B4) ───────── */
+.bc {
+  position: relative;
+  width: 100%;
+}
+.bc-lista {
+  background: var(--superficie);
+  border: 1px solid var(--linea);
+  border-radius: var(--radio-s);
+  margin-top: 4px;
+  font-size: 13px;
+}
+.bc-lista.flotante {
+  position: fixed;
+  z-index: 60;
+  margin: 0;
+  max-height: 380px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--sombra-2);
+}
+.bc-lista ul {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  overflow: auto;
+  max-height: 300px;
+}
+.bc-op {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.bc-op.on {
+  background: var(--azul-suave);
+  box-shadow: inset 3px 0 0 var(--azul);
+}
+.bc-op-t {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 13.5px;
+}
+.bc-op-t .tag {
+  font-size: 10.5px;
+}
+.bc-ruta {
+  font-size: 12px;
+  color: var(--tinta-3);
+}
+.bc-aviso {
+  padding: 6px 10px;
+  background: #fff8ec;
+  color: #7a4100;
+  border-bottom: 1px solid #f6d8a8;
+  font-size: 12.5px;
+}
+.bc-vacio {
+  padding: 10px;
+  color: var(--tinta-3);
+}
+.bc-pie {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-top: 1px solid var(--linea);
+}
+.bc-paso {
+  padding: 8px 10px;
+}
+.bc-paso-t {
+  font-size: 12.5px;
+  margin-top: 2px;
+}
+.scl {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.scl-cab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.scl-niveles {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+  margin: 0;
+  font-size: 13.5px;
+}
+.scl-niveles dt {
+  color: var(--tinta-3);
+  font-size: 12.5px;
+}
+.scl-niveles dd {
+  margin: 0;
+  font-weight: 600;
+}
+.scl-nada,
+.scl-nota {
+  font-size: 12.5px;
+  margin: 0;
+}
+.scl-sug {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+}
+.scl-desc span {
+  font-size: 12px;
+  color: var(--tinta-3);
+}

@@ -2,18 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, CheckCheck, Clock, Copy, ExternalLink, GitMerge, Lock, Maximize2, Minimize2, ShieldCheck, SkipForward, Undo2, X } from 'lucide-react';
 import { useContexto, useFichaLocal } from '../../store/contexto';
 import { useStore } from '../../store/store';
-import { actualizarRevisiones, aprobar, asignarActividad, devolver, editarNegocio, esDudosa, motivoNoAprobable, type FilaOficina } from '../../domain/oficina';
+import { actualizarRevisiones, aprobar, devolver, editarNegocio, esDudosa, motivoNoAprobable, type FilaOficina } from '../../domain/oficina';
 import { useCtxOficina } from './contextoOficina';
 import { parseNumeroDigital } from './tabla/columnas';
-import { clasificacionAnterior, clasificacionEn, partirDeClasificacionAnterior } from '../../domain/clasificacion';
 import { DEF_VARIABLE, GRUPOS_DIGITALES, VARIABLES_ADICIONALES, esExigible, estadoDigital, numeroRedes, partirDeDigitalAnterior, problemasDigitales, registrarDatoDigital, revisionDigitalAnterior, revisionDigitalEn, verificarDigital } from '../../domain/digital';
 import { RESPUESTA_TXT } from '../../domain/respuesta';
 import { negocioEn, ocupacionEn, textoDireccion } from '../../domain/consultas';
 import { resolverVinculo } from '../../domain/conciliacion';
 import { TIPO_OBS_TXT } from '../../domain/campo';
-import { rutaActividad } from '../../domain/taxonomy';
 import type { Respuesta, VariableDigital } from '../../domain/types';
-import { SelectorActividad } from '../../components/SelectorActividad';
+import { SelectorClasificacion } from './SelectorClasificacion';
 import { Historico } from '../local/Historico';
 import { Modal, fmtFecha } from '../../components/ui';
 
@@ -102,8 +100,6 @@ export function PanelRevision({
   const motivo = motivoNoAprobable(fila);
   const ref = campana.campanaReferenciaId;
   const antes = ref ? negocioEn(db, fila.localId, ref) : null;
-  const cla = neg ? clasificacionEn(db, neg.id, campana.id) : undefined;
-  const claAnt = neg ? clasificacionAnterior(db, neg.id, campana.id) : undefined;
   const ocAntes = ref ? ocupacionEn(db, fila.localId, ref) : undefined;
   const accionAprobar = onAprobar ?? (() => aplicar((d) => aprobar(d, campana.id, [fila], alcance).db, `Registro aprobado · ${fila.vacio ? 'local vacío' : fila.nombre}`));
   const accionDevolver = onDevolver ?? (() => setDevolviendo(true));
@@ -180,23 +176,8 @@ export function PanelRevision({
                     <CampoConfirmado etiqueta="Descripción" valor={neg.descripcion ?? ''} onGuardar={(v) => aplicar((d) => editarNegocio(d, campana.id, neg.id, { descripcion: v.trim() || undefined }, alcance), 'Descripción')} />
                   </div>
                 </div>
-                <div>
-                  <div className="rotulo" style={{ marginBottom: 8 }}>Clasificación (4 niveles)</div>
-                  <SelectorActividad key={fila.localId} valor={cla?.actividadId} onCambio={(id) => aplicar((d) => asignarActividad(d, campana.id, [fila], id, prefs.personaId, alcance), 'Actividad asignada · categorización revisada')} />
-                  {cla && !cla.confirmada && (
-                    <div className="fila" style={{ marginTop: 6 }}>
-                      <span className="chip aviso">{cla.origen === 'heredado' ? 'Copiada de una campaña anterior' : 'Importada'} · sin confirmar</span>
-                      <button className="btn s" onClick={() => aplicar((d) => asignarActividad(d, campana.id, [fila], cla.actividadId, prefs.personaId, alcance), 'Clasificación confirmada')}>Confirmar</button>
-                    </div>
-                  )}
-                  {!cla && claAnt && (
-                    <div className="fila" style={{ marginTop: 6, flexWrap: 'wrap' }}>
-                      <span className="muted" style={{ fontSize: 12 }}>En {db.campanas[claAnt.campanaId]?.anio}: {rutaActividad(claAnt.actividadId).at(-1)?.nombre} (mismo negocio)</span>
-                      <button className="btn s" onClick={() => aplicar((d) => partirDeClasificacionAnterior(d, neg.id, campana.id, prefs.personaId, { alcance }), 'Clasificación anterior copiada como borrador')}>Partir de {db.campanas[claAnt.campanaId]?.anio}</button>
-                    </div>
-                  )}
-                  {antes && antes.id !== neg.id && <p className="muted" style={{ fontSize: 12 }}>En {db.campanas[ref!]?.anio} el local lo ocupaba otro negocio ({antes.nombre}): no se hereda su clasificación.</p>}
-                </div>
+                <SelectorClasificacion fila={fila} campanaId={campana.id} personaId={prefs.personaId} alcance={alcance} bloqueado={bloqueado} />
+                {antes && antes.id !== neg.id && <p className="muted" style={{ fontSize: 12, margin: 0 }}>En {db.campanas[ref!]?.anio} el local lo ocupaba otro negocio ({antes.nombre}): no se hereda su clasificación.</p>}
               </>
             ) : (
               <div className="t-info" style={{ margin: 0 }}>

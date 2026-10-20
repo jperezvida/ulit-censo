@@ -9,7 +9,7 @@ import { clasificar } from './clasificacion';
 import { problemasDigitales, type EstadoDigital } from './digital';
 import { estadoTramo, progresoItinerario } from './planificacion';
 import type { ClasificacionCampana, Confianza, EstadoOficinaItinerario, Id, Itinerario, LocalFisico, Negocio, Observacion, Revision } from './types';
-import { rutaActividad } from './taxonomy';
+import { rutaActividad, TAXONOMIA_POR_ID } from './taxonomy';
 import { normalizar } from './text';
 
 export interface FilaOficina {
@@ -124,6 +124,8 @@ export function filasOficina(db: BaseDatos, campanaId: Id, ix: { obs: IndiceObse
     if (obs?.tipo === 'posible-desaparicion') incidencias.push('Posible desaparición');
     if (dig) for (const p of problemasDigitales(dig)) if (p.tipo === 'contradiccion') incidencias.push(`Contradicción digital: ${p.mensaje}`);
     if (itinerarioIds.length > 1) incidencias.push('Pertenece a varios itinerarios');
+    if (cla && (TAXONOMIA_POR_ID[cla.actividadId]?.catalogo ?? 'demo') !== (camp.catalogoId ?? 'demo')) incidencias.push('Clasificación de otro catálogo: revisar');
+    if (cla?.origen === 'migrado' && !cla.confirmada) incidencias.push('Clasificación migrada: confirmar');
     filas.push({
       localId: l.id, calleId: d.calleId, calle: db.calles[d.calleId]?.nombre ?? '¿?', numero: d.numero, sufijo: d.sufijo,
       negocioId: neg?.id ?? null, nombre: neg?.nombre ?? 'Vacío', vacio: !neg, metros: oc?.metrosFachada,

@@ -2,7 +2,7 @@ import type { BaseDatos } from './db';
 import { kNC } from './db';
 import { codificarRespuesta } from './respuesta';
 import { direccionVigente, indiceObservaciones, indiceOcupaciones, observacionEn, ocupacionEn } from './consultas';
-import { rutaActividad } from './taxonomy';
+import { nivelesDe } from './taxonomy';
 import type { Id, VariableDigital } from './types';
 
 /** Columnas con la estructura del censo tradicional (provisional hasta recibir el Excel real). */
@@ -35,7 +35,10 @@ export function filasExport(db: BaseDatos, campanaId: Id, filtro: FiltroExport =
     if (calles && !calles.has(d.calleId)) continue;
     const oc = ocupacionEn(db, l.id, campanaId, ixOc);
     const neg = oc?.negocioId ? db.negocios[oc.negocioId] : undefined;
-    const r = rutaActividad(neg ? db.clasificaciones[kNC(neg.id, campanaId)]?.actividadId : undefined);
+    const cla = neg ? db.clasificaciones[kNC(neg.id, campanaId)] : undefined;
+    // Por nivel (no por posición): Hostelería y Servicios no tienen grupo de comercio. Sin
+    // actividad, la columna «Actividad» lleva la breve descripción (procedimiento 2026).
+    const r = nivelesDe(cla?.actividadId);
     const m = neg ? db.digital[kNC(neg.id, campanaId)] : undefined;
     const rev = db.revisiones[`${campanaId}|${l.id}`];
     // Pendiente / no aplicable / sin información → vacío (nunca «No»).
@@ -46,8 +49,8 @@ export function filasExport(db: BaseDatos, campanaId: Id, filtro: FiltroExport =
       orden: [calle, d.numero ?? 9999, d.sufijo ?? ''],
       fila: {
         Calle: calle, 'Número': `${d.numero ?? 's/n'}${d.sufijo ? ' ' + d.sufijo : ''}`, Nombre: neg?.nombre ?? '', Estado: neg ? 'Ocupado' : 'Vacío',
-        'Metros fachada': oc?.metrosFachada ? String(oc.metrosFachada) : '', 'Grupo de actividad': r[0]?.nombre ?? '', 'Grupo de comercio': r[1]?.nombre ?? '',
-        'Subgrupo de actividad': r[2]?.nombre ?? '', Actividad: r[3]?.nombre ?? '', Cadena: neg?.cadena ?? '',
+        'Metros fachada': oc?.metrosFachada ? String(oc.metrosFachada) : '', 'Grupo de actividad': r.grupo?.nombre ?? '', 'Grupo de comercio': r.grupoComercio?.nombre ?? '',
+        'Subgrupo de actividad': r.subgrupo?.nombre ?? '', Actividad: r.actividad?.nombre ?? cla?.descripcion ?? '', Cadena: neg?.cadena ?? '',
         Web: b('web'), 'Venta online': b('ventaOnline'), 'Google Business': b('googleBusiness'), 'Valoración': n('valoracion'),
         'Reseñas Google': n('numResenas'), 'Responde reseñas': b('respondeResenas'), Instagram: b('instagram'),
         'Seguidores IG': n('seguidoresInstagram'), Facebook: b('facebook'),

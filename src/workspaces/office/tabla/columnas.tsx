@@ -4,7 +4,9 @@ import { actualizarRevisiones, editarNegocio, type FilaOficina } from '../../../
 import { clasificar } from '../../../domain/clasificacion';
 import { DEF_VARIABLE, VARIABLES_DIGITALES, esExigible, registrarDatoDigital } from '../../../domain/digital';
 import { TIPO_OBS_TXT } from '../../../domain/campo';
-import { TAXONOMIA, hijosDe } from '../../../domain/taxonomy';
+import { nivelesDe } from '../../../domain/taxonomy';
+import { resolverTexto, rutaTexto, textoClasificacion } from '../../../domain/buscador';
+import { catalogoDeCampana } from '../../../domain/clasificacion';
 import { normalizar } from '../../../domain/text';
 import type { Alcance } from '../../../domain/bloqueo';
 import type { Id, Respuesta, VariableDigital } from '../../../domain/types';
@@ -88,15 +90,12 @@ export function parseNumeroDigital(t: string): { respuesta: Respuesta; valor?: n
   return { respuesta: 'si', valor: n };
 }
 
-/** Actividades seleccionables en la tabla: nodos sin hijos del catálogo vigente (provisional). */
-export const ACTIVIDADES_SELECCIONABLES = TAXONOMIA.filter((n) => !hijosDe(n.id).length);
-
-export function parseActividad(t: string): Id {
-  const n = normalizar(t);
-  const encontrada = ACTIVIDADES_SELECCIONABLES.filter((a) => normalizar(a.nombre) === n);
-  if (encontrada.length === 1) return encontrada[0].id;
-  if (encontrada.length > 1) throw new Error(`«${t}» es ambiguo en el catálogo: elígela en la ficha`);
-  throw new Error(`«${t}» no está en el catálogo de actividades`);
+/**
+ * Interpreta una actividad tecleada o pegada en el catálogo de la campaña: nombre único, ruta
+ * completa o «… · descripción». Si es ambigua o no existe, se rechaza (nunca se elige al azar).
+ */
+export function parseActividad(t: string, c: CtxCelda): { nodoId: Id; descripcion?: string } {
+  return resolverTexto(catalogoDeCampana(c.db, c.campanaId), t);
 }
 
 function parseBooleano(t: string): boolean {
@@ -135,22 +134,31 @@ const COL_SITUACION: Columna = {
   render: (f) => (f.situacion === 'pendiente-visita' ? <span className="chip">Sin visitar</span> : f.obs ? <span className={`of-obs t-${f.obs.tipo}`}>{TIPO_OBS_TXT[f.obs.tipo]}</span> : 'Registrado'),
 };
 const COL_ACTIVIDAD: Columna = {
-  id: 'actividad', titulo: 'Actividad', ancho: 200, editor: 'actividad',
-  texto: (f) => (f.vacio ? '' : f.actividad ?? ''),
+  id: 'actividad', titulo: 'Actividad', ancho: 220, editor: 'actividad',
+  // Texto ÚNICO (nombre o ruta si hay homónimos, « · descripción» si la hay) para que copiar y
+  // pegar entre filas reproduzca la clasificación completa sin ambigüedad.
+  texto: (f) => (f.vacio ? '' : textoClasificacion(f.actividadId, f.descripcion)),
   render: (f) =>
     f.vacio ? <span className="muted">—</span> : f.actividad ? (
-      <span className={f.clasificacion && !f.clasificacion.confirmada ? 'tab-sin-confirmar' : ''} title={f.clasificacion && !f.clasificacion.confirmada ? `${f.clasificacion.origen}: sin confirmar (Enter para confirmar)` : undefined}>
-        {f.actividad}{f.clasificacion && !f.clasificacion.confirmada ? ' *' : ''}
+      <span className={f.clasificacion && !f.clasificacion.confirmada ? 'tab-sin-confirmar' : ''} title={`${rutaTexto(f.actividadId!, f.descripcion)}${f.clasificacion && !f.clasificacion.confirmada ? ` · ${f.clasificacion.origen}: sin confirmar (Enter para confirmar)` : ''}`}>
+        {f.actividad}{f.descripcion ? <span className="muted"> · {f.descripcion}</span> : null}{f.clasificacion && !f.clasificacion.confirmada ? ' *' : ''}
       </span>
     ) : <span className="tag naranja">sin clasificar</span>,
   bloqueo: bloqueoNegocio,
-  parse: (t) => parseActividad(t),
-  aplicar: (db, f, v, c) => clasificar(db, f.negocioId!, c.campanaId, v as Id, c.personaId, { alcance: c.alcance, descripcion: f.descripcion }),
+  parse: (t, _f, c) => parseActividad(t, c),
+  aplicar: (db, f, v, c) => {
+    const { nodoId, descripcion } = v as { nodoId: Id; descripcion?: string };
+    // La descripción existente solo se conserva si se mantiene el mismo nodo.
+    const desc = descripcion ?? (nodoId === f.actividadId ? f.descripcion : undefined);
+    return clasificar(db, f.negocioId!, c.campanaId, nodoId, c.personaId, { alcance: c.alcance, descripcion: desc });
+  },
 };
 const COL_GRUPO: Columna = { id: 'grupo', titulo: 'Grupo', ancho: 140, texto: (f) => (f.vacio ? '' : f.grupo ?? '') };
+const COL_GRUPO_COMERCIO: Columna = { id: 'grupoComercio', titulo: 'Grupo de comercio', ancho: 150, texto: (f) => (f.vacio ? '' : nivelesDe(f.actividadId).grupoComercio?.nombre ?? '') };
+const COL_SUBGRUPO: Columna = { id: 'subgrupo', titulo: 'Subgrupo', ancho: 170, texto: (f) => (f.vacio ? '' : nivelesDe(f.actividadId).subgrupo?.nombre ?? '') };
 const COL_DESCRIPCION: Columna = {
   id: 'descripcion', titulo: 'Descripción', ancho: 180, editor: 'texto', texto: (f) => f.descripcion ?? '',
-  bloqueo: (f, c) => bloqueoNegocio(f, c) ?? (!f.actividadId ? 'Asigna antes una actividad' : null),
+  bloqueo: (f, c) => bloqueoNegocio(f, c) ?? (!f.actividadId ? 'Asigna antes una actividad o un subgrupo' : null),
   parse: (t) => t.trim(),
   aplicar: (db, f, v, c) => clasificar(db, f.negocioId!, c.campanaId, f.actividadId!, c.personaId, { alcance: c.alcance, descripcion: (v as string) || undefined }),
 };
@@ -220,7 +228,7 @@ function columnaDigital(v: VariableDigital): Columna {
 }
 
 export const COLUMNAS: Columna[] = [
-  COL_CALLE, COL_NUMERO, COL_NOMBRE, COL_SITUACION, COL_ACTIVIDAD, COL_GRUPO, COL_DESCRIPCION, COL_CATEGORIZACION,
+  COL_CALLE, COL_NUMERO, COL_NOMBRE, COL_SITUACION, COL_ACTIVIDAD, COL_DESCRIPCION, COL_GRUPO, COL_GRUPO_COMERCIO, COL_SUBGRUPO, COL_CATEGORIZACION,
   COL_CADENA, COL_DIGITAL, ...VARIABLES_DIGITALES.map((d) => columnaDigital(d.id)), COL_INCIDENCIAS, COL_COMPROBAR, COL_ITINERARIO,
 ];
 for (const c of COLUMNAS) c.orden ??= porTexto(c);
@@ -228,7 +236,7 @@ export const COLUMNA_POR_ID: Record<string, Columna> = Object.fromEntries(COLUMN
 
 /** Columnas por defecto de cada tarea (el usuario puede mostrar, ocultar y fijar). */
 export const COLUMNAS_TAREA: Record<Tarea, string[]> = {
-  categorizacion: ['calle', 'numero', 'nombre', 'actividad', 'grupo', 'descripcion', 'categorizacion', 'cadena', 'incidencias'],
+  categorizacion: ['calle', 'numero', 'nombre', 'actividad', 'descripcion', 'grupo', 'grupoComercio', 'subgrupo', 'categorizacion', 'incidencias'],
   franquicias: ['calle', 'numero', 'nombre', 'cadena', 'actividad', 'incidencias'],
   digital: ['calle', 'numero', 'nombre', 'digitalEstado', ...VARIABLES_DIGITALES.map((d) => `dig.${d.id}`)],
   incidencias: ['calle', 'numero', 'nombre', 'situacion', 'incidencias', 'comprobar', 'actividad', 'itinerario'],
