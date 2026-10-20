@@ -29,38 +29,54 @@ export interface DefVariable {
   rango?: [number, number];
   /** «na» admitido (además de cuando el padre no es «sí»). */
   admiteNa?: boolean;
+  /**
+   * La presencia debe comprobarse y registrarse como Sí o No para verificar: «sin información»
+   * queda registrada pero no permite verificar (procedimiento 2026: Facebook y Twitter / X).
+   */
+  exigeSiNo?: boolean;
 }
 
 export const VARIABLES_DIGITALES: DefVariable[] = [
   { id: 'web', etiqueta: 'Página web', tipo: 'respuesta', obligatoria: true },
   { id: 'ventaOnline', etiqueta: 'Venta por internet', tipo: 'respuesta', obligatoria: true },
   { id: 'googleBusiness', etiqueta: 'Google Business Profile', tipo: 'respuesta', obligatoria: true },
-  { id: 'valoracion', etiqueta: 'Valoración media', tipo: 'numero', depende: 'googleBusiness', obligatoria: true, rango: [1, 5] },
+  // Campo adicional opcional: no figura en el procedimiento 2026 y no bloquea la verificación.
+  { id: 'valoracion', etiqueta: 'Valoración media', tipo: 'numero', depende: 'googleBusiness', obligatoria: false, rango: [1, 5] },
   { id: 'numResenas', etiqueta: 'Nº de reseñas', tipo: 'numero', depende: 'googleBusiness', obligatoria: true, rango: [0, 1e6] },
   { id: 'respondeResenas', etiqueta: 'Responde reseñas', tipo: 'respuesta', depende: 'googleBusiness', obligatoria: true },
   { id: 'instagram', etiqueta: 'Instagram', tipo: 'respuesta', obligatoria: true },
   { id: 'seguidoresInstagram', etiqueta: 'Seguidores Instagram', tipo: 'numero', depende: 'instagram', obligatoria: true, rango: [0, 1e9] },
-  { id: 'facebook', etiqueta: 'Facebook', tipo: 'respuesta', obligatoria: true },
+  { id: 'facebook', etiqueta: 'Facebook', tipo: 'respuesta', obligatoria: true, exigeSiNo: true },
   { id: 'seguidoresFacebook', etiqueta: 'Seguidores Facebook', tipo: 'numero', depende: 'facebook', obligatoria: true, rango: [0, 1e9] },
-  { id: 'twitter', etiqueta: 'Twitter / X', tipo: 'respuesta', obligatoria: true },
+  { id: 'twitter', etiqueta: 'Twitter / X', tipo: 'respuesta', obligatoria: true, exigeSiNo: true },
   { id: 'seguidoresTwitter', etiqueta: 'Seguidores Twitter / X', tipo: 'numero', depende: 'twitter', obligatoria: true, rango: [0, 1e9] },
+  // Campo adicional opcional: no bloquea la verificación.
   { id: 'otrasRedes', etiqueta: 'Otras redes', tipo: 'respuesta', obligatoria: false, admiteNa: true },
 ];
 /**
  * Grupos de presentación (procedimiento 2026): web y Google / redes sociales. «Valoración media»
- * y «Otras redes» no figuran en el procedimiento 2026; se conservan a la espera de decisión.
+ * y «Otras redes» son campos ADICIONALES opcionales: no figuran en el procedimiento 2026, no
+ * bloquean la verificación y no pasarán al Excel municipal salvo que lo recoja la plantilla
+ * acordada con informática (exportador oficial: bloque C3).
  */
+export const VARIABLES_ADICIONALES: VariableDigital[] = ['valoracion', 'otrasRedes'];
+
 export const GRUPOS_DIGITALES: { titulo: string; variables: VariableDigital[] }[] = [
   { titulo: 'Web y Google', variables: ['web', 'ventaOnline', 'googleBusiness', 'numResenas', 'respondeResenas', 'valoracion'] },
   { titulo: 'Redes sociales', variables: ['instagram', 'seguidoresInstagram', 'facebook', 'seguidoresFacebook', 'twitter', 'seguidoresTwitter', 'otrasRedes'] },
 ];
 
-/** «Nº redes» del procedimiento 2026 = Instagram + Facebook + Twitter. null si alguna sigue pendiente. */
+/**
+ * «Nº redes» del procedimiento 2026 = Instagram + Facebook + Twitter / X (nada más). Solo hay total
+ * definitivo si las tres están contestadas con Sí o No: «pendiente» y «sin información» (o
+ * cualquier otra respuesta) dejan el total sin determinar. «Sin información» NUNCA cuenta como «No».
+ */
+export const REDES_CONTABLES: VariableDigital[] = ['instagram', 'facebook', 'twitter'];
 export function numeroRedes(rev: RevisionDigital | undefined): number | null {
   let n = 0;
-  for (const v of ['instagram', 'facebook', 'twitter'] as VariableDigital[]) {
+  for (const v of REDES_CONTABLES) {
     const r = rev?.datos[v]?.respuesta ?? 'pendiente';
-    if (r === 'pendiente') return null;
+    if (r !== 'si' && r !== 'no') return null;
     if (r === 'si') n++;
   }
   return n;
@@ -92,6 +108,9 @@ export function problemasDigitales(rev: RevisionDigital | undefined): Problema[]
     const d = rev?.datos[def.id];
     const r = d?.respuesta ?? 'pendiente';
     if (esExigible(rev, def.id) && !estaResuelta(r)) out.push({ variable: def.id, tipo: 'pendiente', mensaje: `${def.etiqueta}: pendiente de comprobar` });
+    else if (esExigible(rev, def.id) && def.exigeSiNo && r !== 'si' && r !== 'no') {
+      out.push({ variable: def.id, tipo: 'pendiente', mensaje: `${def.etiqueta}: hay que registrar Sí o No` });
+    }
     if (def.depende && ['no', 'na'].includes(resp(rev, def.depende)) && r === 'si') {
       out.push({ variable: def.id, tipo: 'contradiccion', mensaje: `${def.etiqueta} registrado, pero ${DEF_VARIABLE[def.depende].etiqueta} = ${resp(rev, def.depende) === 'no' ? 'no' : 'no aplicable'}` });
     }

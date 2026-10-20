@@ -80,6 +80,12 @@ describe('Ficha de establecimiento · lateral compacta y ampliada', () => {
     fireEvent.click(within(redes).getByRole('button', { name: 'Facebook: No' }));
     fireEvent.click(within(redes).getByRole('button', { name: 'Twitter / X: Sí' }));
     expect(within(redes).getByText('2')).toBeInTheDocument();
+    // «Sin información» en una red no se cuenta como «No»: no hay total definitivo
+    fireEvent.click(within(redes).getByRole('button', { name: 'Twitter / X: ¿?' }));
+    expect(within(redes).getByLabelText('Nº redes sin determinar')).toBeInTheDocument();
+    // Los campos adicionales se marcan como opcionales
+    expect(within(web).getByRole('group', { name: 'Valoración media' }).parentElement).toHaveTextContent('opcional');
+    expect(within(redes).getByText('Otras redes').parentElement).toHaveTextContent('opcional');
   });
 
   it('«Verificar presencia digital» nombra el establecimiento y es distinta de «Aprobar registro»', () => {
@@ -147,6 +153,11 @@ describe('Ficha de establecimiento · lateral compacta y ampliada', () => {
     fireEvent.click(within(panel()).getByRole('button', { name: /Reducir ficha/ }));
     fireEvent.click(within(panel()).getByRole('button', { name: 'Establecimiento siguiente' }));
     expect(db().digital[kNC(neg2, C26_SINT)].datos.numResenas).toMatchObject({ respuesta: 'si', valor: 37 });
+    // «1.250» en la ficha son mil doscientos cincuenta (como en la tabla), no 1,25
+    fireEvent.click(within(panel()).getByRole('button', { name: 'Establecimiento anterior' }));
+    fireEvent.change(screen.getByLabelText('Nº de reseñas (valor)'), { target: { value: '1.250' } });
+    fireEvent.keyDown(screen.getByLabelText('Nº de reseñas (valor)'), { key: 'Enter' });
+    expect(db().digital[kNC(neg2, C26_SINT)].datos.numResenas).toMatchObject({ respuesta: 'si', valor: 1250 });
   });
 
   it('en el modo por establecimientos la ficha usa la misma navegación compacta', () => {

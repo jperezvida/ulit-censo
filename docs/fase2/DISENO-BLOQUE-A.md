@@ -534,3 +534,12 @@ Detalle de uso y pruebas manuales en [`OFICINA-RAPIDA.md`](OFICINA-RAPIDA.md).
 | Filas y resúmenes, 5.040 registros | ≈ 80 ms |
 | Tabla, 3.200 registros | Solo se pintan las filas visibles |
 | Pulsación de flecha en Chromium (compilación de producción) | Mediana ≈ 13 ms |
+
+### 13.4 Presencia digital · decisiones confirmadas (20/10/2026)
+
+1. **Twitter / X** se comprueba cada año y hay que registrar **Sí o No**. «Sin información» se guarda, pero no permite verificar. Si existe, se piden los seguidores; si no pueden obtenerse, se admite «sin información» y **nunca se inventa un cero**.
+2. **Facebook** y sus seguidores siguen el mismo criterio condicional (`exigeSiNo` en `domain/digital.ts`).
+3. **Valoración media** de Google es un campo adicional **opcional**: no bloquea la verificación.
+4. **Otras redes** es un campo opcional que tampoco bloquea la verificación.
+5. **Nº redes** = Instagram + Facebook + Twitter / X. Solo hay total si las tres están contestadas con Sí o No; con alguna pendiente o «sin información» queda **sin determinar**, porque «sin información» no equivale a «No».
+6. Los campos adicionales (`VARIABLES_ADICIONALES`) **no pasarán al Excel municipal definitivo** si no figuran en la plantilla acordada con informática. Se resolverá en el exportador oficial (C3). El CSV provisional de la fase 1 no se ha modificado.

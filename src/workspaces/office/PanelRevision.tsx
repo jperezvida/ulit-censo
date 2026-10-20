@@ -4,8 +4,9 @@ import { useContexto, useFichaLocal } from '../../store/contexto';
 import { useStore } from '../../store/store';
 import { actualizarRevisiones, aprobar, asignarActividad, devolver, editarNegocio, esDudosa, motivoNoAprobable, type FilaOficina } from '../../domain/oficina';
 import { useCtxOficina } from './contextoOficina';
+import { parseNumeroDigital } from './tabla/columnas';
 import { clasificacionAnterior, clasificacionEn, partirDeClasificacionAnterior } from '../../domain/clasificacion';
-import { DEF_VARIABLE, GRUPOS_DIGITALES, esExigible, estadoDigital, numeroRedes, partirDeDigitalAnterior, problemasDigitales, registrarDatoDigital, revisionDigitalAnterior, revisionDigitalEn, verificarDigital } from '../../domain/digital';
+import { DEF_VARIABLE, GRUPOS_DIGITALES, VARIABLES_ADICIONALES, esExigible, estadoDigital, numeroRedes, partirDeDigitalAnterior, problemasDigitales, registrarDatoDigital, revisionDigitalAnterior, revisionDigitalEn, verificarDigital } from '../../domain/digital';
 import { RESPUESTA_TXT } from '../../domain/respuesta';
 import { negocioEn, ocupacionEn, textoDireccion } from '../../domain/consultas';
 import { resolverVinculo } from '../../domain/conciliacion';
@@ -312,10 +313,16 @@ function NumeroConfirmado({ valor, onGuardar, etiqueta }: { valor?: number; onGu
   const txt = (x?: number) => (x === undefined ? '' : String(x).replace('.', ','));
   const [t, setT] = useState(txt(valor));
   useEffect(() => setT(txt(valor)), [valor]);
+  // Mismo intérprete que la tabla: «1.250» = 1250 (miles), «4,5» = 4,5 (decimales).
   const guardar = () => {
-    const x = t.trim().replace(',', '.');
-    if (x === '' && valor !== undefined) onGuardar(undefined);
-    else if (x !== '' && Number.isFinite(+x) && +x !== valor) onGuardar(+x);
+    let r: ReturnType<typeof parseNumeroDigital>;
+    try {
+      r = parseNumeroDigital(t);
+    } catch {
+      return; // texto no numérico: no se guarda nada
+    }
+    if (r.respuesta === 'pendiente' && valor !== undefined) onGuardar(undefined);
+    else if (r.respuesta === 'si' && r.valor !== valor) onGuardar(r.valor);
   };
   useGuardarAlDesmontar(guardar);
   return (
@@ -385,7 +392,7 @@ function Digital({ negocioId, nombre, direccion, bloqueado }: { negocioId: strin
             {g.titulo === 'Redes sociales' && (
               <div className="ofp-var ofp-calc" title="Calculado: Instagram + Facebook + Twitter (procedimiento 2026)">
                 <span className="ofp-var-t">Nº redes</span>
-                <span className="ofp-var-c"><b>{redes ?? '—'}</b> <span className="muted">{redes === null ? 'faltan respuestas' : 'calculado'}</span></span>
+                <span className="ofp-var-c" aria-label={redes === null ? 'Nº redes sin determinar' : `Nº redes: ${redes}`}><b>{redes ?? '—'}</b> <span className="muted">{redes === null ? 'sin determinar: falta Sí/No en alguna red' : 'calculado'}</span></span>
                 <span />
               </div>
             )}
@@ -413,7 +420,8 @@ function FilaVariable({ v, rev, ant, registrar }: {
     <div className={`ofp-var ${!exigible ? 'opcional' : ''} ${def.depende ? 'dependiente' : ''}`}>
       <span className="ofp-var-t" title={!exigible ? 'No se exige con las respuestas actuales' : undefined}>
         {def.etiqueta}
-        {exigible && r === 'pendiente' && <span className="of-req" title="Obligatoria con las respuestas actuales">•</span>}
+        {VARIABLES_ADICIONALES.includes(v) && <span className="tag" title="Campo adicional: no figura en el procedimiento 2026 ni bloquea la verificación">opcional</span>}
+        {exigible && (r === 'pendiente' || (def.exigeSiNo && r !== 'si' && r !== 'no')) && <span className="of-req" title={def.exigeSiNo ? 'Hay que registrar Sí o No' : 'Obligatoria con las respuestas actuales'}>•</span>}
         {d?.origen === 'heredado' && <span className="tag naranja" title="Copiado de otra campaña: confírmalo">heredado</span>}
       </span>
       <span className="ofp-var-c of-resp" role="group" aria-label={def.etiqueta}>
