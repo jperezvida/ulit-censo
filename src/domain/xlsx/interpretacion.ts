@@ -2,7 +2,7 @@ import type ExcelJS from 'exceljs';
 import { leerLibro, type LimitesXlsx, LIMITES_XLSX } from './lector';
 import { analizarLibroLeido, valorPlano, esFormula, type InformeEstructural } from './analisis';
 import { PERFILES_IMPORTACION, type TipoEsperado } from './perfilesImportacion';
-import { CATEGORIA_DIAGNOSTICO, diagnosticarClasificacion, type ResultadoClasificacion } from './clasificacionHistorica';
+import { CATEGORIA_DIAGNOSTICO, ETIQUETA_DIAGNOSTICO, diagnosticarClasificacion, type ResultadoClasificacion } from './clasificacionHistorica';
 import { DICCIONARIO_SIN_INFORMACION_PROPUESTO, TIPOS_INCIDENCIA, type Decision, type Gravedad, type IdTipoIncidencia } from './reglasInterpretacion';
 import type { ConfigTerritorial, ReglaTerritorial } from '../territorio';
 
@@ -54,8 +54,12 @@ export interface CapaOriginal {
   perfil: { id: string; version: number };
   columnas: ColumnaOrigen[];
   filas: FilaOriginal[];
-  /** Filas de la zona de datos que no son registros (totales), con el motivo. */
-  excluidas: { fila: number; motivo: string }[];
+  /**
+   * Filas que C1a marca HEURÍSTICAMENTE como posibles totales. Se conservan íntegras en `filas`
+   * (puede ser un falso positivo): solo podrán excluirse de la aplicación operativa con una
+   * decisión humana explícita y trazada (C1d).
+   */
+  candidatasExcluir: { fila: number; motivo: string; origen: 'heuristica-c1a' }[];
 }
 
 // ───────────── Capa interpretada ─────────────
@@ -92,6 +96,8 @@ export interface FilaInterpretada {
   grupoDireccion?: number;
   /** Los datos históricos no verifican la franquicia ni la presencia digital de 2026. */
   verificado2026: false;
+  /** Posible fila de totales: propuesta de exclusión SIN confirmar (la decide una persona en C1d). */
+  exclusion?: { propuesta: 'excluir'; motivo: string; confirmada: false };
 }
 
 export interface Incidencia {
@@ -104,9 +110,15 @@ export interface Incidencia {
   tipo: IdTipoIncidencia;
   gravedad: Gravedad;
   decision: Decision;
+  /** Mensaje INTERNO: puede citar el contenido de la celda. No se exporta. */
   mensaje: string;
+  /**
+   * Detalle EXPORTABLE: solo números validados, fechas, cabeceras, números de fila y códigos.
+   * Nunca reproduce texto libre de una celda.
+   */
+  detalle?: string;
   propuesta: string;
-  /** Representación del valor original (se omite al exportar el informe en campos identificativos). */
+  /** Representación del valor original (uso interno; no se exporta). */
   valorOriginal: string;
   regla?: string;
   relacionadas?: string[];
@@ -169,7 +181,8 @@ export function valorOriginal(cell: ExcelJS.Cell): ValorOriginal {
 
 // ───────────── Intérpretes por tipo ─────────────
 
-interface Inc { tipo: IdTipoIncidencia; mensaje?: string; relacionadas?: string[] }
+/** `mensaje`: interno, puede citar la celda. `detalle`: exportable, sin texto libre. */
+interface Inc { tipo: IdTipoIncidencia; mensaje?: string; detalle?: string; relacionadas?: string[] }
 interface Res { estado: EstadoValor; regla: string; valor?: ValorInterpretado; propuesta?: CeldaInterpretada['propuesta']; inc?: Inc[] }
 
 interface Ctx {
@@ -269,7 +282,7 @@ function fecha(o: ValorOriginal, cx: Ctx): Res {
   else if (o.t === 'numero') {
     const d = new Date(Date.UTC(1899, 11, 30) + Math.floor(o.v) * 86400000);
     if (!(o.v > 0 && o.v < 2958466)) return { estado: 'invalido', regla: 'fecha-no-reconocida', inc: [{ tipo: 'fecha-no-reconocida' }] };
-    return propuesta(cx, 'fecha-serial-sin-formato', fechaIso(d), { tipo: 'fecha-serial-sin-formato', mensaje: `El número ${o.v} correspondería al ${fechaIso(d)}.` });
+    return propuesta(cx, 'fecha-serial-sin-formato', fechaIso(d), { tipo: 'fecha-serial-sin-formato', mensaje: `El número ${o.v} correspondería al ${fechaIso(d)}.`, detalle: `correspondería al ${fechaIso(d)}` });
   } else if (o.t === 'texto') {
     const s = o.v.trim();
     let m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(s);
@@ -286,7 +299,7 @@ function fecha(o: ValorOriginal, cx: Ctx): Res {
     } else if ((m = corto)) {
       const f = fechaValida(2000 + +m[3], +m[2], +m[1]);
       if (!f) return { estado: 'invalido', regla: 'fecha-no-reconocida', inc: [{ tipo: 'fecha-no-reconocida' }] };
-      return propuesta(cx, 'fecha-anio-dos-cifras', f, { tipo: 'fecha-anio-dos-cifras', mensaje: `«${s}» podría ser el ${f}.` });
+      return propuesta(cx, 'fecha-anio-dos-cifras', f, { tipo: 'fecha-anio-dos-cifras', mensaje: `«${s}» podría ser el ${f}.`, detalle: `podría ser el ${f}` });
     } else {
       return { estado: 'invalido', regla: 'fecha-no-reconocida', inc: [{ tipo: 'fecha-no-reconocida', mensaje: `«${s}» no es una fecha; la fecha queda ausente.` }] };
     }
@@ -294,7 +307,7 @@ function fecha(o: ValorOriginal, cx: Ctx): Res {
 
   const p = cx.op.periodo;
   if (p && typeof r.valor === 'string' && (r.valor < p.desde || r.valor > p.hasta)) {
-    return { estado: 'pendiente', regla: 'fecha-fuera-de-campana', propuesta: r.valor, inc: [{ tipo: 'fecha-fuera-de-campana', mensaje: `${r.valor} está fuera del periodo ${p.desde} – ${p.hasta}.` }] };
+    return { estado: 'pendiente', regla: 'fecha-fuera-de-campana', propuesta: r.valor, inc: [{ tipo: 'fecha-fuera-de-campana', mensaje: `${r.valor} está fuera del periodo ${p.desde} – ${p.hasta}.`, detalle: `${r.valor} fuera de ${p.desde} – ${p.hasta}` }] };
   }
   return r;
 }
@@ -344,7 +357,7 @@ function territorial(campo: 'distrito' | 'zona' | 'cp', o: ValorOriginal, cx: Ct
   }
   const r = codigoPostal(o, cx);
   if (regla?.uso === 'fijo' && r.estado === 'valido' && r.valor !== regla.valorFijo) {
-    return { estado: 'pendiente', regla: 'cp-distinto-del-fijo', propuesta: r.valor, inc: [{ tipo: 'cp-distinto-del-fijo', mensaje: `CP ${r.valor}; el municipio tiene el CP fijo ${regla.valorFijo}.` }] };
+    return { estado: 'pendiente', regla: 'cp-distinto-del-fijo', propuesta: r.valor, inc: [{ tipo: 'cp-distinto-del-fijo', mensaje: `CP ${r.valor}; el municipio tiene el CP fijo ${regla.valorFijo}.`, detalle: `CP ${r.valor}; fijo ${regla.valorFijo}` }] };
   }
   return r;
 }
@@ -388,7 +401,7 @@ export function interpretarCapa(capa: CapaOriginal, op: OpcionesInterpretacion =
     const tipo = TIPOS_INCIDENCIA[i.tipo];
     const n = incidencias.push({
       archivo: capa.archivo.nombre, hoja: capa.hoja, fila: fo.fila, columna: col.letra, cabecera: col.cabecera.trim(), campo: clave,
-      tipo: i.tipo, gravedad: tipo.gravedad, decision: tipo.decision, mensaje: i.mensaje ?? tipo.titulo, propuesta: tipo.propuesta,
+      tipo: i.tipo, gravedad: tipo.gravedad, decision: tipo.decision, mensaje: i.mensaje ?? tipo.titulo, ...(i.detalle ? { detalle: i.detalle } : {}), propuesta: tipo.propuesta,
       valorOriginal: mostrarOriginal(fo.celdas[clave] ?? { t: 'vacio' }), regla, relacionadas: i.relacionadas,
     }) - 1;
     const celda = fi.celdas[clave];
@@ -442,7 +455,7 @@ export function interpretarCapa(capa: CapaOriginal, op: OpcionesInterpretacion =
     if (fi.local === 'ocupado' && c.nombre && c.nombre.estado === 'vacio') anotar(fi, fo, 'nombre', { tipo: 'ocupado-sin-nombre' });
     if (fi.local === 'vacio') {
       const rellenos = [...NEGOCIO].filter((k) => porClave.has(k) && !vacia(get(k)));
-      if (rellenos.length) anotar(fi, fo, 'vacio', { tipo: 'vacio-con-datos-negocio', mensaje: `Local vacío con ${rellenos.length} campo(s) de negocio rellenos: ${rellenos.map((k) => `«${porClave.get(k)!.cabecera.trim()}»`).join(', ')}.`, relacionadas: rellenos });
+      if (rellenos.length) anotar(fi, fo, 'vacio', { tipo: 'vacio-con-datos-negocio', mensaje: `Local vacío con ${rellenos.length} campo(s) de negocio rellenos: ${rellenos.map((k) => `«${porClave.get(k)!.cabecera.trim()}»`).join(', ')}.`, detalle: `${rellenos.length} campo(s) de negocio rellenos`, relacionadas: rellenos });
     }
     if (fi.local === 'ocupado' && c.fachada && c.fachada.estado !== 'no-aplica' && c.fachada.estado !== 'vacio') anotar(fi, fo, 'fachada', { tipo: 'fachada-en-ocupado' });
 
@@ -458,7 +471,7 @@ export function interpretarCapa(capa: CapaOriginal, op: OpcionesInterpretacion =
       if (cifra === 'respondeResenas') {
         if (bool(cifra) === true) anotar(fi, fo, cifra, { tipo: 'responde-sin-google', relacionadas: [resp] });
       } else if ((num(cifra) ?? 0) > 0) {
-        anotar(fi, fo, cifra, cifra === 'numResenas' ? { tipo: 'resenas-sin-google', mensaje: `${num(cifra)} reseñas con Google Business = No.`, relacionadas: [resp] } : { tipo: 'seguidores-con-red-no', mensaje: `${num(cifra)} seguidores con «${porClave.get(resp)!.cabecera.trim()}» = No.`, relacionadas: [resp] });
+        anotar(fi, fo, cifra, cifra === 'numResenas' ? { tipo: 'resenas-sin-google', mensaje: `${num(cifra)} reseñas con Google Business = No.`, detalle: `${num(cifra)} reseñas`, relacionadas: [resp] } : { tipo: 'seguidores-con-red-no', mensaje: `${num(cifra)} seguidores con «${porClave.get(resp)!.cabecera.trim()}» = No.`, detalle: `${num(cifra)} seguidores con «${porClave.get(resp)!.cabecera.trim()}» = No`, relacionadas: [resp] });
       }
     }
 
@@ -476,7 +489,7 @@ export function interpretarCapa(capa: CapaOriginal, op: OpcionesInterpretacion =
         else {
           Object.assign(celda, { estado: 'invalido', regla: 'redes-discrepa', revision: true });
           delete celda.valor;
-          anotar(fi, fo, 'numRedes', { tipo: 'redes-discrepa', mensaje: `«Nº redes» = ${orig}; Instagram + Facebook + Twitter/X = ${fi.redesCalculadas}.`, relacionadas: ['instagram', 'facebook', 'twitter'] }, 'redes-discrepa');
+          anotar(fi, fo, 'numRedes', { tipo: 'redes-discrepa', mensaje: `«Nº redes» = ${orig}; Instagram + Facebook + Twitter/X = ${fi.redesCalculadas}.`, detalle: `original ${orig}; calculado ${fi.redesCalculadas}`, relacionadas: ['instagram', 'facebook', 'twitter'] }, 'redes-discrepa');
         }
       } else if (!calculable && fi.local !== 'vacio') {
         if (orig !== undefined) {
@@ -484,7 +497,7 @@ export function interpretarCapa(capa: CapaOriginal, op: OpcionesInterpretacion =
           delete celda.valor;
         }
         const malas = ['instagram', 'facebook', 'twitter'].filter((_, i) => redes[i] === undefined);
-        anotar(fi, fo, 'numRedes', { tipo: 'redes-no-calculable', mensaje: `No se calcula: ${malas.map((k) => `«${porClave.get(k)!.cabecera.trim()}»`).join(', ')} sin respuesta válida.`, relacionadas: malas }, 'redes-no-calculable');
+        anotar(fi, fo, 'numRedes', { tipo: 'redes-no-calculable', mensaje: `No se calcula: ${malas.map((k) => `«${porClave.get(k)!.cabecera.trim()}»`).join(', ')} sin respuesta válida.`, detalle: `sin respuesta válida en ${malas.map((k) => `«${porClave.get(k)!.cabecera.trim()}»`).join(', ')}`, relacionadas: malas }, 'redes-no-calculable');
       }
     }
 
@@ -495,23 +508,33 @@ export function interpretarCapa(capa: CapaOriginal, op: OpcionesInterpretacion =
       const d = diagnosticarClasificacion({ grupo: txt('grupoActividad'), grupoComercio: txt('grupoComercio'), subgrupo: txt('subgrupo'), actividad: txt('actividad'), descripcion: txt('descripcionActividad') });
       fi.clasificacion = { ...d, confirmada: false };
       const cat = CATEGORIA_DIAGNOSTICO[d.diagnostico];
+      const seguro = ETIQUETA_DIAGNOSTICO[d.diagnostico];
       const ancla = d.diagnostico === 'sin-grupo' || d.diagnostico === 'grupo-desconocido' ? 'grupoActividad'
         : d.diagnostico.includes('grupo-comercio') ? 'grupoComercio'
         : d.diagnostico === 'actividad-no-pertenece' || d.diagnostico.startsWith('servicios') || d.diagnostico === 'incompleta-sin-actividad' ? 'actividad' : 'subgrupo';
       const clave = porClave.has(ancla) ? ancla : 'grupoActividad';
       if (porClave.has(clave)) {
         const rel = CLASIFICACION.filter((k) => k !== clave && porClave.has(k));
-        if (cat === 'incompleta') anotar(fi, fo, clave, { tipo: 'clasificacion-incompleta', mensaje: d.mensaje, relacionadas: rel });
-        else if (cat === 'incoherente') anotar(fi, fo, clave, { tipo: 'clasificacion-incoherente', mensaje: d.mensaje, relacionadas: rel });
-        else if (d.diagnostico === 'servicios-actividad-ejemplo') anotar(fi, fo, clave, { tipo: 'servicios-actividad-ejemplo', mensaje: d.mensaje });
-        else if (d.diagnostico === 'servicios-actividad-no-prevista') anotar(fi, fo, clave, { tipo: 'servicios-actividad-no-prevista', mensaje: d.mensaje });
+        if (cat === 'incompleta') anotar(fi, fo, clave, { tipo: 'clasificacion-incompleta', mensaje: d.mensaje, detalle: seguro, relacionadas: rel });
+        else if (cat === 'incoherente') anotar(fi, fo, clave, { tipo: 'clasificacion-incoherente', mensaje: d.mensaje, detalle: seguro, relacionadas: rel });
+        else if (d.diagnostico === 'servicios-actividad-ejemplo') anotar(fi, fo, clave, { tipo: 'servicios-actividad-ejemplo', mensaje: d.mensaje, detalle: seguro });
+        else if (d.diagnostico === 'servicios-actividad-no-prevista') anotar(fi, fo, clave, { tipo: 'servicios-actividad-no-prevista', mensaje: d.mensaje, detalle: seguro });
         for (const k of d.fueraDeLista) if (porClave.has(k)) anotar(fi, fo, k, { tipo: 'clasificacion-fuera-de-lista' });
       }
     }
     filas.push(fi);
   }
 
-  // 6. Direcciones repetidas y filas idénticas: se conservan todas; solo se informa.
+  // 6. Posibles filas de totales: se conservan e interpretan; la exclusión queda como propuesta sin confirmar.
+  const candidatas = new Map(capa.candidatasExcluir.map((c) => [c.fila, c.motivo]));
+  filas.forEach((fi, i) => {
+    const motivo = candidatas.get(fi.fila);
+    if (!motivo) return;
+    fi.exclusion = { propuesta: 'excluir', motivo, confirmada: false };
+    anotar(fi, capa.filas[i], capa.columnas[0].clave, { tipo: 'posible-fila-de-totales', mensaje: motivo });
+  });
+
+  // 7. Direcciones repetidas y filas idénticas: se conservan todas; solo se informa.
   if (porClave.has('direccion') && porClave.has('numero')) {
     const grupos = new Map<string, number[]>();
     filas.forEach((fi, i) => {
@@ -527,7 +550,7 @@ export function interpretarCapa(capa: CapaOriginal, op: OpcionesInterpretacion =
       g++;
       for (const i of idx) {
         filas[i].grupoDireccion = g;
-        anotar(filas[i], capa.filas[i], 'direccion', { tipo: 'direccion-repetida', mensaje: `Misma calle y número que la(s) fila(s) ${idx.filter((j) => j !== i).map((j) => capa.filas[j].fila).join(', ')} (grupo ${g}).` });
+        anotar(filas[i], capa.filas[i], 'direccion', { tipo: 'direccion-repetida', mensaje: `Misma calle y número que la(s) fila(s) ${idx.filter((j) => j !== i).map((j) => capa.filas[j].fila).join(', ')} (grupo ${g}).`, detalle: `grupo ${g}; otras filas: ${idx.filter((j) => j !== i).map((j) => capa.filas[j].fila).join(', ')}` });
       }
     }
   }
@@ -536,7 +559,7 @@ export function interpretarCapa(capa: CapaOriginal, op: OpcionesInterpretacion =
     const h = JSON.stringify(capa.columnas.map((c) => fo.celdas[c.clave] ?? null));
     const previa = huellas.get(h);
     if (previa === undefined) return void huellas.set(h, i);
-    anotar(filas[i], fo, capa.columnas[0].clave, { tipo: 'fila-duplicada-exacta', mensaje: `Idéntica a la fila ${capa.filas[previa].fila} en todas las columnas.` });
+    anotar(filas[i], fo, capa.columnas[0].clave, { tipo: 'fila-duplicada-exacta', mensaje: `Idéntica a la fila ${capa.filas[previa].fila} en todas las columnas.`, detalle: `idéntica a la fila ${capa.filas[previa].fila}` });
   });
 
   return { original: capa, filas, incidencias, opciones: op };
@@ -559,7 +582,7 @@ export function extraerCapaOriginal(libro: ExcelJS.Workbook, informe: InformeEst
   });
   const totales = new Set(informe.filas.posiblesTotales);
   const filas: FilaOriginal[] = [];
-  const excluidas: CapaOriginal['excluidas'] = [];
+  const candidatasExcluir: CapaOriginal['candidatasExcluir'] = [];
   const ultima = informe.filas.ultima ?? informe.filas.filaCabecera;
   for (let r = informe.filas.filaCabecera + 1; r <= ultima; r++) {
     const row = ws.getRow(r);
@@ -571,15 +594,14 @@ export function extraerCapaOriginal(libro: ExcelJS.Workbook, informe: InformeEst
       if (!vacia(o)) alguna = true;
     }
     if (!alguna) continue;
-    if (totales.has(r)) {
-      excluidas.push({ fila: r, motivo: 'Posible fila de totales: no es un registro.' });
-      continue;
-    }
+    // Heurística de C1a (p. ej. «Total…» en la primera celda de texto): puede fallar, así que la fila
+    // se conserva entera y solo se marca como candidata a excluir.
+    if (totales.has(r)) candidatasExcluir.push({ fila: r, motivo: 'C1a la identifica como posible fila de totales (heurística); pendiente de confirmación humana.', origen: 'heuristica-c1a' });
     filas.push({ fila: r, celdas });
   }
   return {
     archivo: { nombre: informe.archivo.nombre, sha256: informe.archivo.sha256 }, hoja: ws.name, filaCabecera: informe.filas.filaCabecera,
-    perfil: { id: perfil.id, version: perfil.version }, columnas: columnas.map((c) => c.origen), filas, excluidas,
+    perfil: { id: perfil.id, version: perfil.version }, columnas: columnas.map((c) => c.origen), filas, candidatasExcluir,
   };
 }
 

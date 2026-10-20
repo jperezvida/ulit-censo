@@ -371,7 +371,7 @@ export async function analizarLibroLeido(leido: LibroLeido, bytes: Uint8Array, n
   }
   const enBlanco = filasConDatos.length ? filasConDatos[filasConDatos.length - 1] - filasConDatos[0] + 1 - filasConDatos.length : 0;
   if (enBlanco) avisos.push(`${enBlanco} fila(s) en blanco entre los datos: no se tratarán como registros.`);
-  if (posiblesTotales.length) avisos.push(`Posibles filas de totales al final de los datos (filas ${posiblesTotales.join(', ')}): no son registros.`);
+  if (posiblesTotales.length) avisos.push(`Posibles filas de totales (filas ${posiblesTotales.join(', ')}), detectadas por heurística: se conservan y solo se excluirán con una confirmación humana.`);
   for (const col of columnas) {
     const n = Object.values(col.discordantes).reduce((a, b) => a + b, 0);
     if (n) avisos.push(`Columna «${col.cabecera.trim()}»: ${n} celda(s) no encajan con el tipo esperado (${Object.entries(col.discordantes).map(([k, v]) => `${v} ${k}`).join('; ')}). Se tratarán en C1b sin convertirlas automáticamente.`);

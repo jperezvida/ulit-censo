@@ -61,6 +61,25 @@ export const CATEGORIA_DIAGNOSTICO: Record<DiagnosticoClasificacion, 'coherente'
   'actividad-no-pertenece': 'incoherente',
 };
 
+/** Descripción FIJA de cada diagnóstico, sin citar el contenido de las celdas (apta para exportar). */
+export const ETIQUETA_DIAGNOSTICO: Record<DiagnosticoClasificacion, string> = {
+  coherente: 'combinación presente en la estructura 2026',
+  'coherente-subgrupo-sin-actividades': 'subgrupo sin actividades en 2026',
+  'coherente-con-descripcion': 'sin actividad, con descripción dentro del subgrupo',
+  'servicios-actividad-ejemplo': 'Servicios: la actividad 2025 es un ejemplo del subgrupo en 2026',
+  'servicios-actividad-no-prevista': 'Servicios: la actividad 2025 no figura entre los ejemplos del subgrupo en 2026',
+  'comercio-sin-grupo-comercio': 'Comercio sin «Gr Comercio»',
+  'grupo-comercio-fuera-de-comercio': '«Gr Comercio» relleno fuera de Comercio',
+  'grupo-desconocido': 'GrActividad no es uno de los tres grupos',
+  'sin-grupo': 'sin GrActividad',
+  'sin-subgrupo': 'sin subgrupo de actividad',
+  'subgrupo-inexistente-2026': 'el subgrupo no existe en la estructura 2026',
+  'subgrupo-de-otro-grupo': 'el subgrupo pertenece a otro grupo de actividad',
+  'grupo-comercio-no-corresponde': '«Gr Comercio» no corresponde al subgrupo',
+  'actividad-no-pertenece': 'la actividad no pertenece al subgrupo',
+  'incompleta-sin-actividad': 'subgrupo con actividades, sin actividad ni descripción',
+};
+
 export interface ResultadoClasificacion {
   diagnostico: DiagnosticoClasificacion;
   mensaje: string;

@@ -132,6 +132,7 @@ export const TIPOS_INCIDENCIA = {
   'servicios-actividad-no-prevista': t('Servicios: actividad 2025 no prevista en 2026', 'aviso', 'catedra', 'Pendiente de la correspondencia 2025 → 2026 (decisión 3).'),
   'clasificacion-fuera-de-lista': t('Valor fuera de las listas históricas de Hoja1', 'info', 'informativa', 'Se conserva tal cual; puede ser una variante de escritura.'),
   'direccion-repetida': t('Calle y número repetidos', 'info', 'revision', 'Se conservan todas las filas. No demuestra que haya dos locales físicos: la correspondencia se decide en la conciliación (C1c/C1d).'),
+  'posible-fila-de-totales': t('Posible fila de totales (heurística)', 'aviso', 'revision', 'Se conserva íntegra. Solo se excluirá de la aplicación operativa con una decisión humana explícita y trazada (C1d).'),
   'fila-duplicada-exacta': t('Fila idéntica a otra', 'aviso', 'revision', 'Posible duplicado exacto. Se conservan ambas filas hasta una decisión humana.'),
 } satisfies Record<string, TipoIncidencia>;
 

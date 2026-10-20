@@ -36,7 +36,7 @@ for (const ruta of archivos) {
   await writeFile(salida, JSON.stringify(inf, null, 2));
   const c = inf.celdas;
   console.log(`\n${inf.archivo.nombre} · hoja «${inf.hoja}» · perfil ${inf.perfil.id} v${inf.perfil.version} · ${Math.round(performance.now() - t0)} ms`);
-  console.log(`  Registros: ${inf.filas.registros} (vacíos ${inf.filas.locales.vacio}, ocupados ${inf.filas.locales.ocupado}, desconocidos ${inf.filas.locales.desconocido})${inf.filas.excluidas.length ? ` · ${inf.filas.excluidas.length} fila(s) de totales excluidas` : ''}`);
+  console.log(`  Registros: ${inf.filas.registros} (vacíos ${inf.filas.locales.vacio}, ocupados ${inf.filas.locales.ocupado}, desconocidos ${inf.filas.locales.desconocido})${inf.filas.candidatasExcluir.length ? ` · ${inf.filas.candidatasExcluir.length} posible(s) fila(s) de totales conservada(s), pendiente(s) de confirmación` : ''}`);
   console.log(`  Celdas: ${c.total} · sin revisión ${c.sinRevision} (${pct(c.sinRevision, c.total)}) · requieren revisión ${c.requierenRevision} (${pct(c.requierenRevision, c.total)})`);
   console.log(`  Estados: ${Object.entries(c.porEstado).map(([k, v]) => `${k} ${v}`).join(' · ')}`);
   console.log(`  Incidencias: ${inf.incidencias.total} (error ${inf.incidencias.porGravedad.error}, aviso ${inf.incidencias.porGravedad.aviso}, info ${inf.incidencias.porGravedad.info}) · decide la Cátedra ${inf.incidencias.porDecision.catedra}, revisión ${inf.incidencias.porDecision.revision}`);

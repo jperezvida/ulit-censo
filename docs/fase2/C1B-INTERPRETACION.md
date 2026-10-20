@@ -12,10 +12,10 @@
 | Interpretación | `src/domain/xlsx/interpretacion.ts` | Capa original, capa interpretada, intérpretes por tipo y coherencias entre campos. |
 | Reglas e incidencias | `src/domain/xlsx/reglasInterpretacion.ts` | Catálogo versionable de reglas (con su respaldo) y de tipos de incidencia (gravedad, quién decide y propuesta). |
 | Clasificación histórica | `src/domain/xlsx/clasificacionHistorica.ts` | Diagnóstico de coherencia de GrActividad, Gr Comercio, Subgrupo, Actividad y Descripción. No asigna nada al catálogo 2026. |
-| Informe agregado | `src/domain/xlsx/informeInterpretacion.ts` | Recuentos por estado, columna, regla e incidencia, y registro de transformaciones. Sin nombres, direcciones ni descripciones. |
+| Informe agregado | `src/domain/xlsx/informeInterpretacion.ts` | Recuentos por estado, columna, regla e incidencia, y registro de transformaciones. No reproduce ningún texto libre de las celdas (sección 7 bis). |
 | Interfaz | Datos → Análisis previo → **Interpretar valores (C1b)** | Resumen e incidencias por tipo; descarga del informe en JSON. Opcional: año de la campaña para comprobar las fechas. |
 | Línea de órdenes | `npm run interpretar -- archivo.xlsx --municipio=mun-medina --anio=2025` | Mismo informe; deja `<archivo>.informe-interpretacion.json` junto al Excel, ignorado por git y por el control de datos reales. |
-| Pruebas | `src/domain/xlsx/c1b.test.ts` (47) y `analisis-previo.test.tsx` (+1) | Batería sintética, incluidas 10.000 filas. |
+| Pruebas | `src/domain/xlsx/c1b.test.ts` (51) y `analisis-previo.test.tsx` (+1) | Batería sintética, incluidas 10.000 filas. |
 
 C1b reutiliza el **lector seguro** de C1a (mismos límites de tamaño y descompresión) y su análisis estructural. El libro se lee una sola vez: `analizarLibroLeido` permite reutilizar la lectura.
 
@@ -139,6 +139,51 @@ El informe agregado:
 
 En los campos identificativos (nombre, dirección y descripción) se omiten los valores.
 
+## 7 bis. Privacidad del informe exportable
+
+Un nombre comercial o personal puede estar, por error, en **cualquier** columna, no solo en «Nombre del negocio». Por eso el informe exportable (JSON y pantalla) no reproduce texto libre de ninguna celda.
+
+- **Valores íntegros:** siguen en la capa original y en los mensajes internos de las incidencias. No se exportan.
+- **Mensaje de cada incidencia exportada:** se forma con el **título fijo** del tipo más un **detalle seguro**. El detalle solo contiene:
+  - números ya validados (seguidores, Nº redes, CP de 5 cifras);
+  - fechas;
+  - cabeceras del perfil;
+  - números de fila;
+  - descripciones fijas de los diagnósticos de clasificación («el subgrupo pertenece a otro grupo de actividad»), sin los textos de las celdas.
+- **Valor original:** solo se exporta su clase (texto, número, fecha…). El valor en sí solo aparece en estos casos:
+  - números de hasta 5 cifras enteras; uno más largo podría ser un teléfono;
+  - fechas;
+  - VERDADERO/FALSO;
+  - códigos de error de Excel.
+
+  En nombre, dirección y descripción nunca se exporta.
+- **Registro de transformaciones:** el original y el resultado solo se exportan en reglas cuyo original es un patrón estricto (dígitos, «16 B», fechas…).
+- **Lo único textual que procede del usuario** es el **nombre del archivo**, necesario como referencia.
+
+Las pruebas colocan nombres, personas, calles y un teléfono ficticios en columnas equivocadas:
+- Fecha, Distrito, CP, Num, Local Vacío y Long fachada;
+- las cinco columnas de clasificación;
+- web, Google y las de seguidores;
+- Nº redes.
+
+Comprueban tres cosas:
+- ninguno de esos textos aparece en el JSON exportado, ni desde una capa sintética ni desde un XLSX;
+- las incidencias siguen localizadas por tipo, columna y fila;
+- los valores íntegros siguen en la capa original.
+
+## 7 ter. Posibles filas de totales
+
+C1a marca como posible total una fila cuya primera celda de texto empieza por «Total», «Suma» o «Subtotal». Es una **heurística** y puede equivocarse: por ejemplo, con una calle llamada «Total…».
+
+- La fila **se conserva íntegra** en la capa original, con su número de fila, y se interpreta como cualquier otra.
+- Se registra en `candidatasExcluir` (origen `heuristica-c1a`). La fila interpretada lleva `exclusion: { propuesta: 'excluir', confirmada: false }` y una incidencia `posible-fila-de-totales` para revisión.
+- Solo podrá excluirse de la aplicación operativa con una **decisión humana explícita y trazada** en C1d. C1b no excluye nada.
+
+Una prueba coloca «TOTAL VÍA FICTICIA» en la dirección de un ocupado válido y comprueba lo siguiente:
+- la fila se conserva;
+- su interpretación es idéntica a la que tendría sin la marca;
+- queda pendiente de confirmación.
+
 ## 8. Simulación con el Excel ficticio de Medina 2025
 
 > Cifras de un archivo **ficticio**: sirven para comprobar las reglas, **no** para estimar la calidad del censo real.
@@ -206,13 +251,15 @@ La prueba exige menos de 5 s para la interpretación. El diagnóstico de clasifi
 
 ## 10. Garantías comprobadas por las pruebas
 
+- Ninguna fila se excluye automáticamente: las posibles filas de totales se conservan y quedan pendientes de confirmación.
+- El informe exportable no reproduce texto libre de ninguna celda.
+
 - La capa original no cambia, y los textos se conservan literalmente, con espacios.
 - Ninguna ausencia pasa a No, a 0 ni a una fecha.
 - Ningún binario imposible pasa a Sí.
 - Las reglas pendientes (diccionario, «3,5 m», número sin formato de fecha, año de dos cifras, CP de 4 cifras) solo se aplican con autorización expresa.
 - Distrito, Zona y CP nunca se inventan.
 - No se fusionan filas ni se crean locales.
-- El informe agregado no contiene nombres, direcciones ni descripciones.
 - La base de datos de la aplicación no cambia al interpretar desde la interfaz.
 - Se mantienen los límites de seguridad del lector.
 

@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
+import ExcelJS from 'exceljs';
 import { conPrefijo, libroFicticio } from '../../data/xlsxFicticio';
 import { letraColumna } from './analisis';
 import { ErrorLector, LIMITES_XLSX } from './lector';
@@ -30,7 +31,7 @@ const VACIO: Record<string, unknown> = { fecha: new Date(Date.UTC(2025, 4, 6)), 
 
 function capa(filas: Record<string, unknown>[], perfil: PerfilImportacion = PERFIL_CENSO_27): CapaOriginal {
   return {
-    archivo: { nombre: 'sintetico.xlsx' }, hoja: 'Datos', filaCabecera: 1, perfil: { id: perfil.id, version: perfil.version }, excluidas: [],
+    archivo: { nombre: 'sintetico.xlsx' }, hoja: 'Datos', filaCabecera: 1, perfil: { id: perfil.id, version: perfil.version }, candidatasExcluir: [],
     columnas: perfil.columnas.map((c, i) => ({ clave: c.clave, letra: letraColumna(i + 1), cabecera: c.cabecera, tipo: c.tipo, ...(c.territorial ? { territorial: c.territorial } : {}) })),
     filas: filas.map((f, i) => ({ fila: i + 2, celdas: Object.fromEntries(Object.entries(f).filter(([, v]) => v !== null && v !== undefined).map(([k, v]) => [k, ov(v)])) })),
   };
@@ -347,6 +348,95 @@ describe('C1b · Incidencias trazables', () => {
     const { inc } = una({ web: 4 });
     expect(inc[0]).toMatchObject({ archivo: 'sintetico.xlsx', hoja: 'Datos', fila: 2, columna: 'P', cabecera: 'web', campo: 'web', tipo: 'binario-invalido', regla: 'binario-fuera-de-dominio' });
     expect(inc[0].propuesta).toMatch(/nunca pasa a Sí/);
+  });
+});
+
+describe('C1b · Posibles filas de totales: se conservan, nunca se excluyen solas', () => {
+  it('una fila censal válida etiquetada por error como total se conserva íntegra y queda pendiente de confirmación', async () => {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load((await libroFicticio({ filas: 12, auxiliares: false })) as unknown as ArrayBuffer);
+    const ws = wb.getWorksheet('Datos')!;
+    // Fila 4 (un ocupado normal): su dirección empieza por «Total», lo que activa la heurística de C1a.
+    ws.getRow(4).getCell(5).value = 'TOTAL VÍA FICTICIA';
+    ws.addRow(['Total general']);
+    const bytes = new Uint8Array((await wb.xlsx.writeBuffer()) as ArrayBuffer);
+    const res = await interpretarXlsx(bytes, 'falso-total.xlsx', { territorio: medina });
+    expect(res.estructura.filas.posiblesTotales).toEqual([4, 14]);
+    // Ninguna fila desaparece de la capa original
+    expect(res.original.filas.map((f) => f.fila)).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
+    expect(res.original.candidatasExcluir.map((c) => [c.fila, c.origen])).toEqual([[4, 'heuristica-c1a'], [14, 'heuristica-c1a']]);
+    const f4 = res.filas.find((f) => f.fila === 4)!;
+    expect(res.original.filas.find((f) => f.fila === 4)!.celdas.direccion).toEqual({ t: 'texto', v: 'TOTAL VÍA FICTICIA' });
+    expect(f4.exclusion).toMatchObject({ propuesta: 'excluir', confirmada: false });
+    expect(f4.celdas.direccion).toMatchObject({ estado: 'valido', valor: 'TOTAL VÍA FICTICIA' });
+    expect(f4.local).toBe('ocupado');
+    // La marca de posible total queda pendiente de decisión humana y no altera la interpretación de la fila
+    expect(res.incidencias.filter((i) => i.fila === 4 && i.tipo === 'posible-fila-de-totales').map((i) => i.decision)).toEqual(['revision']);
+    const sinMarca = interpretarCapa({ ...res.original, candidatasExcluir: [] }, { territorio: medina });
+    const tiposFila = (r: typeof sinMarca) => r.incidencias.filter((i) => i.fila === 4 && i.tipo !== 'posible-fila-de-totales').map((i) => i.tipo);
+    expect(tiposFila(res)).toEqual(tiposFila(sinMarca));
+    expect(Object.fromEntries(Object.entries(f4.celdas).map(([k, c]) => [k, [c.estado, c.valor]]))).toEqual(Object.fromEntries(Object.entries(sinMarca.filas[2].celdas).map(([k, c]) => [k, [c.estado, c.valor]])));
+    const inf = informeInterpretacion(res);
+    expect(inf.filas.registros).toBe(13);
+    expect(inf.filas.candidatasExcluir).toEqual([
+      { fila: 4, motivo: expect.stringMatching(/heurística.*confirmación humana/), confirmada: false },
+      { fila: 14, motivo: expect.any(String), confirmada: false },
+    ]);
+  });
+});
+
+describe('C1b · Privacidad del informe exportable', () => {
+  const NOMBRE = 'PANADERÍA LUCÍA MARTÍN FICTICIA';
+  const PERSONA = 'Juan Pérez Inventado';
+  const CALLE = 'Calle del Ejemplo Inventado 7';
+  const TELEFONO = 600123456;
+  const PROHIBIDOS = [NOMBRE, PERSONA, CALLE, 'LUCÍA', 'Pérez', 'Ejemplo Inventado', String(TELEFONO)];
+
+  it('nombres y direcciones ficticios en columnas equivocadas no aparecen en el JSON exportado, pero se conservan en la capa original', () => {
+    const filas = [
+      // Ocupado con texto identificativo en columnas que no le corresponden
+      { ...OCUPADO, fecha: PERSONA, distrito: NOMBRE, cp: CALLE, numero: CALLE, grupoActividad: NOMBRE, grupoComercio: PERSONA, subgrupo: CALLE, actividad: NOMBRE,
+        descripcionActividad: PERSONA, web: NOMBRE, googleBusiness: PERSONA, seguidoresInstagram: TELEFONO, seguidoresFacebook: CALLE, facebook: 0, numRedes: PERSONA, nombre: NOMBRE, direccion: CALLE },
+      // Local vacío con el nombre en «Long fachada» y en «Local Vacío» de otra fila
+      { ...VACIO, fachada: NOMBRE, nombre: PERSONA },
+      { ...OCUPADO, vacio: PERSONA, numero: 9 },
+      // Misma dirección (con un nombre) repetida: el detalle solo cita números de fila
+      { ...OCUPADO, direccion: CALLE, numero: 11 },
+      { ...OCUPADO, direccion: CALLE, numero: 11, nombre: PERSONA },
+    ];
+    const res = interpretarCapa(capa(filas), op({ periodo: { desde: '2025-01-01', hasta: '2025-12-31' } }));
+    const json = JSON.stringify(informeInterpretacion(res, 'Medina del Campo'));
+    for (const p of PROHIBIDOS) expect(json, p).not.toContain(p);
+    // Hay incidencias de esas celdas, referenciadas por tipo, columna y fila
+    const inf = informeInterpretacion(res);
+    const tipos = new Set(inf.incidencias.lista.map((i) => i.tipo));
+    for (const t of ['fecha-no-reconocida', 'binario-texto-no-reconocido', 'numero-no-reconocido', 'cp-no-valido', 'local-vacio-invalido', 'fachada-no-valida', 'vacio-con-datos-negocio', 'clasificacion-incoherente', 'direccion-repetida'] as const) expect(tipos, t).toContain(t);
+    expect(inf.incidencias.lista.find((i) => i.tipo === 'fecha-no-reconocida')).toMatchObject({ fila: 2, columna: 'A', cabecera: 'Fecha censo', original: { clase: 'texto' } });
+    expect(inf.incidencias.lista.find((i) => i.campo === 'seguidoresInstagram')?.original).toBeUndefined();
+    // Los valores íntegros siguen en la capa original y en los mensajes INTERNOS (que no se exportan)
+    expect(res.original.filas[0].celdas.fecha).toEqual({ t: 'texto', v: PERSONA });
+    expect(res.original.filas[0].celdas.seguidoresInstagram).toEqual({ t: 'numero', v: TELEFONO });
+    expect(res.incidencias.some((i) => i.mensaje.includes(PERSONA) || i.valorOriginal.includes(PERSONA))).toBe(true);
+  });
+
+  it('el detalle de clasificación usa descripciones fijas, no los textos de las celdas', () => {
+    const res = interpretarCapa(capa([{ ...OCUPADO, grupoActividad: 'Servicios', grupoComercio: null, subgrupo: 'Bares y Cafeterías', actividad: 'Bar' }]), op());
+    const i = informeInterpretacion(res).incidencias.lista.find((x) => x.tipo === 'clasificacion-incoherente')!;
+    expect(i.mensaje).toBe('Clasificación histórica incoherente: el subgrupo pertenece a otro grupo de actividad');
+    expect(res.incidencias[0].mensaje).toContain('Bares y Cafeterías');
+  });
+
+  it('desde un XLSX: el nombre colocado en otra columna tampoco se exporta', async () => {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load((await libroFicticio({ filas: 12, auxiliares: false })) as unknown as ArrayBuffer);
+    const ws = wb.getWorksheet('Datos')!;
+    ws.getRow(2).getCell(12).value = NOMBRE; // Subgrupo de actividad
+    ws.getRow(3).getCell(1).value = CALLE; // Fecha censo
+    ws.getRow(4).getCell(16).value = PERSONA; // web
+    const res = await interpretarXlsx(new Uint8Array((await wb.xlsx.writeBuffer()) as ArrayBuffer), 'privacidad.xlsx', { territorio: medina });
+    const json = JSON.stringify(informeInterpretacion(res));
+    for (const p of PROHIBIDOS) expect(json, p).not.toContain(p);
+    expect(json).not.toMatch(/COMERCIO FICTICIO|VÍA FICTICIA/);
   });
 });
 

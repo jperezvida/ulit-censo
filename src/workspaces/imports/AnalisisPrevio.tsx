@@ -219,7 +219,7 @@ function Interpretacion({ inf }: { inf: InformeInterpretacion }) {
   return (
     <div className="col ap" style={{ gap: 14 }} aria-label="Interpretación de valores">
       <section className="ap-resumen">
-        <div><span className="muted">Registros</span><b>{fmt(inf.filas.registros)}</b><span className="muted">{inf.filas.locales.ocupado} ocupados · {inf.filas.locales.vacio} vacíos{inf.filas.locales.desconocido ? ` · ${inf.filas.locales.desconocido} sin estado` : ''}</span></div>
+        <div><span className="muted">Registros</span><b>{fmt(inf.filas.registros)}</b><span className="muted">{inf.filas.locales.ocupado} ocupados · {inf.filas.locales.vacio} vacíos{inf.filas.locales.desconocido ? ` · ${inf.filas.locales.desconocido} sin estado` : ''}{inf.filas.candidatasExcluir.length ? ` · ${inf.filas.candidatasExcluir.length} posible(s) total(es) conservado(s), por confirmar` : ''}</span></div>
         <div><span className="muted">Celdas sin revisión</span><b>{fmt(c.sinRevision)}</b><span className="muted">{pct(c.sinRevision)} de {fmt(c.total)}</span></div>
         <div><span className="muted">Requieren revisión</span><b>{fmt(c.requierenRevision)}</b><span className="muted">{pct(c.requierenRevision)}</span></div>
         <div><span className="muted">Incidencias</span><b>{fmt(inf.incidencias.total)}</b><span className="muted">{inf.incidencias.porGravedad.error} error · {inf.incidencias.porGravedad.aviso} aviso · {inf.incidencias.porGravedad.info} info</span></div>
