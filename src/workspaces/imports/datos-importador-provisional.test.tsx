@@ -48,7 +48,9 @@ describe('Datos · análisis previo frente al importador CSV provisional', () =>
     await act(async () => {
       fireEvent.change(input, { target: { files: [new File([csv], 'subido.csv', { type: 'text/csv' })] } });
     });
-    await waitFor(() => within(dlg).getByText(/Solo previsualización/));
+    await waitFor(() => within(dlg).getByRole('status'));
+    expect(within(dlg).getByRole('status')).toHaveTextContent(/Solo previsualización/);
+    expect(within(dlg).getByText(/con el importador provisional no se incorporará nada/)).toBeInTheDocument();
     const confirmar = within(dlg).getByRole('button', { name: 'Confirmar incorporación' });
     expect(confirmar).toBeDisabled();
     const antes = useStore.getState().db;
