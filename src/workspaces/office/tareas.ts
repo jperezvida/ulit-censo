@@ -1,4 +1,5 @@
 import { esDudosa, type FilaOficina } from '../../domain/oficina';
+import { revisionFranquicia } from '../../domain/franquicias';
 
 /**
  * Tareas de Oficina. Las dos formas de trabajar (por tareas y por establecimiento) usan
@@ -6,7 +7,7 @@ import { esDudosa, type FilaOficina } from '../../domain/oficina';
  */
 export type Tarea = 'categorizacion' | 'franquicias' | 'digital' | 'incidencias' | 'todos';
 
-export type Filtro = 'pendientes' | 'errores' | 'incidencias' | 'revisados' | 'sin-visitar' | 'todos';
+export type Filtro = 'pendientes' | 'errores' | 'incidencias' | 'avisos' | 'revisados' | 'sin-visitar' | 'todos';
 
 export interface DefTarea {
   id: Tarea;
@@ -28,9 +29,8 @@ export const TAREAS: DefTarea[] = [
     aplica: registradoOcupado, pendiente: (f) => f.rev.categorizacion !== 'revisado',
   },
   {
-    id: 'franquicias', titulo: 'Franquicias', descripcion: 'Cadena o franquicia del establecimiento',
-    aplica: registradoOcupado, pendiente: null,
-    aviso: 'La verificación independiente de franquicias se incorporará en B5: por ahora se puede consultar y corregir la cadena, pero no se muestra progreso de verificación.',
+    id: 'franquicias', titulo: 'Franquicias', descripcion: 'Franquicia Sí/No comprobada en esta campaña (distinta del nombre de cadena)',
+    aplica: registradoOcupado, pendiente: (f) => revisionFranquicia(f.rev) !== 'revisado',
   },
   {
     id: 'digital', titulo: 'Presencia digital', descripcion: 'Web, Google, reseñas y redes de esta campaña',
@@ -51,13 +51,14 @@ export const TAREA_POR_ID = Object.fromEntries(TAREAS.map((t) => [t.id, t])) as 
 /** Tareas pendientes de un registro (para el modo por establecimiento y «siguiente pendiente»). */
 export function tareasPendientes(f: FilaOficina): Tarea[] {
   if (f.situacion === 'pendiente-visita') return [];
-  return (['categorizacion', 'digital', 'incidencias'] as Tarea[]).filter((t) => TAREA_POR_ID[t].aplica(f) && TAREA_POR_ID[t].pendiente?.(f));
+  return (['categorizacion', 'franquicias', 'digital', 'incidencias'] as Tarea[]).filter((t) => TAREA_POR_ID[t].aplica(f) && TAREA_POR_ID[t].pendiente?.(f));
 }
 
 export const FILTROS: { id: Filtro; titulo: string }[] = [
   { id: 'pendientes', titulo: 'Pendientes' },
   { id: 'errores', titulo: 'Con errores' },
   { id: 'incidencias', titulo: 'Con incidencias' },
+  { id: 'avisos', titulo: 'Con avisos' },
   { id: 'revisados', titulo: 'Revisados' },
   { id: 'sin-visitar', titulo: 'Sin visitar' },
   { id: 'todos', titulo: 'Todos' },
@@ -73,6 +74,8 @@ export function aplicaFiltro(t: DefTarea, filtro: Filtro, f: FilaOficina): boole
       return f.errores.length > 0;
     case 'incidencias':
       return f.incidencias.length > 0;
+    case 'avisos':
+      return f.avisos.length > 0;
     case 'sin-visitar':
       return f.situacion === 'pendiente-visita';
     default:

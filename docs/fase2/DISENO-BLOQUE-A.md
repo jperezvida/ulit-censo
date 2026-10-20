@@ -386,7 +386,7 @@ Garantías:
 | **B2** | Panel de itinerarios en Oficina y vista municipal · **vista por tareas y vista por establecimiento** (§12.2) · cierre provisional · ubicar eventos de cronología incierta | — |
 | **B3** | Tabla editable por teclado (navegación, edición, copiar/pegar, deshacer por celda, columnas fijas), usada por la vista por tareas | Pruebas de interacción con Testing Library |
 | **B4** | Catálogo 2026 por estructura de grupo (§12.5) · autocompletado de actividades y avisos de sospecha | «clín» → actividades del catálogo; las sugerencias no se aplican sin Enter |
-| **B5** | Respuestas 1/0/N/?, edición múltiple, «Partir de 2025» | Lo heredado queda en borrador; negocio distinto ⇒ no se hereda |
+| **B5** | Respuestas 1/0/N/?, franquicias como tarea propia, acciones masivas atómicas, comparación y «Partir de 2025», avisos de clasificación (implementado; véase `OFICINA-RAPIDA.md` §7) | Lo heredado queda en borrador; negocio distinto ⇒ no se hereda; ninguna acción masiva verifica ni aprueba |
 | **C1** | Perfiles versionados (a partir del perfil real) · lectura y comparación del XLSX del itinerario | Amarillo = solo etiqueta; ambiguo no aplicado; el origen sigue intacto |
 | **C2** | Validación de itinerario (bloqueantes, advertencias, justificaciones, reapertura) | — |
 | **C3** | Consolidación municipal y XLSX nativo (provisional / final) | **Contrato de estructura exacta por perfil**; no se rellena con 2025; sin duplicados |

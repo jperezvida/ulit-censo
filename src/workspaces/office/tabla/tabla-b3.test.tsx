@@ -194,15 +194,16 @@ describe('B3 · tabla de revisión rápida', () => {
     const neg = esc.db.ocupaciones[`ocu-${ids[0]}`].negocioId!;
     tecla(grid, 'ArrowDown');
     for (let k = 0; k < 4; k++) tecla(grid, 'ArrowRight'); // Página web
+    // B5: 1/0 responden al instante (sin editor) y avanzan a la siguiente variable pendiente
     tecla(grid, '1');
-    tecla(editor(), 'Tab'); // Venta por internet
+    expect(editor()).toBeNull();
+    expect(grid.getAttribute('aria-activedescendant')).toBe(`cel-${ids[0]}-dig.ventaOnline`);
     tecla(grid, '0');
-    tecla(editor(), 'Enter');
     const rev = db().digital[kNC(neg, C26_SINT)];
     expect(rev.datos.web?.respuesta).toBe('si');
     expect(rev.datos.ventaOnline?.respuesta).toBe('no');
     // «na» no se admite en «Página web»
-    tecla(grid, 'ArrowUp');
+    tecla(grid, 'ArrowLeft');
     tecla(grid, 'ArrowLeft');
     tecla(grid, 'Enter');
     escribir('na');

@@ -1,8 +1,8 @@
 import type { BaseDatos } from './db';
 import { ErrorDominio } from './db';
-import { abarca, ocupacionEn } from './consultas';
+import { abarca, indiceOcupaciones, ocupacionEn, type IndiceOcupaciones } from './consultas';
 import { direccionDeLocal, itinerariosDeDireccionEfectiva } from './ambito';
-import type { Acera, EstadoOficinaItinerario, Id, Itinerario, LngLat, TramoPlan } from './types';
+import type { Acera, EstadoOficinaItinerario, Id, Itinerario, LngLat, Ocupacion, TramoPlan } from './types';
 
 /**
  * Estado de oficina, bloqueo y alcance de los itinerarios.
@@ -40,10 +40,47 @@ export function itinerariosDeDireccion(db: BaseDatos, campanaId: Id, calleId: Id
   return itinerariosDeDireccionEfectiva(db, campanaId, { calleId, numero, coord });
 }
 
+// ───────────── Índices de lote (operaciones masivas) ─────────────
+
+/**
+ * Durante una operación masiva (acciones sobre miles de registros) se comprueban muchas veces
+ * los mismos locales, negocios e itinerarios. `enLote` precalcula esos índices UNA vez y solo se
+ * usan mientras los objetos de origen sean los mismos (por identidad): las operaciones masivas
+ * no cambian locales, ocupaciones ni itinerarios. Las reglas no cambian; solo el coste.
+ */
+interface IndicesLote {
+  ocupaciones: BaseDatos['ocupaciones'];
+  itinerarios: BaseDatos['itinerarios'];
+  locales: BaseDatos['locales'];
+  porNegocio: Map<Id, Ocupacion[]>;
+  indiceOcu: IndiceOcupaciones;
+  itLocal: Map<string, Itinerario[]>;
+}
+let lote: IndicesLote | null = null;
+
+export function enLote<T>(db: BaseDatos, fn: () => T): T {
+  const previo = lote;
+  const porNegocio = new Map<Id, Ocupacion[]>();
+  for (const o of Object.values(db.ocupaciones)) if (o.negocioId) porNegocio.set(o.negocioId, [...(porNegocio.get(o.negocioId) ?? []), o]);
+  lote = { ocupaciones: db.ocupaciones, itinerarios: db.itinerarios, locales: db.locales, porNegocio, indiceOcu: indiceOcupaciones(db), itLocal: new Map() };
+  try {
+    return fn();
+  } finally {
+    lote = previo;
+  }
+}
+const loteValido = (db: BaseDatos) => !!lote && lote.ocupaciones === db.ocupaciones && lote.itinerarios === db.itinerarios && lote.locales === db.locales;
+
 /** Itinerarios de una campaña cuyo ámbito efectivo incluye el local. */
 export function itinerariosDeLocal(db: BaseDatos, campanaId: Id, localId: Id): Itinerario[] {
   const l = db.locales[localId];
   if (!l) return [];
+  if (loteValido(db)) {
+    const k = `${campanaId}|${localId}`;
+    let r = lote!.itLocal.get(k);
+    if (!r) lote!.itLocal.set(k, (r = itinerariosDeDireccionEfectiva(db, campanaId, direccionDeLocal(l))));
+    return r;
+  }
   return itinerariosDeDireccionEfectiva(db, campanaId, direccionDeLocal(l));
 }
 
@@ -107,8 +144,10 @@ export function comprobarAlcanceObjetivo(db: BaseDatos, alcance: Alcance | undef
  * revisión de Perfumería Sol.
  */
 export function localesDeNegocio(db: BaseDatos, negocioId: Id, campanaId: Id): { todos: Id[]; vigentes: Id[] } {
-  const todos = [...new Set(Object.values(db.ocupaciones).filter((o) => o.negocioId === negocioId && abarca(db, o, campanaId)).map((o) => o.localId))];
-  const vigentes = todos.filter((l) => ocupacionEn(db, l, campanaId)?.negocioId === negocioId);
+  const enL = loteValido(db);
+  const ocs = enL ? lote!.porNegocio.get(negocioId) ?? [] : Object.values(db.ocupaciones).filter((o) => o.negocioId === negocioId);
+  const todos = [...new Set(ocs.filter((o) => abarca(db, o, campanaId)).map((o) => o.localId))];
+  const vigentes = todos.filter((l) => ocupacionEn(db, l, campanaId, enL ? lote!.indiceOcu : undefined)?.negocioId === negocioId);
   return { todos, vigentes };
 }
 

@@ -1,3 +1,4 @@
+import { franquiciasHistoricas } from './franquiciasDemo';
 import { baseVacia, kCob, kNC, kRev, type BaseDatos } from '../domain/db';
 import { registrarVacio } from '../domain/campo';
 import { longitudLinea } from '../domain/geo';
@@ -188,7 +189,7 @@ export function escenarioOficina(op: OpcionesEscenario): Escenario {
       if (k < ls.length * f) visitar(db, l.id, '2026-09-15T09:00:00');
     });
   });
-  return { db, calleRepartida: rep, calleSegmentos: seg, calleSinLocales: sinLoc, itinerarios: its.map((i) => i.id) };
+  return { db: franquiciasHistoricas(db, C25_SINT), calleRepartida: rep, calleSegmentos: seg, calleSinLocales: sinLoc, itinerarios: its.map((i) => i.id) };
 }
 
 /**

@@ -1,25 +1,35 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as KE } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { AlertCircle, CheckCircle2, Clock, Columns3, Info, Loader2, Lock, Pin, PinOff, Redo2, ShieldCheck, Undo2 } from 'lucide-react';
+import { AlertCircle, CheckCircle2, CheckSquare, Clock, Columns3, GitCompare, Info, ListChecks, Loader2, Lock, Pin, PinOff, Redo2, ShieldCheck, Square, Undo2 } from 'lucide-react';
 import { verificarDigital } from '../../../domain/digital';
 import { useStore } from '../../../store/store';
 import type { FilaOficina } from '../../../domain/oficina';
-import type { Id } from '../../../domain/types';
+import type { Id, VariableDigital } from '../../../domain/types';
 import { useCtxOficina } from '../contextoOficina';
 import { Puntos } from '../ListaRegistros';
 import { observarRectConRespaldo } from '../virtual';
 import type { Tarea } from '../tareas';
 import {
-  COLUMNAS, COLUMNAS_TAREA, COLUMNA_POR_ID, ErrorCeldas, aTSV, aplicarCambiosCeldas, motivoNoEditable, parseTSV,
+  COLUMNAS, COLUMNAS_TAREA, COLUMNA_POR_ID, ErrorCeldas, REFERENCIA_DE, aTSV, aplicarCambiosCeldas, motivoNoEditable, parseTSV,
   type CambioCelda, type Columna, type CtxCelda,
 } from './columnas';
 import { BuscadorClasificacion } from '../BuscadorClasificacion';
+import { ModalAccionMasiva } from '../ModalAccionMasiva';
 import { catalogoDeCampana } from '../../../domain/clasificacion';
 import { textoClasificacion } from '../../../domain/buscador';
 import '../../../styles/tabla-revision.css';
 
 const ALTO = 34;
-const ANCHO_META = 82;
+const ANCHO_META = 100;
+
+/** Atajos de respuesta inmediata en columnas Sí/No (sin abrir editor). */
+const ATAJOS: Record<string, { texto: string; t: string }> = {
+  '1': { texto: '1', t: 'Sí' },
+  '0': { texto: '0', t: 'No' },
+  n: { texto: 'N/A', t: 'No aplicable' },
+  N: { texto: 'N/A', t: 'No aplicable' },
+  '?': { texto: '?', t: 'Sin información' },
+};
 
 interface Pos {
   f: Id; // localId
@@ -58,6 +68,7 @@ export function TablaRevision({ filas, tarea, sel, onSel, onAbrirFicha, onCronol
   const guardado = useStore((s) => s.guardado);
   const personaId = useStore((s) => s.prefs.personaId);
   const prefsCol = useStore((s) => s.prefs.oficina?.[s.prefs.personaId]?.columnas?.[tarea]);
+  const comparar = useStore((s) => !!s.prefs.oficina?.[s.prefs.personaId]?.comparar?.[tarea]);
   const setPrefsOficina = useStore((s) => s.setPrefsOficina);
   const ctxOf = useCtxOficina()!;
   const ctxCelda: CtxCelda = useMemo(
@@ -69,9 +80,12 @@ export function TablaRevision({ filas, tarea, sel, onSel, onAbrirFicha, onCronol
   const visiblesIds = prefsCol?.visibles ?? COLUMNAS_TAREA[tarea];
   const fijasIds = prefsCol?.fijas ?? COLUMNAS.filter((c) => c.fijaPorDefecto).map((c) => c.id);
   const cols = useMemo(() => {
-    const vis = visiblesIds.map((id) => COLUMNA_POR_ID[id]).filter(Boolean);
+    let ids = visiblesIds;
+    // «Comparar con la campaña anterior»: cada columna con referencia lleva al lado la suya (solo lectura).
+    if (comparar) ids = ids.flatMap((id) => (REFERENCIA_DE[id] && !visiblesIds.includes(REFERENCIA_DE[id]) ? [id, REFERENCIA_DE[id]] : [id]));
+    const vis = ids.map((id) => COLUMNA_POR_ID[id]).filter(Boolean);
     return [...vis.filter((c) => fijasIds.includes(c.id)), ...vis.filter((c) => !fijasIds.includes(c.id))];
-  }, [visiblesIds, fijasIds]);
+  }, [visiblesIds, fijasIds, comparar]);
   const nFijas = cols.filter((c) => fijasIds.includes(c.id)).length;
   const izq = useMemo(() => {
     const out: number[] = [];
@@ -102,9 +116,14 @@ export function TablaRevision({ filas, tarea, sel, onSel, onAbrirFicha, onCronol
   const [errores, setErrores] = useState<Map<string, string>>(new Map());
   const [mensaje, setMensaje] = useState<{ t: string; tipo: 'error' | 'info' | 'ok' } | null>(null);
   const [panelCols, setPanelCols] = useState(false);
+  /** Filas marcadas para una acción masiva (Espacio o casilla); si no hay, cuenta el rango de filas. */
+  const [marcadas, setMarcadas] = useState<Set<Id>>(new Set());
+  const [modalAccion, setModalAccion] = useState(false);
   const ultimoIndice = useRef(0);
   /** El cursor se movió porque el registro activo salió de la vista (no por la persona). */
   const movidoSolo = useRef(false);
+  /** Último registro que la tabla comunicó como seleccionado (para reconocer su eco). */
+  const enviado = useRef<Id | null>(null);
   const grid = useRef<HTMLDivElement>(null);
   const scroll = useRef<HTMLDivElement>(null);
 
@@ -132,11 +151,18 @@ export function TablaRevision({ filas, tarea, sel, onSel, onAbrirFicha, onCronol
       movidoSolo.current = false;
       return;
     }
-    const t = setTimeout(() => onSel(activo.f), 250);
+    const f = activo.f;
+    const t = setTimeout(() => {
+      enviado.current = f;
+      onSel(f);
+    }, 250);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activo?.f]);
   useEffect(() => {
+    // El eco de nuestra propia selección (llega con retraso por la URL) no debe devolver el
+    // cursor a una fila anterior si la persona ya ha seguido avanzando con el teclado.
+    if (sel && sel === enviado.current) return;
     if (sel && indice.has(sel) && sel !== activo?.f) setActivo({ f: sel, c: activo?.c ?? cols.find((c) => c.editor)?.id ?? cols[0].id });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel]);
@@ -272,8 +298,69 @@ export function TablaRevision({ filas, tarea, sel, onSel, onAbrirFicha, onCronol
     ejecutar(celdas.map((x) => ({ ...x, texto: '' })), `Vaciadas ${celdas.length} celda(s)`);
   };
 
+  /** Filas para una acción masiva: las marcadas o, si no hay, las del rango (si abarca varias). */
+  const seleccion = useMemo(() => {
+    if (marcadas.size) return filasOrd.filter((f) => marcadas.has(f.localId));
+    if (rango && rango.r2 > rango.r1) return filasOrd.slice(rango.r1, rango.r2 + 1);
+    return [];
+  }, [marcadas, filasOrd, rango]);
+
+  const alternarMarca = (ids: Id[]) =>
+    setMarcadas((m) => {
+      const n = new Set(m);
+      const todas = ids.every((id) => n.has(id));
+      for (const id of ids) {
+        if (todas) n.delete(id);
+        else n.add(id);
+      }
+      return n;
+    });
+
+  /**
+   * Siguiente celda adecuada tras una respuesta inmediata. En presencia digital: la siguiente
+   * variable exigible y sin responder (misma fila y después las siguientes). En el resto de tareas:
+   * la misma columna en la fila siguiente. Se calcula con los datos ya actualizados.
+   */
+  const avanzar = (r: number, c: number) => {
+    const ctxN: CtxCelda = { ...ctxCelda, db: useStore.getState().db! };
+    if (tarea === 'digital') {
+      const hasta = Math.min(filasOrd.length, r + 200);
+      for (let i = r; i < hasta; i++) {
+        for (let j = i === r ? c + 1 : 0; j < cols.length; j++) {
+          const col = cols[j];
+          if (!col.id.startsWith('dig.') || !col.editor) continue;
+          const f = filasOrd[i];
+          if (motivoNoEditable(col, f, ctxN) || col.atenuada?.(f, ctxN) || col.texto(f, ctxN) !== '') continue;
+          setActivo({ f: f.localId, c: col.id });
+          setAncla(null);
+          asegurarVisible(i, j);
+          return;
+        }
+      }
+    }
+    const siguiente = filasOrd[r + 1];
+    if (!siguiente) return;
+    setActivo({ f: siguiente.localId, c: cols[c].id });
+    setAncla(null);
+    asegurarVisible(r + 1, c);
+  };
+
+  /** Respuesta inmediata (1/0/N/?) en la celda activa o en todas las del rango (atómico). */
+  const responder = (atajo: { texto: string; t: string }) => {
+    if (!filaActiva || !colActiva || r0 === undefined) return;
+    const celdas = nCeldas > 1 ? celdasDelRango() : [{ fila: filaActiva, col: colActiva }];
+    if (celdas.some((x) => x.col.editor !== 'respuesta')) {
+      setMensaje({ t: 'Los atajos 1/0/N/? solo se aplican a columnas Sí/No. No se ha aplicado ningún cambio.', tipo: 'error' });
+      return;
+    }
+    const ok = ejecutar(celdas.map((x) => ({ ...x, texto: atajo.texto })), `${colActiva.titulo}: ${atajo.t}${celdas.length > 1 ? ` · ${celdas.length} celdas` : ''}`);
+    if (ok && celdas.length === 1) avanzar(r0, c0);
+  };
+
   const onKeyDown = (e: KE<HTMLDivElement>) => {
     if (edicion || !filasOrd.length) return;
+    // Nunca se interceptan teclas dirigidas a un campo de texto (buscador, descripción…).
+    if ((e.target as HTMLElement).closest?.('input, textarea, select, [contenteditable="true"]')) return;
     const mod = e.ctrlKey || e.metaKey;
     const r = r0 ?? -1;
     const c = c0 < 0 ? 0 : c0;
@@ -322,7 +409,21 @@ export function TablaRevision({ filas, tarea, sel, onSel, onAbrirFicha, onCronol
         return;
       case 'Escape':
         setAncla(null);
+        setMarcadas(new Set());
         setMensaje(null);
+        return;
+      case ' ':
+        // Espacio marca o desmarca la fila (Mayús+Espacio: todas las del rango) para una acción masiva.
+        e.preventDefault();
+        if (r < 0) return;
+        alternarMarca(e.shiftKey && rango ? filasOrd.slice(rango.r1, rango.r2 + 1).map((f) => f.localId) : [filasOrd[r].localId]);
+        return;
+      case 'F10':
+      case 'ContextMenu':
+        if (k === 'F10' && !e.shiftKey) return;
+        e.preventDefault();
+        if (seleccion.length) setModalAccion(true);
+        else setMensaje({ t: 'Selecciona antes varias filas (Espacio o Mayús+↓) para una acción masiva.', tipo: 'info' });
         return;
       case 'Delete':
       case 'Backspace':
@@ -330,6 +431,13 @@ export function TablaRevision({ filas, tarea, sel, onSel, onAbrirFicha, onCronol
         vaciar();
         return;
       default:
+        if (ATAJOS[k] && !e.altKey && r >= 0 && colActiva?.editor === 'respuesta') {
+          e.preventDefault();
+          const motivo = motivoNoEditable(colActiva, filaActiva!, ctxCelda);
+          if (motivo && nCeldas === 1) setMensaje({ t: `${colActiva.titulo}: ${motivo}`, tipo: 'info' });
+          else responder(ATAJOS[k]);
+          return;
+        }
         if (k.length === 1 && !e.altKey && r >= 0) {
           e.preventDefault();
           empezarEdicion(k);
@@ -368,8 +476,8 @@ export function TablaRevision({ filas, tarea, sel, onSel, onAbrirFicha, onCronol
   };
 
   // Manejadores estables para las filas memorizadas (leen el estado más reciente por referencia).
-  const ultimo = useRef({ edicion, activo, confirmar, empezarEdicion, cancelar, onAbrirFicha, onCronologia, enfocar });
-  ultimo.current = { edicion, activo, confirmar, empezarEdicion, cancelar, onAbrirFicha, onCronologia, enfocar };
+  const ultimo = useRef({ edicion, activo, confirmar, empezarEdicion, cancelar, onAbrirFicha, onCronologia, enfocar, alternarMarca });
+  ultimo.current = { edicion, activo, confirmar, empezarEdicion, cancelar, onAbrirFicha, onCronologia, enfocar, alternarMarca };
   const acciones = useMemo<AccionesFila>(
     () => ({
       pulsarCelda: (localId, colId, shift) => {
@@ -394,12 +502,15 @@ export function TablaRevision({ filas, tarea, sel, onSel, onAbrirFicha, onCronol
         else if (e.key === 'Escape') { e.preventDefault(); u.cancelar(); }
       },
       abrirFicha: (id) => ultimo.current.onAbrirFicha(id),
+      marcar: (id) => ultimo.current.alternarMarca([id]),
       cronologia: (id) => ultimo.current.onCronologia(id),
     }),
     [],
   );
 
   const ultimaOp = pilaDeshacer[pilaDeshacer.length - 1]?.etiqueta;
+  const refId = db.campanas[ctxCelda.campanaId]?.campanaReferenciaId;
+  const anioRef = refId ? db.campanas[refId]?.anio ?? 'anterior' : 'anterior';
   const proximaRe = pilaRehacer[pilaRehacer.length - 1]?.etiqueta;
   const motivoActiva = filaActiva && colActiva ? motivoNoEditable(colActiva, filaActiva, ctxCelda) : null;
 
@@ -430,9 +541,9 @@ export function TablaRevision({ filas, tarea, sel, onSel, onAbrirFicha, onCronol
               <button className="tab-cols-btn" onClick={() => setPanelCols((v) => !v)} aria-label="Configurar columnas" title="Columnas"><Columns3 size={14} /></button>
             </div>
             {cols.map((col, i) => (
-              <div key={col.id} role="columnheader" className={`tab-c ${i < nFijas ? 'fija' : ''} ${i === nFijas - 1 ? 'ultima-fija' : ''}`} style={{ width: col.ancho, left: i < nFijas ? izq[i] : undefined }} aria-sort={orden?.col === col.id ? (orden.asc ? 'ascending' : 'descending') : 'none'}>
-                <button className="tab-cab-btn" title={`${col.titulo} · pulsa para ordenar`} onClick={() => setOrden((o) => (o?.col === col.id ? (o.asc ? { col: col.id, asc: false } : null) : { col: col.id, asc: true }))}>
-                  {col.titulo} {orden?.col === col.id ? (orden.asc ? '↑' : '↓') : ''}
+              <div key={col.id} role="columnheader" className={`tab-c ${i < nFijas ? 'fija' : ''} ${i === nFijas - 1 ? 'ultima-fija' : ''} ${col.referencia ? 'ref' : ''}`} style={{ width: col.ancho, left: i < nFijas ? izq[i] : undefined }} aria-sort={orden?.col === col.id ? (orden.asc ? 'ascending' : 'descending') : 'none'}>
+                <button className="tab-cab-btn" title={`${col.tituloDe?.(ctxCelda) ?? col.titulo}${col.referencia ? ' · referencia de solo lectura' : ''} · pulsa para ordenar`} onClick={() => setOrden((o) => (o?.col === col.id ? (o.asc ? { col: col.id, asc: false } : null) : { col: col.id, asc: true }))}>
+                  {col.tituloDe?.(ctxCelda) ?? col.titulo} {orden?.col === col.id ? (orden.asc ? '↑' : '↓') : ''}
                 </button>
               </div>
             ))}
@@ -459,6 +570,7 @@ export function TablaRevision({ filas, tarea, sel, onSel, onAbrirFicha, onCronol
                     c1={enRango ? rango!.c1 : -1}
                     c2={enRango ? rango!.c2 : -1}
                     edicion={esActiva ? edicion : null}
+                    marcada={marcadas.has(f.localId)}
                     errores={errores}
                     ctx={ctxCelda}
                     acc={acciones}
@@ -474,11 +586,11 @@ export function TablaRevision({ filas, tarea, sel, onSel, onAbrirFicha, onCronol
         {colActiva && filaActiva ? (
           <span className="tab-estado-celda">
             <b>{colActiva.titulo}</b> · {filaActiva.vacio ? 'Vacío' : filaActiva.nombre} ({filaActiva.calle} {filaActiva.numero ?? 's/n'})
-            {motivoActiva ? <span className="muted"> · {motivoActiva}</span> : <span className="tab-ok"> · editable (Enter/F2)</span>}
+            {motivoActiva ? <span className="muted"> · {motivoActiva}</span> : <span className="tab-ok"> · {colActiva.editor === 'respuesta' ? `1 Sí · 0 No${colActiva.id === 'franquicia' ? '' : ' · N N/A'} · ? sin info · Supr pendiente` : 'editable (Enter/F2)'}</span>}
             {nCeldas > 1 && <span> · {nCeldas} celdas</span>}
           </span>
         ) : (
-          <span className="muted">Pulsa en una celda o usa las flechas. Enter/F2 edita · Esc cancela · Ctrl+C/Ctrl+V · Ctrl+Z/Ctrl+Y · Ctrl+Enter abre la ficha.</span>
+          <span className="muted">Pulsa en una celda o usa las flechas. Enter/F2 edita · 1/0/N/? responde · Espacio marca · Ctrl+C/Ctrl+V · Ctrl+Z/Ctrl+Y · Ctrl+Enter abre la ficha.</span>
         )}
         {mensaje && (
           <span className={`tab-msg ${mensaje.tipo}`} title={mensaje.t}>
@@ -486,6 +598,21 @@ export function TablaRevision({ filas, tarea, sel, onSel, onAbrirFicha, onCronol
           </span>
         )}
         <span className="esp" />
+        {seleccion.length > 0 && (
+          <span className="tab-sel" role="group" aria-label="Selección">
+            <b>{seleccion.length}</b> fila(s)
+            <button className="btn s primario" onClick={() => setModalAccion(true)} title="Acción sobre la selección (Mayús+F10)"><ListChecks size={13} /> Acciones…</button>
+            {marcadas.size > 0 && <button className="btn s fantasma" onClick={() => { setMarcadas(new Set()); enfocar(); }}>Quitar</button>}
+          </span>
+        )}
+        <button
+          className={`btn s ${comparar ? 'on' : 'fantasma'}`}
+          aria-pressed={comparar}
+          onClick={() => { const a = useStore.getState().prefs.oficina?.[personaId]?.comparar ?? {}; setPrefsOficina(personaId, { comparar: { ...a, [tarea]: !comparar } }); enfocar(); }}
+          title="Muestra junto a cada dato el de la campaña anterior (solo lectura; «≠» = era otro negocio)"
+        >
+          <GitCompare size={13} /> Comparar con {anioRef}
+        </button>
         {tarea === 'digital' && filaActiva && !filaActiva.vacio && filaActiva.negocioId && (
           <button
             className="btn s"
@@ -509,6 +636,18 @@ export function TablaRevision({ filas, tarea, sel, onSel, onAbrirFicha, onCronol
         </span>
       </div>
 
+      {modalAccion && seleccion.length > 0 && (
+        <ModalAccionMasiva
+          filas={seleccion}
+          campanaId={ctxCelda.campanaId}
+          personaId={personaId}
+          alcance={ctxCelda.alcance}
+          bloqueado={ctxCelda.bloqueado}
+          variableInicial={colActiva?.editor === 'respuesta' ? (colActiva.id === 'franquicia' ? 'franquicia' : (colActiva.id.slice(4) as VariableDigital)) : tarea === 'digital' ? 'web' : 'franquicia'}
+          onCerrar={() => { setModalAccion(false); setTimeout(enfocar, 0); }}
+          onHecho={(t) => { setMensaje({ t, tipo: 'ok' }); setMarcadas(new Set()); setAncla(null); }}
+        />
+      )}
       {panelCols && (
         <div className="tab-panel-cols panel-flotante" role="dialog" aria-label="Columnas">
           <div className="rotulo sin-linea">Columnas de «{tarea}»</div>
@@ -518,7 +657,7 @@ export function TablaRevision({ filas, tarea, sel, onSel, onAbrirFicha, onCronol
             return (
               <div key={col.id} className="tab-panel-col">
                 <label>
-                  <input type="checkbox" checked={vis} onChange={(e) => guardarCols(e.target.checked ? [...visiblesIds, col.id] : visiblesIds.filter((x) => x !== col.id), fijasIds)} /> {col.titulo}
+                  <input type="checkbox" checked={vis} onChange={(e) => guardarCols(e.target.checked ? [...visiblesIds, col.id] : visiblesIds.filter((x) => x !== col.id), fijasIds)} /> {col.tituloDe?.(ctxCelda) ?? col.titulo}
                 </label>
                 <button className="btn s fantasma" disabled={!vis} aria-label={`${fija ? 'Desfijar' : 'Fijar'} ${col.titulo}`} onClick={() => guardarCols(visiblesIds, fija ? fijasIds.filter((x) => x !== col.id) : [...fijasIds, col.id])}>
                   {fija ? <PinOff size={12} /> : <Pin size={12} />}
@@ -546,10 +685,11 @@ interface AccionesFila {
   teclaEditor: (e: KE<HTMLInputElement>) => void;
   abrirFicha: (id: Id) => void;
   cronologia: (id: Id) => void;
+  marcar: (id: Id) => void;
 }
 
 /** Fila memorizada: al moverse con el teclado solo se vuelven a pintar las filas afectadas. */
-const FilaTabla = memo(function FilaTabla({ f, indice, top, cols, izq, nFijas, anchoTotal, colActiva, c1, c2, edicion, errores, ctx, acc }: {
+const FilaTabla = memo(function FilaTabla({ f, indice, top, cols, izq, nFijas, anchoTotal, colActiva, c1, c2, edicion, marcada, errores, ctx, acc }: {
   f: FilaOficina;
   indice: number;
   top: number;
@@ -561,13 +701,17 @@ const FilaTabla = memo(function FilaTabla({ f, indice, top, cols, izq, nFijas, a
   c1: number;
   c2: number;
   edicion: { texto: string } | null;
+  marcada: boolean;
   errores: Map<string, string>;
   ctx: CtxCelda;
   acc: AccionesFila;
 }) {
   return (
-    <div role="row" aria-rowindex={indice + 2} className={`tab-fila ${colActiva ? 'activa' : ''} ${f.bloqueado ? 'bloqueada' : ''} ${f.situacion === 'pendiente-visita' ? 'sin-visitar' : ''}`} style={{ top, height: ALTO, width: anchoTotal }}>
+    <div role="row" aria-rowindex={indice + 2} aria-selected={marcada || undefined} className={`tab-fila ${colActiva ? 'activa' : ''} ${marcada ? 'marcada' : ''} ${f.bloqueado ? 'bloqueada' : ''} ${f.situacion === 'pendiente-visita' ? 'sin-visitar' : ''}`} style={{ top, height: ALTO, width: anchoTotal }}>
       <div className="tab-c tab-meta fija" style={{ left: 0, width: ANCHO_META }} role="rowheader">
+        <button className="tab-ficha-btn tab-marca" tabIndex={-1} onClick={() => acc.marcar(f.localId)} aria-pressed={marcada} aria-label={`${marcada ? 'Desmarcar' : 'Marcar'} ${f.vacio ? 'local vacío' : f.nombre}`} title="Marcar para una acción masiva (Espacio)">
+          {marcada ? <CheckSquare size={13} /> : <Square size={13} />}
+        </button>
         <button className="tab-ficha-btn" tabIndex={-1} onClick={() => acc.abrirFicha(f.localId)} aria-label={`Abrir ficha de ${f.vacio ? 'local vacío' : f.nombre}`} title="Ficha, histórico y conciliación (Ctrl+Enter)"><Info size={13} /></button>
         <Puntos f={f} />
         {f.bloqueado && <Lock size={11} aria-label="Bloqueado" />}
@@ -589,7 +733,7 @@ const FilaTabla = memo(function FilaTabla({ f, indice, top, cols, izq, nFijas, a
             aria-colindex={ci + 2}
             aria-invalid={err ? true : undefined}
             title={err}
-            className={`tab-c ${ci < nFijas ? 'fija' : ''} ${ci === nFijas - 1 ? 'ultima-fija' : ''} ${col.editor ? 'editable' : ''} ${enRango ? 'rango' : ''} ${esCelda ? 'activa' : ''} ${err ? 'error' : ''} ${col.atenuada?.(f, ctx) ? 'atenuada' : ''}`}
+            className={`tab-c ${ci < nFijas ? 'fija' : ''} ${ci === nFijas - 1 ? 'ultima-fija' : ''} ${col.referencia ? 'ref' : ''} ${col.editor ? 'editable' : ''} ${enRango ? 'rango' : ''} ${esCelda ? 'activa' : ''} ${err ? 'error' : ''} ${col.atenuada?.(f, ctx) ? 'atenuada' : ''}`}
             style={{ width: col.ancho, left: ci < nFijas ? izq[ci] : undefined }}
             onMouseDown={(e) => {
               if (esCelda && edicion) return;

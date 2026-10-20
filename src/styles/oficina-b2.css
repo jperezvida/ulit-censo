@@ -774,3 +774,24 @@ button.ofp-ind:hover {
     min-height: 36px;
   }
 }
+/* B5 · franquicia y «partir de la campaña anterior» en la ficha */
+.ofp-franq .of-resp {
+  display: flex;
+  gap: 4px;
+}
+.ofp-franq label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.ofp-franq-estado {
+  font-size: 11.5px;
+  margin-top: 2px;
+}
+.ofp-partir {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}

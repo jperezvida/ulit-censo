@@ -241,7 +241,7 @@ export function registrarNuevoNegocio(db0: BaseDatos, ctx: Contexto, localId: Id
   anadirObs(db, ctx, { localId, calleId: d.calleId, tipo: 'nuevo-negocio', nota, ...(aplicado ? {} : { cronologia: 'incierta' as const }), datos: { numero: d.numero, sufijo: d.sufijo, nombre, negocioId: negId, vacio: false } }, obsId);
   // Solo si pasa a ser el ocupante vigente cambian los estados de revisión del registro.
   const vigente = aplicado && ocupacionAlMomento(db, localId, ctx.campanaId).oc?.negocioId === negId;
-  marcarRevisionCampo(db, ctx.campanaId, localId, vigente ? { categorizacion: 'pendiente', digital: 'pendiente' } : undefined, !aplicado);
+  marcarRevisionCampo(db, ctx.campanaId, localId, vigente ? { categorizacion: 'pendiente', digital: 'pendiente', franquicia: 'pendiente', franquiciaPor: undefined, franquiciaEn: undefined } : undefined, !aplicado);
   return db;
 }
 

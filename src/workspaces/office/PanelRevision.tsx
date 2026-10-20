@@ -5,12 +5,14 @@ import { useStore } from '../../store/store';
 import { actualizarRevisiones, aprobar, devolver, editarNegocio, esDudosa, motivoNoAprobable, type FilaOficina } from '../../domain/oficina';
 import { useCtxOficina } from './contextoOficina';
 import { parseNumeroDigital } from './tabla/columnas';
-import { DEF_VARIABLE, GRUPOS_DIGITALES, VARIABLES_ADICIONALES, esExigible, estadoDigital, numeroRedes, partirDeDigitalAnterior, problemasDigitales, registrarDatoDigital, revisionDigitalAnterior, revisionDigitalEn, verificarDigital } from '../../domain/digital';
+import { DEF_VARIABLE, GRUPOS_DIGITALES, VARIABLES_ADICIONALES, esExigible, estadoDigital, numeroRedes, problemasDigitales, registrarDatoDigital, revisionDigitalAnterior, revisionDigitalEn, verificarDigital } from '../../domain/digital';
 import { RESPUESTA_TXT } from '../../domain/respuesta';
 import { negocioEn, ocupacionEn, textoDireccion } from '../../domain/consultas';
 import { resolverVinculo } from '../../domain/conciliacion';
 import { TIPO_OBS_TXT } from '../../domain/campo';
 import type { Respuesta, VariableDigital } from '../../domain/types';
+import { franquiciaAnterior, franquiciaEn, registrarFranquicia, revisionFranquicia } from '../../domain/franquicias';
+import { motivoNoHeredable, partirDe2025, resumenHerencia } from '../../domain/herencia';
 import { SelectorClasificacion } from './SelectorClasificacion';
 import { Historico } from '../local/Historico';
 import { Modal, fmtFecha } from '../../components/ui';
@@ -132,6 +134,7 @@ export function PanelRevision({
             <span className="ofp-estados" role="group" aria-label="Estados del registro">
             <Indicador t="Campo" e={r.campo === 'terminado' ? 'ok' : 'pend'} detalle={r.campo === 'terminado' ? 'terminado' : 'pendiente'} />
             <Indicador t="Categoría" e={fila.vacio ? 'na' : r.categorizacion === 'revisado' ? 'ok' : 'pend'} detalle={fila.vacio ? 'no aplica' : r.categorizacion} onClick={fila.vacio ? undefined : () => setPestana('ficha')} />
+            <Indicador t="Franquicia" e={fila.vacio ? 'na' : revisionFranquicia(r) === 'revisado' ? 'ok' : 'pend'} detalle={fila.vacio ? 'no aplica' : revisionFranquicia(r)} onClick={fila.vacio ? undefined : () => setPestana('ficha')} />
             <Indicador t="Digital" e={fila.vacio ? 'na' : r.digital === 'revisado' ? 'ok' : 'pend'} detalle={fila.vacio ? 'no aplica' : r.digital} onClick={fila.vacio ? undefined : () => setPestana('digital')} />
             <Indicador t="Revisión" e={r.validacion === 'aprobada' ? 'ok' : r.validacion === 'devuelta' ? 'error' : 'pend'} detalle={r.validacion === 'aprobada' ? 'aprobada' : r.validacion === 'devuelta' ? 'devuelta' : 'pendiente'} />
           </span>
@@ -159,24 +162,28 @@ export function PanelRevision({
 
       <fieldset className="of-panel-cuerpo scroll-fino" disabled={bloqueado} style={{ border: 0, margin: 0, minWidth: 0 }}>
         {pestana === 'ficha' && (
-          <div className="col" style={{ gap: 14 }}>
+          <div className="col" style={{ gap: 12 }}>
             {neg ? (
               <>
-                <div className="campo">
-                  <label>Nombre comercial</label>
-                  <CampoConfirmado etiqueta="Nombre comercial" valor={neg.nombre} onGuardar={(v) => aplicar((d) => editarNegocio(d, campana.id, neg.id, { nombre: v }, alcance), 'Nombre comercial')} />
-                </div>
                 <div className="grid2">
                   <div className="campo">
-                    <label>Cadena / franquicia</label>
-                    <CampoConfirmado etiqueta="Cadena o franquicia" valor={neg.cadena ?? ''} placeholder="Independiente" onGuardar={(v) => aplicar((d) => editarNegocio(d, campana.id, neg.id, { cadena: v.trim() || undefined }, alcance), 'Cadena / franquicia')} />
+                    <label>Nombre comercial</label>
+                    <CampoConfirmado etiqueta="Nombre comercial" valor={neg.nombre} onGuardar={(v) => aplicar((d) => editarNegocio(d, campana.id, neg.id, { nombre: v }, alcance), 'Nombre comercial')} />
                   </div>
                   <div className="campo">
-                    <label>Descripción</label>
-                    <CampoConfirmado etiqueta="Descripción" valor={neg.descripcion ?? ''} onGuardar={(v) => aplicar((d) => editarNegocio(d, campana.id, neg.id, { descripcion: v.trim() || undefined }, alcance), 'Descripción')} />
+                    <label title="Dato general del negocio; no es la descripción de la actividad clasificada">Descripción del negocio</label>
+                    <CampoConfirmado etiqueta="Descripción del negocio" valor={neg.descripcion ?? ''} onGuardar={(v) => aplicar((d) => editarNegocio(d, campana.id, neg.id, { descripcion: v.trim() || undefined }, alcance), 'Descripción del negocio')} />
+                  </div>
+                </div>
+                <div className="grid2">
+                  <Franquicia negocioId={neg.id} localId={fila.localId} nombre={neg.nombre} bloqueado={bloqueado} />
+                  <div className="campo">
+                    <label title="Dato descriptivo: pertenecer a una cadena no implica ser franquicia">Nombre de cadena</label>
+                    <CampoConfirmado etiqueta="Nombre de cadena" valor={neg.cadena ?? ''} placeholder="—" onGuardar={(v) => aplicar((d) => editarNegocio(d, campana.id, neg.id, { cadena: v.trim() || undefined }, alcance), 'Nombre de cadena')} />
                   </div>
                 </div>
                 <SelectorClasificacion fila={fila} campanaId={campana.id} personaId={prefs.personaId} alcance={alcance} bloqueado={bloqueado} />
+                <PartirDeAnterior localId={fila.localId} bloqueado={bloqueado} />
                 {antes && antes.id !== neg.id && <p className="muted" style={{ fontSize: 12, margin: 0 }}>En {db.campanas[ref!]?.anio} el local lo ocupaba otro negocio ({antes.nombre}): no se hereda su clasificación.</p>}
               </>
             ) : (
@@ -184,15 +191,17 @@ export function PanelRevision({
                 Local vacío{fila.metros ? ` · ${fila.metros} m de fachada` : ''}. {ocAntes?.negocioId ? `En ${db.campanas[ref!]?.anio} estaba ocupado por ${db.negocios[ocAntes.negocioId]?.nombre}.` : ''}
               </div>
             )}
-            <label className="fila" style={{ fontSize: 13 }}>
-              <input type="checkbox" checked={!!r.pendienteComprobacion} onChange={(e) => aplicar((d) => actualizarRevisiones(d, campana.id, [fila.localId], { pendienteComprobacion: e.target.checked }, alcance), e.target.checked ? 'Pendiente de comprobación' : 'Comprobado')} />
-              Pendiente de comprobación
-            </label>
             {fila.errores.length > 0 && <div className="t-info error" style={{ margin: 0 }}>Errores: {fila.errores.join(' · ')}</div>}
-            <button className="btn s fantasma" style={{ alignSelf: 'flex-start' }} onClick={() => ficha.abrir(fila.localId)}><ExternalLink size={13} /> Abrir ficha completa del local</button>
+            <div className="fila" style={{ flexWrap: 'wrap', gap: 12 }}>
+              <label className="fila" style={{ fontSize: 13 }}>
+                <input type="checkbox" checked={!!r.pendienteComprobacion} onChange={(e) => aplicar((d) => actualizarRevisiones(d, campana.id, [fila.localId], { pendienteComprobacion: e.target.checked }, alcance), e.target.checked ? 'Pendiente de comprobación' : 'Comprobado')} />
+                Pendiente de comprobación
+              </label>
+              <button className="btn s fantasma" onClick={() => ficha.abrir(fila.localId)}><ExternalLink size={13} /> Abrir ficha completa del local</button>
+            </div>
           </div>
         )}
-        {pestana === 'digital' && neg && <Digital negocioId={neg.id} nombre={neg.nombre} direccion={direccion} bloqueado={bloqueado} />}
+        {pestana === 'digital' && neg && <Digital negocioId={neg.id} localId={fila.localId} nombre={neg.nombre} direccion={direccion} bloqueado={bloqueado} />}
         {pestana === 'historico' && <Historico db={db} localId={fila.localId} />}
         {pestana === 'conciliacion' && (
           <div className="col">
@@ -256,7 +265,7 @@ export function PanelRevision({
           onClick={accionAprobar}
           disabled={!!motivo || bloqueado}
           aria-label={`Aprobar registro (revisión general) de ${nombre}`}
-          title="Revisión general del registro: campo, categorización y presencia digital"
+          title="Revisión general del registro: campo, categorización, franquicia y presencia digital"
         >
           <CheckCheck size={13} /> Aprobar registro
         </button>
@@ -321,7 +330,7 @@ function ModalDevolverUno({ onCerrar, onAplicar }: { onCerrar: () => void; onApl
   );
 }
 
-function Digital({ negocioId, nombre, direccion, bloqueado }: { negocioId: string; nombre: string; direccion: string; bloqueado: boolean }) {
+function Digital({ negocioId, localId, nombre, direccion, bloqueado }: { negocioId: string; localId: string; nombre: string; direccion: string; bloqueado: boolean }) {
   const { db, campana, prefs } = useContexto();
   const aplicar = useStore((s) => s.aplicar);
   const alcance = useCtxOficina()?.alcance;
@@ -335,6 +344,7 @@ function Digital({ negocioId, nombre, direccion, bloqueado }: { negocioId: strin
   const ESTADO_TXT = { 'sin-datos': 'Sin datos', 'solo-historico': 'Solo datos históricos', borrador: `Borrador ${campana!.anio}`, verificada: 'Verificada' } as const;
   const anioAnt = ant ? db.campanas[ant.campanaId]?.anio : undefined;
   const redes = numeroRedes(rev);
+  const noHeredable = ant ? motivoNoHeredable(db, campana!.id, localId) : null;
   return (
     <div className="ofp-dig">
       <div className="ofp-dig-barra">
@@ -343,7 +353,12 @@ function Digital({ negocioId, nombre, direccion, bloqueado }: { negocioId: strin
           {estado === 'verificada' && rev?.verificadaEn ? ` · ${db.personas[rev.verificadaPor ?? '']?.nombre ?? ''} ${fmtFecha(rev.verificadaEn)}` : ''}
         </span>
         {ant && (
-          <button className="btn s" onClick={() => aplicar((d) => partirDeDigitalAnterior(d, negocioId, campana!.id, prefs.personaId, { alcance }), `Copiado de ${anioAnt} como borrador sin verificar`)}>
+          <button
+            className="btn s"
+            disabled={bloqueado || !!noHeredable}
+            title={noHeredable ?? `Copia los datos de ${anioAnt} del mismo negocio como borrador sin verificar`}
+            onClick={() => aplicar((d) => partirDe2025(d, campana!.id, [localId], prefs.personaId, { alcance, partes: ['digital'] }).db, `Digital copiado de ${anioAnt} como borrador sin verificar`)}
+          >
             <Copy size={13} /> Partir de {anioAnt}
           </button>
         )}
@@ -416,6 +431,73 @@ function FilaVariable({ v, rev, ant, registrar }: {
       <span className="ofp-var-ref" title={ant ? 'Solo referencia: no cuenta como verificado en esta campaña' : undefined}>
         {ant ? (da ? (da.valor !== undefined ? da.valor.toLocaleString('es-ES') : RESPUESTA_TXT[da.respuesta]) : '—') : ''}
       </span>
+    </div>
+  );
+}
+
+const OPC_FRANQUICIA: { r: Respuesta; t: string; a: string }[] = [
+  { r: 'si', t: 'Sí', a: 'Sí' },
+  { r: 'no', t: 'No', a: 'No' },
+  { r: 'sin-info', t: '¿?', a: 'sin información' },
+  { r: 'pendiente', t: '·', a: 'pendiente' },
+];
+
+/** Franquicia de la campaña: Sí/No comprobado, estado de revisión (quién y cuándo) y referencia anterior. */
+function Franquicia({ negocioId, localId, nombre, bloqueado }: { negocioId: string; localId: string; nombre: string; bloqueado: boolean }) {
+  const { db, campana, prefs } = useContexto();
+  const aplicar = useStore((s) => s.aplicar);
+  const alcance = useCtxOficina()?.alcance;
+  const fr = franquiciaEn(db, negocioId, campana!.id);
+  const ant = franquiciaAnterior(db, negocioId, campana!.id);
+  const rev = db.revisiones[`${campana!.id}|${localId}`];
+  const revisada = revisionFranquicia(rev) === 'revisado';
+  const r = fr?.respuesta ?? 'pendiente';
+  return (
+    <div className="campo ofp-franq">
+      <label>
+        Franquicia {campana!.anio}
+        {fr?.origen === 'heredado' && <span className="tag naranja" title="Copiado de la campaña anterior: compruébalo">heredado</span>}
+      </label>
+      <span className="of-resp" role="group" aria-label={`Franquicia ${campana!.anio}`}>
+        {OPC_FRANQUICIA.map((o) => (
+          <button key={o.r} className={`of-r ${r === o.r ? 'on r-' + o.r : ''}`} aria-pressed={r === o.r} aria-label={`Franquicia ${campana!.anio}: ${o.a}`} disabled={bloqueado}
+            onClick={() => aplicar((d) => registrarFranquicia(d, negocioId, campana!.id, o.r, prefs.personaId, { alcance }), `Franquicia ${o.a} · ${nombre}`, { silencioso: true })}>
+            {o.t}
+          </button>
+        ))}
+      </span>
+      <span className="muted ofp-franq-estado">
+        {revisada ? `Revisada · ${db.personas[rev?.franquiciaPor ?? '']?.nombre ?? rev?.franquiciaPor ?? ''} ${fmtFecha(rev?.franquiciaEn)}` : 'Revisión pendiente'}
+        {ant ? ` · ${db.campanas[ant.campanaId]?.anio}: ${RESPUESTA_TXT[ant.respuesta]} (referencia)` : ''}
+      </span>
+    </div>
+  );
+}
+
+/** «Partir de la campaña anterior» para este establecimiento: solo si consta que es el mismo negocio. */
+function PartirDeAnterior({ localId, bloqueado }: { localId: string; bloqueado: boolean }) {
+  const { db, campana, prefs } = useContexto();
+  const aplicar = useStore((s) => s.aplicar);
+  const alcance = useCtxOficina()?.alcance;
+  const ref = campana?.campanaReferenciaId;
+  if (!campana || !ref) return null;
+  const anio = db.campanas[ref]?.anio ?? 'anterior';
+  const motivo = motivoNoHeredable(db, campana.id, localId);
+  if (motivo) return <p className="muted ofp-nota" style={{ margin: 0 }}>Partir de {anio}: {motivo}.</p>;
+  let plan: ReturnType<typeof partirDe2025>['informe'];
+  try {
+    plan = partirDe2025(db, campana.id, [localId], prefs.personaId, { alcance }).informe;
+  } catch (e) {
+    return <p className="muted ofp-nota" style={{ margin: 0 }}>Partir de {anio}: {e instanceof Error ? e.message : String(e)}</p>;
+  }
+  return (
+    <div className="ofp-partir">
+      <button className="btn s" disabled={bloqueado || !plan.aplicadas.length} onClick={() => aplicar((d) => partirDe2025(d, campana.id, [localId], prefs.personaId, { alcance }).db, `Datos de ${anio} copiados como borrador sin verificar`)}
+        title={`Copia clasificación, franquicia y presencia digital de ${anio} del mismo negocio como borrador (sin verificar). No sobrescribe nada de ${campana.anio}.`}>
+        <Copy size={13} /> Partir de {anio}
+      </button>
+      <span className="muted">{plan.aplicadas.length ? resumenHerencia(plan) : `Nada que copiar de ${anio}${plan.conservadas.length ? ' (ya hay datos en esta campaña)' : ''}`}</span>
+      {plan.senaladas.length > 0 && <span className="tag amarillo" title={plan.senaladas.map((x) => x.detalle).join('\n')}>{plan.senaladas.length} dato(s) de {anio} no válidos: no se copian</span>}
     </div>
   );
 }

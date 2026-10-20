@@ -5,11 +5,13 @@ import {
 } from './consultas';
 import { comprobarAlcance, comprobarEditable, estadoOficina, estaBloqueado, prepararOperacionNegocio, type Alcance } from './bloqueo';
 import { indicePertenencia } from './ambito';
-import { clasificar } from './clasificacion';
+import { catalogoDeCampana, clasificar } from './clasificacion';
+import { AVISO_SIN_CLASIFICAR, avisosClasificacion } from './avisosClasificacion';
+import { revisionFranquicia } from './franquicias';
 import { problemasDigitales, type EstadoDigital } from './digital';
 import { estadoTramo, progresoItinerario } from './planificacion';
-import type { ClasificacionCampana, Confianza, EstadoOficinaItinerario, Id, Itinerario, LocalFisico, Negocio, Observacion, Revision } from './types';
-import { rutaActividad, TAXONOMIA_POR_ID } from './taxonomy';
+import type { ClasificacionCampana, Confianza, EstadoOficinaItinerario, FranquiciaCampana, Id, Itinerario, LocalFisico, Negocio, Observacion, Revision } from './types';
+import { rutaActividad } from './taxonomy';
 import { normalizar } from './text';
 
 export interface FilaOficina {
@@ -29,7 +31,10 @@ export interface FilaOficina {
   descripcion?: string;
   /** Origen de la clasificación de ESTA campaña (o ausente si no hay). */
   clasificacion?: Pick<ClasificacionCampana, 'origen' | 'confirmada'>;
+  /** Nombre de cadena (dato descriptivo del negocio; no implica franquicia). */
   cadena?: string;
+  /** Franquicia de ESTA campaña (Sí/No comprobado), si se ha registrado. */
+  franquicia?: Pick<FranquiciaCampana, 'respuesta' | 'origen' | 'porId' | 'fecha'>;
   obs?: Observacion;
   rev: Revision;
   digital: EstadoDigital | 'no-aplica';
@@ -49,6 +54,8 @@ export interface FilaOficina {
   errores: string[];
   /** Incidencias y contradicciones que requieren decisión de oficina. */
   incidencias: string[];
+  /** Avisos NO bloqueantes de clasificación sospechosa (revisión humana). */
+  avisos: string[];
   /** Observaciones de la campaña con cronología incierta (requieren fecha). */
   cronologiaIncierta: Id[];
   duplicado: boolean;
@@ -81,6 +88,7 @@ export function filasOficina(db: BaseDatos, campanaId: Id, ix: { obs: IndiceObse
     if (o?.campanaId === campanaId) vincPorLocal.set(v.localId, v.confianza);
   }
   const anio = anioDe(db, campanaId);
+  const catalogo = catalogoDeCampana(db, campanaId);
   const conDigitalPrevio = new Set<Id>();
   for (const r of Object.values(db.digital)) if (anioDe(db, r.campanaId) < anio) conDigitalPrevio.add(r.negocioId);
 
@@ -124,18 +132,20 @@ export function filasOficina(db: BaseDatos, campanaId: Id, ix: { obs: IndiceObse
     if (obs?.tipo === 'posible-desaparicion') incidencias.push('Posible desaparición');
     if (dig) for (const p of problemasDigitales(dig)) if (p.tipo === 'contradiccion') incidencias.push(`Contradicción digital: ${p.mensaje}`);
     if (itinerarioIds.length > 1) incidencias.push('Pertenece a varios itinerarios');
-    if (cla && (TAXONOMIA_POR_ID[cla.actividadId]?.catalogo ?? 'demo') !== (camp.catalogoId ?? 'demo')) incidencias.push('Clasificación de otro catálogo: revisar');
     if (cla?.origen === 'migrado' && !cla.confirmada) incidencias.push('Clasificación migrada: confirmar');
+    const avisos = neg && situacion === 'registrado' ? avisosClasificacion(catalogo, cla, neg.nombre) : [];
+    const fr = neg ? db.franquicias?.[kNC(neg.id, campanaId)] : undefined;
     filas.push({
       localId: l.id, calleId: d.calleId, calle: db.calles[d.calleId]?.nombre ?? '¿?', numero: d.numero, sufijo: d.sufijo,
       negocioId: neg?.id ?? null, nombre: neg?.nombre ?? 'Vacío', vacio: !neg, metros: oc?.metrosFachada,
       actividadId: cla?.actividadId, actividad: ruta.at(-1)?.nombre, grupo: ruta[0]?.nombre, descripcion: cla?.descripcion, cadena: neg?.cadena,
+      franquicia: fr ? { respuesta: fr.respuesta, origen: fr.origen, porId: fr.porId, fecha: fr.fecha } : undefined,
       clasificacion: cla ? { origen: cla.origen, confirmada: cla.confirmada } : undefined,
       obs, rev, digital: !neg ? 'no-aplica' : estadoDig,
       vinculo, situacion, itinerarioIds,
       itinerario: itinerarioIds.map((i) => codigo.get(i)).join(' · ') || undefined,
       bloqueado: itinerarioIds.some((i) => bloqueados.has(i)),
-      errores, incidencias, cronologiaIncierta, duplicado: false,
+      errores, incidencias, avisos, cronologiaIncierta, duplicado: false,
       nuevoNegocio: !!(obs && (obs.tipo === 'nuevo-negocio' || obs.tipo === 'nuevo-local')),
     });
   }
@@ -181,7 +191,10 @@ export interface ResumenItinerario {
   campo: Contador; // locales registrados frente a pendientes de visita
   categorizacion: Contador; // ocupados registrados
   digital: Contador; // ocupados registrados
+  franquicias: Contador; // ocupados registrados
   incidencias: number;
+  /** Registros con avisos de clasificación sospechosa (no bloqueantes; sin contar los no clasificados). */
+  avisos: number;
   errores: number;
   cronologiaIncierta: number;
   total: number;
@@ -201,7 +214,10 @@ export function resumenDeFilas(filas: FilaOficina[]) {
     campo: { hechos: registrados.length, pendientes: filas.length - registrados.length },
     categorizacion: cuenta(ocupados, (f) => f.rev.categorizacion === 'revisado'),
     digital: cuenta(ocupados, (f) => f.rev.digital === 'revisado'),
+    franquicias: cuenta(ocupados, (f) => revisionFranquicia(f.rev) === 'revisado'),
     incidencias: filas.filter((f) => f.incidencias.length).length,
+    // «Ocupado sin clasificar» ya cuenta como categorización pendiente: aquí solo lo sospechoso.
+    avisos: filas.filter((f) => f.avisos.some((a) => a !== AVISO_SIN_CLASIFICAR)).length,
     errores: filas.filter((f) => f.errores.length).length,
     cronologiaIncierta: filas.filter((f) => f.cronologiaIncierta.length).length,
   };
@@ -257,6 +273,7 @@ export function motivoNoAprobable(f: FilaOficina): string | null {
   if (f.situacion === 'pendiente-visita') return 'local pendiente de visitar';
   if (f.rev.campo !== 'terminado') return 'trabajo de campo pendiente';
   if (!f.vacio && f.rev.categorizacion !== 'revisado') return 'categorización pendiente';
+  if (!f.vacio && revisionFranquicia(f.rev) !== 'revisado') return 'franquicia pendiente';
   if (!f.vacio && f.rev.digital !== 'revisado') return 'presencia digital pendiente';
   if (esDudosa(f)) return 'caso dudoso sin resolver';
   return null;

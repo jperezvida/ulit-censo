@@ -277,6 +277,15 @@ export interface Revision {
   digital: Revisado;
   validacion: 'pendiente' | 'aprobada' | 'devuelta';
   motivoDevolucion?: string;
+  /**
+   * Revisión de franquicias (B5): eje propio, independiente de categorización y digital.
+   * Ausente = pendiente. Solo un Sí o No registrado por una persona la deja «revisado».
+   */
+  franquicia?: Revisado;
+  franquiciaPor?: Id;
+  franquiciaEn?: string;
+  /** Última vez que una aprobación general volvió a pendiente porque cambió un dato revisado. */
+  aprobacionReabierta?: { porId: Id; fecha: string; motivo: string };
   pendienteComprobacion?: boolean;
   /** Motivo de la comprobación pendiente (p. ej. «cronología incierta»). */
   motivoComprobacion?: string;
@@ -314,6 +323,25 @@ export interface RevisionDigital {
   verificadaPor?: Id;
   verificadaEn?: string;
   historial: { accion: 'verificar' | 'reabrir' | 'partir-de-anterior'; porId?: Id; fecha: string; motivo?: string }[];
+}
+
+/**
+ * Franquicia de un NEGOCIO en una campaña (variable binaria del procedimiento 2026).
+ * Distinta del nombre de cadena (`Negocio.cadena`, dato descriptivo): pertenecer a una cadena no
+ * implica ser franquicia y no tener cadena no significa «No».
+ */
+export interface FranquiciaCampana {
+  negocioId: Id;
+  campanaId: Id;
+  /** si / no · sin-info (se buscó y no consta) · pendiente. «No aplicable» no se admite. */
+  respuesta: Respuesta;
+  /** manual: comprobado en esta campaña · heredado: copiado como borrador · importado: tal como venía. */
+  origen: 'manual' | 'heredado' | 'importado';
+  porId?: Id;
+  fecha?: string;
+  /** Campaña de la que se copió (origen «heredado»). */
+  desdeCampanaId?: Id;
+  historial: { respuesta: Respuesta; origen: FranquiciaCampana['origen']; porId?: Id; fecha: string; desdeCampanaId?: Id }[];
 }
 
 /** Clasificación de un negocio en una campaña concreta. */

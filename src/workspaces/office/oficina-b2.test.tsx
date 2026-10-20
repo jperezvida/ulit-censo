@@ -40,7 +40,8 @@ describe('B2 · Oficina organizada por itinerarios (interfaz)', () => {
     montar('/oficina');
     const it1 = screen.getByRole('article', { name: 'Itinerario IT-1' });
     expect(within(it1).getByRole('button', { name: /Trabajo de campo: \d+ registrados, 0 pendientes/ })).toBeInTheDocument();
-    expect(within(it1).getByText(/pendiente de B5/)).toBeInTheDocument();
+    // B5: progreso real e independiente de franquicias
+    expect(within(it1).getByRole('button', { name: /Franquicias: 0 revisados, \d+ pendientes/ })).toBeInTheDocument();
     const it2 = screen.getByRole('article', { name: 'Itinerario IT-2' });
     expect(within(it2).getByText(/1 sin locales/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Vista general municipal/ })).toBeInTheDocument();

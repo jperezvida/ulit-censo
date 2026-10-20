@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { CheckCircle2, Lightbulb } from 'lucide-react';
 import { useStore } from '../../store/store';
-import { catalogoDeCampana, clasificacionAnterior, clasificacionEn, clasificar, partirDeClasificacionAnterior } from '../../domain/clasificacion';
+import { catalogoDeCampana, clasificacionAnterior, clasificacionEn, clasificar } from '../../domain/clasificacion';
 import { rutaTexto, sugerirPorNombre } from '../../domain/buscador';
 import { nivelesDe } from '../../domain/taxonomy';
 import type { Alcance } from '../../domain/bloqueo';
@@ -64,14 +64,11 @@ export function SelectorClasificacion({ fila, campanaId, personaId, alcance, blo
           ))}
         </div>
       )}
-      {!cla && ant && (
-        <div className="scl-sug">
-          <span className="muted">En {db.campanas[ant.campanaId]?.anio}: {rutaTexto(ant.actividadId)}</span>
-          <button className="btn s" disabled={bloqueado} onClick={() => {
-            const ok = aplicar((d) => partirDeClasificacionAnterior(d, negocioId, campanaId, personaId, { alcance }), 'Clasificación anterior copiada como borrador');
-            if (!ok) useStore.getState().avisar('La clasificación anterior no tiene un equivalente único en el catálogo de esta campaña: clasifica con el buscador.', 'info');
-          }}>Partir de {db.campanas[ant.campanaId]?.anio}</button>
-        </div>
+      {!cla && ant && <p className="muted scl-nota">Referencia {db.campanas[ant.campanaId]?.anio}: {rutaTexto(ant.actividadId)} (solo referencia; «Partir de {db.campanas[ant.campanaId]?.anio}» la copia como borrador si consta que es el mismo negocio)</p>}
+      {fila.avisos.length > 0 && (
+        <ul className="scl-avisos" aria-label="Avisos de clasificación">
+          {fila.avisos.map((a) => <li key={a} className="tag amarillo">{a}</li>)}
+        </ul>
       )}
       {!bloqueado && (
         <BuscadorClasificacion
@@ -89,9 +86,9 @@ export function SelectorClasificacion({ fila, campanaId, personaId, alcance, blo
       )}
       {cla && (
         <label className="campo scl-desc">
-          <span>Descripción {niv.subgrupo && !niv.actividad ? '(obligatoria si el subgrupo tiene actividades)' : '(opcional)'}</span>
+          <span>Descripción de la actividad clasificada {niv.subgrupo && !niv.actividad ? '(obligatoria si el subgrupo tiene actividades)' : '(opcional)'}</span>
           <CampoConfirmado
-            etiqueta="Descripción de la actividad"
+            etiqueta="Descripción de la actividad clasificada"
             valor={cla.descripcion ?? ''}
             disabled={bloqueado}
             placeholder="Breve descripción si no encaja en una actividad"

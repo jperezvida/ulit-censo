@@ -1,6 +1,6 @@
 import type { BaseDatos } from './db';
 import { ErrorDominio, kNC, kRev } from './db';
-import { anioDe, revisionDe } from './consultas';
+import { anioDe, reabrirAprobaciones, revisionDe } from './consultas';
 import { prepararOperacionNegocio, type Alcance } from './bloqueo';
 import { estaResuelta } from './respuesta';
 import type { DatoDigital, Id, Respuesta, RevisionDigital, VariableDigital } from './types';
@@ -166,27 +166,42 @@ export function registrarDatoDigital(
   dato: { respuesta: Respuesta; valor?: number; origen?: DatoDigital['origen'] },
   porId: Id, opciones: { alcance?: Alcance; fecha?: string } = {},
 ): BaseDatos {
+  return registrarDatoDigitalLote(db0, [negocioId], campanaId, variable, dato, porId, opciones);
+}
+
+/** La misma respuesta para varios negocios con una sola copia de trabajo (acciones masivas). */
+export function registrarDatoDigitalLote(
+  db0: BaseDatos, negocioIds: Id[], campanaId: Id, variable: VariableDigital,
+  dato: { respuesta: Respuesta; valor?: number; origen?: DatoDigital['origen'] },
+  porId: Id, opciones: { alcance?: Alcance; fecha?: string } = {},
+): BaseDatos {
   const def = DEF_VARIABLE[variable];
   if (dato.respuesta === 'na' && !def.admiteNa && !def.depende) {
     throw new ErrorDominio('regla', `${def.etiqueta} no admite «no aplicable»: usa sí, no o sin información.`);
   }
-  const ids = preparar(db0, negocioId, campanaId, opciones.alcance);
-  const db: BaseDatos = { ...db0 };
+  const db: BaseDatos = { ...db0, digital: { ...db0.digital }, revisiones: { ...db0.revisiones } };
   const fecha = opciones.fecha ?? new Date().toISOString();
-  const k = kNC(negocioId, campanaId);
-  const actual: RevisionDigital = db.digital[k] ?? { negocioId, campanaId, datos: {}, estado: 'borrador', historial: [] };
-  const nuevo: DatoDigital = { respuesta: dato.respuesta, valor: def.tipo === 'numero' && dato.respuesta === 'si' ? dato.valor : undefined, origen: dato.origen ?? 'manual', porId, fecha };
-  if (igual(actual.datos[variable], nuevo) && actual.datos[variable]?.origen === nuevo.origen) return db0;
-  let siguiente: RevisionDigital = { ...actual, datos: { ...actual.datos, [variable]: nuevo } };
-  if (actual.estado === 'verificada') {
-    siguiente = {
-      ...siguiente, estado: 'borrador', verificadaPor: undefined, verificadaEn: undefined,
-      historial: [...actual.historial, { accion: 'reabrir', porId, fecha, motivo: `Cambio en ${def.etiqueta}` }],
-    };
+  let cambio = false;
+  for (const negocioId of negocioIds) {
+    const ids = preparar(db, negocioId, campanaId, opciones.alcance);
+    const k = kNC(negocioId, campanaId);
+    const actual: RevisionDigital = db.digital[k] ?? { negocioId, campanaId, datos: {}, estado: 'borrador', historial: [] };
+    const nuevo: DatoDigital = { respuesta: dato.respuesta, valor: def.tipo === 'numero' && dato.respuesta === 'si' ? dato.valor : undefined, origen: dato.origen ?? 'manual', porId, fecha };
+    if (igual(actual.datos[variable], nuevo) && actual.datos[variable]?.origen === nuevo.origen) continue;
+    let siguiente: RevisionDigital = { ...actual, datos: { ...actual.datos, [variable]: nuevo } };
+    if (actual.estado === 'verificada') {
+      siguiente = {
+        ...siguiente, estado: 'borrador', verificadaPor: undefined, verificadaEn: undefined,
+        historial: [...actual.historial, { accion: 'reabrir', porId, fecha, motivo: `Cambio en ${def.etiqueta}` }],
+      };
+    }
+    db.digital[k] = siguiente;
+    for (const id of ids) db.revisiones[kRev(campanaId, id)] = { ...revisionDe(db, campanaId, id), digital: 'pendiente' };
+    // Cambiar un dato de una revisión verificada devuelve a pendiente la aprobación general.
+    if (actual.estado === 'verificada') reabrirAprobaciones(db.revisiones, campanaId, ids, porId, fecha, `Cambio en ${def.etiqueta}`);
+    cambio = true;
   }
-  db.digital = { ...db.digital, [k]: siguiente };
-  marcarRevisiones(db, campanaId, ids, 'pendiente');
-  return db;
+  return cambio ? db : db0;
 }
 
 /** Verifica la revisión digital. Falla si quedan variables exigibles pendientes o contradicciones. */
@@ -208,28 +223,55 @@ export function verificarDigital(db0: BaseDatos, negocioId: Id, campanaId: Id, p
   return db;
 }
 
-/** Copia la revisión anterior del MISMO negocio como borrador (origen «heredado»). */
+/**
+ * Datos de una revisión histórica que NO deben copiarse como si fueran correctos: valores
+ * incoherentes (p. ej. seguidores sin Instagram), numéricos sin valor o fuera de rango, o
+ * «no aplicable» en una variable que no lo admite. Se señalan; nunca se «arreglan».
+ */
+export function datosDigitalesInvalidos(rev: RevisionDigital | undefined): { variable: VariableDigital; motivo: string }[] {
+  if (!rev) return [];
+  const out = problemasDigitales(rev).filter((p) => p.tipo === 'contradiccion').map((p) => ({ variable: p.variable, motivo: p.mensaje }));
+  for (const [v, d] of Object.entries(rev.datos) as [VariableDigital, DatoDigital][]) {
+    const def = DEF_VARIABLE[v];
+    if (!def) continue;
+    if (d.respuesta === 'na' && !def.admiteNa && !def.depende && !out.some((x) => x.variable === v)) out.push({ variable: v, motivo: `${def.etiqueta}: «no aplicable» no es un valor admitido` });
+  }
+  return out;
+}
+
+/**
+ * Copia la revisión anterior del MISMO negocio como borrador (origen «heredado»). Los datos
+ * históricos inválidos no se copian (véase `datosDigitalesInvalidos`).
+ */
 export function partirDeDigitalAnterior(db0: BaseDatos, negocioId: Id, campanaId: Id, porId: Id, opciones: { alcance?: Alcance } = {}): BaseDatos {
-  const ant = revisionDigitalAnterior(db0, negocioId, campanaId);
-  if (!ant) return db0;
-  const ids = preparar(db0, negocioId, campanaId, opciones.alcance);
+  const w: BaseDatos = { ...db0, digital: { ...db0.digital }, revisiones: { ...db0.revisiones } };
+  return heredarDigitalEnCopia(w, negocioId, campanaId, porId, opciones) ? w : db0;
+}
+
+/** Núcleo de `partirDeDigitalAnterior`: escribe en `w.digital` y `w.revisiones` (copias de quien llama). */
+export function heredarDigitalEnCopia(
+  w: BaseDatos, negocioId: Id, campanaId: Id, porId: Id, opciones: { alcance?: Alcance } = {},
+  ant: RevisionDigital | undefined = revisionDigitalAnterior(w, negocioId, campanaId),
+): boolean {
+  if (!ant) return false;
+  const ids = preparar(w, negocioId, campanaId, opciones.alcance);
   const k = kNC(negocioId, campanaId);
-  const actual = db0.digital[k];
+  const actual = w.digital[k];
+  if (actual?.estado === 'verificada') return false; // lo verificado en esta campaña no se toca
   const fecha = new Date().toISOString();
   const datos: RevisionDigital['datos'] = { ...(actual?.datos ?? {}) };
+  const invalidas = new Set(datosDigitalesInvalidos(ant).map((x) => x.variable));
+  let copiadas = 0;
   for (const [v, d] of Object.entries(ant.datos) as [VariableDigital, DatoDigital][]) {
     if (estaResuelta(datos[v]?.respuesta)) continue; // nunca pisa lo ya revisado en esta campaña
+    if (invalidas.has(v) || !estaResuelta(d.respuesta)) continue;
     datos[v] = { respuesta: d.respuesta, valor: d.valor, origen: 'heredado', porId, fecha };
+    copiadas++;
   }
-  const db: BaseDatos = {
-    ...db0,
-    digital: {
-      ...db0.digital,
-      [k]: { negocioId, campanaId, datos, estado: 'borrador', historial: [...(actual?.historial ?? []), { accion: 'partir-de-anterior', porId, fecha, motivo: `Desde ${db0.campanas[ant.campanaId]?.nombre ?? 'campaña anterior'}` }] },
-    },
-  };
-  marcarRevisiones(db, campanaId, ids, 'pendiente');
-  return db;
+  if (!copiadas) return false;
+  w.digital[k] = { negocioId, campanaId, datos, estado: 'borrador', historial: [...(actual?.historial ?? []), { accion: 'partir-de-anterior', porId, fecha, motivo: `Desde ${w.campanas[ant.campanaId]?.nombre ?? 'campaña anterior'}` }] };
+  for (const id of ids) w.revisiones[kRev(campanaId, id)] = { ...revisionDe(w, campanaId, id), digital: 'pendiente' };
+  return true;
 }
 
 /** Confirma como «manual» un dato heredado sin cambiarlo (acción rápida de revisión). */

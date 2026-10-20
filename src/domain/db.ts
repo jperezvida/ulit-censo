@@ -1,10 +1,10 @@
 import type {
-  Calle, Campana, ClasificacionCampana, Cobertura, EstadoOficinaItinerario, Id, Importacion, Itinerario, LocalFisico,
+  Calle, Campana, ClasificacionCampana, Cobertura, EstadoOficinaItinerario, FranquiciaCampana, Id, Importacion, Itinerario, LocalFisico,
   Municipio, Negocio, Observacion, Ocupacion, PendienteSync, Persona, RegistroOrigen, Revision, RevisionDigital,
   SituacionPrevia, VinculoHistorico,
 } from './types';
 
-export const VERSION_DATOS = 10;
+export const VERSION_DATOS = 11;
 
 /** "Base de datos" del prototipo: normalizada, serializable y persistida en el navegador. */
 export interface BaseDatos {
@@ -33,6 +33,8 @@ export interface BaseDatos {
   digital: Record<string, RevisionDigital>;
   /** Clasificación de un negocio en una campaña. clave: negocio|campana */
   clasificaciones: Record<string, ClasificacionCampana>;
+  /** Franquicia (Sí/No) de un negocio en una campaña. clave: negocio|campana */
+  franquicias: Record<string, FranquiciaCampana>;
   /** Estado de oficina por itinerario. clave: itinerarioId */
   oficinaItinerarios: Record<Id, EstadoOficinaItinerario>;
   /** Contador de orden de registro (ocupaciones y observaciones). */
@@ -56,7 +58,7 @@ export function baseVacia(): BaseDatos {
     generado: new Date().toISOString(),
     municipios: {}, calles: {}, campanas: {}, itinerarios: {}, coberturas: {}, situacionesPrevias: {},
     callesRevisadasPlan: {}, locales: {}, negocios: {}, ocupaciones: {}, observaciones: {}, registros: {},
-    vinculos: {}, importaciones: {}, revisiones: {}, digital: {}, clasificaciones: {}, oficinaItinerarios: {}, secuencia: 0,
+    vinculos: {}, importaciones: {}, revisiones: {}, digital: {}, clasificaciones: {}, franquicias: {}, oficinaItinerarios: {}, secuencia: 0,
     personas: {}, colaSync: [], meta: {},
   };
 }

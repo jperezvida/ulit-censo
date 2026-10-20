@@ -1,6 +1,6 @@
 import type { BaseDatos } from './db';
 import { ErrorDominio, kNC, kRev } from './db';
-import { anioDe, revisionDe } from './consultas';
+import { anioDe, reabrirAprobaciones, revisionDe } from './consultas';
 import { prepararOperacionNegocio, type Alcance } from './bloqueo';
 import { hijosDe, ID_CATALOGO_DEMO, rutaActividad, TAXONOMIA_POR_ID } from './taxonomy';
 import { opcionesCatalogo, raiz, rutaTexto } from './buscador';
@@ -57,7 +57,13 @@ export function resolverNiveles(
  * Equivalente de un nodo de OTRO catálogo en el catálogo indicado: solo por nombre idéntico
  * (sin tildes, singular/plural) y si es ÚNICO. Nunca se inventa una correspondencia.
  */
+const memoEquivalente = new Map<string, Id | undefined>();
 export function equivalenteEn(catalogo: string, nodoId: Id): Id | undefined {
+  const k = `${catalogo}|${nodoId}`;
+  if (!memoEquivalente.has(k)) memoEquivalente.set(k, calcularEquivalente(catalogo, nodoId));
+  return memoEquivalente.get(k);
+}
+function calcularEquivalente(catalogo: string, nodoId: Id): Id | undefined {
   const origen = TAXONOMIA_POR_ID[nodoId];
   if (!origen) return undefined;
   if ((origen.catalogo ?? ID_CATALOGO_DEMO) === catalogo) return nodoId;
@@ -100,42 +106,60 @@ export function clasificar(
   db: BaseDatos, negocioId: Id, campanaId: Id, actividadId: Id, porId: Id,
   opciones: { alcance?: Alcance; fecha?: string; descripcion?: string } = {},
 ): BaseDatos {
+  return clasificarLote(db, [negocioId], campanaId, actividadId, porId, opciones);
+}
+
+/** La misma clasificación para varios negocios con una sola copia de trabajo (acciones masivas). */
+export function clasificarLote(
+  db: BaseDatos, negocioIds: Id[], campanaId: Id, actividadId: Id, porId: Id,
+  opciones: { alcance?: Alcance; fecha?: string; descripcion?: string } = {},
+): BaseDatos {
   const descripcion = opciones.descripcion?.trim() || undefined;
   const catalogo = catalogoDeCampana(db, campanaId);
   validarSeleccion(catalogo, actividadId, descripcion);
-  const ids = prepararOperacionNegocio(db, negocioId, campanaId, opciones.alcance);
   const fecha = opciones.fecha ?? new Date().toISOString();
-  const revisiones = { ...db.revisiones };
-  for (const id of ids) revisiones[kRev(campanaId, id)] = { ...revisionDe(db, campanaId, id), categorizacion: 'revisado' };
-  return {
-    ...db,
-    revisiones,
-    clasificaciones: { ...db.clasificaciones, [kNC(negocioId, campanaId)]: { negocioId, campanaId, actividadId, descripcion, catalogoId: catalogo, origen: 'manual', confirmada: true, porId, fecha } },
-  };
+  const w: BaseDatos = { ...db, revisiones: { ...db.revisiones }, clasificaciones: { ...db.clasificaciones } };
+  for (const negocioId of negocioIds) {
+    const ids = prepararOperacionNegocio(w, negocioId, campanaId, opciones.alcance);
+    for (const id of ids) w.revisiones[kRev(campanaId, id)] = { ...revisionDe(w, campanaId, id), categorizacion: 'revisado' };
+    // Cambiar una clasificación ya confirmada devuelve a pendiente la aprobación general.
+    const previa = w.clasificaciones[kNC(negocioId, campanaId)];
+    if (previa?.confirmada && (previa.actividadId !== actividadId || (previa.descripcion ?? '') !== (descripcion ?? ''))) {
+      reabrirAprobaciones(w.revisiones, campanaId, ids, porId, fecha, 'Cambio en la clasificación');
+    }
+    w.clasificaciones[kNC(negocioId, campanaId)] = { negocioId, campanaId, actividadId, descripcion, catalogoId: catalogo, origen: 'manual', confirmada: true, porId, fecha };
+  }
+  return w;
 }
 
 /** Copia la clasificación anterior del MISMO negocio como borrador (no confirma la categorización). */
 export function partirDeClasificacionAnterior(db: BaseDatos, negocioId: Id, campanaId: Id, porId: Id, opciones: { alcance?: Alcance } = {}): BaseDatos {
-  const ant = clasificacionAnterior(db, negocioId, campanaId);
-  if (!ant) return db;
-  if (clasificacionEn(db, negocioId, campanaId)) return db; // nunca pisa una clasificación de la campaña
-  const catalogo = catalogoDeCampana(db, campanaId);
+  const w: BaseDatos = { ...db, clasificaciones: { ...db.clasificaciones } };
+  return heredarClasificacionEnCopia(w, negocioId, campanaId, porId, opciones) ? w : db;
+}
+
+/**
+ * Núcleo de `partirDeClasificacionAnterior`: escribe en `w.clasificaciones` (copia propiedad
+ * de quien llama). `ant` permite pasar la clasificación anterior ya calculada (lotes).
+ */
+export function heredarClasificacionEnCopia(
+  w: BaseDatos, negocioId: Id, campanaId: Id, porId: Id, opciones: { alcance?: Alcance } = {},
+  ant: ClasificacionCampana | undefined = clasificacionAnterior(w, negocioId, campanaId),
+): boolean {
+  if (!ant) return false;
+  if (clasificacionEn(w, negocioId, campanaId)) return false; // nunca pisa una clasificación de la campaña
+  const catalogo = catalogoDeCampana(w, campanaId);
   // Si la campaña anterior usa otro catálogo, solo se propone un equivalente de nombre idéntico y único.
   const actividadId = equivalenteEn(catalogo, ant.actividadId);
-  if (!actividadId) return db;
-  prepararOperacionNegocio(db, negocioId, campanaId, opciones.alcance);
+  if (!actividadId) return false;
+  prepararOperacionNegocio(w, negocioId, campanaId, opciones.alcance);
   const fecha = new Date().toISOString();
   const cambiaCatalogo = actividadId !== ant.actividadId;
-  return {
-    ...db,
-    clasificaciones: {
-      ...db.clasificaciones,
-      [kNC(negocioId, campanaId)]: {
-        negocioId, campanaId, actividadId, descripcion: cambiaCatalogo ? undefined : ant.descripcion, catalogoId: catalogo, origen: 'heredado', confirmada: false, porId, fecha,
-        migracion: cambiaCatalogo ? { desdeActividadId: ant.actividadId, desdeCatalogo: TAXONOMIA_POR_ID[ant.actividadId]?.catalogo ?? ID_CATALOGO_DEMO, fecha, criterio: 'nombre idéntico en el catálogo de la campaña', estabaConfirmada: ant.confirmada } : undefined,
-      },
-    },
+  w.clasificaciones[kNC(negocioId, campanaId)] = {
+    negocioId, campanaId, actividadId, descripcion: cambiaCatalogo ? undefined : ant.descripcion, catalogoId: catalogo, origen: 'heredado', confirmada: false, porId, fecha,
+    migracion: cambiaCatalogo ? { desdeActividadId: ant.actividadId, desdeCatalogo: TAXONOMIA_POR_ID[ant.actividadId]?.catalogo ?? ID_CATALOGO_DEMO, fecha, criterio: 'nombre idéntico en el catálogo de la campaña', estabaConfirmada: ant.confirmada } : undefined,
   };
+  return true;
 }
 
 export interface InformeMigracion {

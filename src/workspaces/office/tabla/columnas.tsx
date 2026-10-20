@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
 import { kNC, type BaseDatos } from '../../../domain/db';
 import { actualizarRevisiones, editarNegocio, type FilaOficina } from '../../../domain/oficina';
-import { clasificar } from '../../../domain/clasificacion';
+import { clasificar, clasificacionEn } from '../../../domain/clasificacion';
+import { franquiciaEn, registrarFranquicia, revisionFranquicia } from '../../../domain/franquicias';
+import { anioDe, ocupacionEn } from '../../../domain/consultas';
 import { DEF_VARIABLE, VARIABLES_DIGITALES, esExigible, registrarDatoDigital } from '../../../domain/digital';
 import { TIPO_OBS_TXT } from '../../../domain/campo';
 import { nivelesDe } from '../../../domain/taxonomy';
@@ -34,6 +36,10 @@ export type TipoEditor = 'texto' | 'numero' | 'respuesta' | 'actividad' | 'boole
 export interface Columna {
   id: string;
   titulo: string;
+  /** Título dependiente del contexto (p. ej. el año de la campaña de referencia). */
+  tituloDe?: (c: CtxCelda) => string;
+  /** Columna de referencia de la campaña anterior: solo lectura y diferenciada visualmente. */
+  referencia?: boolean;
   ancho: number;
   /** Calle, número y negocio quedan fijados por defecto. */
   fijaPorDefecto?: boolean;
@@ -157,7 +163,7 @@ const COL_GRUPO: Columna = { id: 'grupo', titulo: 'Grupo', ancho: 140, texto: (f
 const COL_GRUPO_COMERCIO: Columna = { id: 'grupoComercio', titulo: 'Grupo de comercio', ancho: 150, texto: (f) => (f.vacio ? '' : nivelesDe(f.actividadId).grupoComercio?.nombre ?? '') };
 const COL_SUBGRUPO: Columna = { id: 'subgrupo', titulo: 'Subgrupo', ancho: 170, texto: (f) => (f.vacio ? '' : nivelesDe(f.actividadId).subgrupo?.nombre ?? '') };
 const COL_DESCRIPCION: Columna = {
-  id: 'descripcion', titulo: 'Descripción', ancho: 180, editor: 'texto', texto: (f) => f.descripcion ?? '',
+  id: 'descripcion', titulo: 'Descripción de la actividad', ancho: 180, editor: 'texto', texto: (f) => f.descripcion ?? '',
   bloqueo: (f, c) => bloqueoNegocio(f, c) ?? (!f.actividadId ? 'Asigna antes una actividad o un subgrupo' : null),
   parse: (t) => t.trim(),
   aplicar: (db, f, v, c) => clasificar(db, f.negocioId!, c.campanaId, f.actividadId!, c.personaId, { alcance: c.alcance, descripcion: (v as string) || undefined }),
@@ -167,11 +173,44 @@ const COL_CATEGORIZACION: Columna = {
   texto: (f) => (f.vacio ? 'No aplica' : f.rev.categorizacion === 'revisado' ? 'Revisada' : 'Pendiente'),
   render: (f) => (f.vacio ? <span className="muted">no aplica</span> : f.rev.categorizacion === 'revisado' ? <span className="chip ok">revisada</span> : <span className="chip aviso">pendiente</span>),
 };
+// Nombre de cadena: dato descriptivo. No implica franquicia y su ausencia no significa «No».
 const COL_CADENA: Columna = {
-  id: 'cadena', titulo: 'Cadena / franquicia', ancho: 180, editor: 'texto', texto: (f) => f.cadena ?? '',
-  render: (f) => (f.vacio ? <span className="muted">—</span> : f.cadena ?? <span className="muted">Independiente</span>),
+  id: 'cadena', titulo: 'Nombre de cadena', ancho: 160, editor: 'texto', texto: (f) => f.cadena ?? '',
+  render: (f) => (f.vacio || !f.cadena ? <span className="muted">—</span> : f.cadena),
   bloqueo: bloqueoNegocio, parse: (t) => t.trim(),
   aplicar: (db, f, v, c) => editarNegocio(db, c.campanaId, f.negocioId!, { cadena: (v as string) || undefined }, c.alcance),
+};
+const COL_FRANQUICIA: Columna = {
+  id: 'franquicia', titulo: 'Franquicia', ancho: 96, editor: 'respuesta',
+  texto: (f) => (f.franquicia ? RESP_CORTA[f.franquicia.respuesta] : ''),
+  render: (f) => {
+    if (f.vacio) return <span className="muted">—</span>;
+    const r = f.franquicia?.respuesta ?? 'pendiente';
+    const her = f.franquicia?.origen === 'heredado';
+    return <span className={`tab-resp r-${r} ${her ? 'heredado' : ''}`} title={her ? 'Copiado de la campaña anterior: compruébalo (1/0)' : undefined}>{RESP_CORTA[r] || '·'}</span>;
+  },
+  bloqueo: bloqueoNegocio,
+  parse: (t) => {
+    const r = parseRespuesta(t);
+    if (r === 'na') throw new Error('Franquicia no admite «no aplicable»');
+    return r;
+  },
+  aplicar: (db, f, v, c) => registrarFranquicia(db, f.negocioId!, c.campanaId, v as Respuesta, c.personaId, { alcance: c.alcance }),
+};
+const COL_FRANQ_ESTADO: Columna = {
+  id: 'franquiciaEstado', titulo: 'Revisión franquicia', ancho: 130,
+  texto: (f) => (f.vacio ? 'No aplica' : revisionFranquicia(f.rev) === 'revisado' ? 'Revisada' : 'Pendiente'),
+  render: (f, c) => {
+    if (f.vacio) return <span className="muted">no aplica</span>;
+    if (revisionFranquicia(f.rev) !== 'revisado') return <span className="chip aviso">pendiente</span>;
+    const quien = c.db.personas[f.rev.franquiciaPor ?? '']?.nombre ?? f.rev.franquiciaPor ?? '';
+    return <span className="chip ok" title={`${quien} · ${f.rev.franquiciaEn?.slice(0, 10) ?? ''}`}>revisada</span>;
+  },
+};
+const COL_AVISOS: Columna = {
+  id: 'avisos', titulo: 'Avisos de clasificación', ancho: 230,
+  texto: (f) => f.avisos.join(' · '),
+  render: (f) => <span className="tab-incid">{f.avisos.map((e) => <span key={e} className="tag amarillo" title={`${e} (aviso no bloqueante)`}>{e}</span>)}</span>,
 };
 const COL_DIGITAL: Columna = {
   id: 'digitalEstado', titulo: 'Digital', ancho: 110,
@@ -227,20 +266,83 @@ function columnaDigital(v: VariableDigital): Columna {
   };
 }
 
+// ───────────── Referencia de la campaña anterior (solo lectura) ─────────────
+
+/** Campaña de referencia y ocupante del local en ella. `otro`: era otro negocio (no se hereda). */
+function referencia(f: FilaOficina, c: CtxCelda) {
+  const ref = c.db.campanas[c.campanaId]?.campanaReferenciaId;
+  if (!ref) return null;
+  const negocioId = ocupacionEn(c.db, f.localId, ref)?.negocioId ?? null;
+  return { ref, negocioId, otro: !!negocioId && negocioId !== f.negocioId };
+}
+const anioRef = (c: CtxCelda) => {
+  const ref = c.db.campanas[c.campanaId]?.campanaReferenciaId;
+  return ref ? String(anioDe(c.db, ref)) : 'Anterior';
+};
+
+function columnaRef(id: string, titulo: string, ancho: number, valor: (negocioId: Id, ref: Id, c: CtxCelda) => string): Columna {
+  const texto = (f: FilaOficina, c: CtxCelda) => {
+    const r = referencia(f, c);
+    if (!r || !r.negocioId) return '';
+    return valor(r.negocioId, r.ref, c);
+  };
+  return {
+    id, titulo: `Ref. · ${titulo}`, tituloDe: (c) => `${anioRef(c)} · ${titulo}`, ancho, referencia: true, texto,
+    render: (f, c) => {
+      const r = referencia(f, c);
+      const t = texto(f, c);
+      if (!r || !r.negocioId) return <span className="muted">—</span>;
+      return (
+        <span className={`tab-ref ${r.otro ? 'otro' : ''}`} title={r.otro ? `En ${anioRef(c)} era otro negocio (${c.db.negocios[r.negocioId]?.nombre ?? ''}): solo referencia, no se hereda` : `Dato de ${anioRef(c)}: solo referencia, no cuenta como comprobado`}>
+          {r.otro && <span aria-label="otro negocio">≠ </span>}{t || '·'}
+        </span>
+      );
+    },
+  };
+}
+
+const RESPUESTA_REF = (r?: Respuesta) => (r ? RESP_CORTA[r] || '·' : '');
+const COLUMNAS_REF: Columna[] = [
+  columnaRef('ref.negocio', 'Establecimiento', 170, (n, _r, c) => c.db.negocios[n]?.nombre ?? ''),
+  columnaRef('ref.actividad', 'Actividad', 190, (n, r, c) => {
+    const cla = clasificacionEn(c.db, n, r);
+    return cla ? textoClasificacion(cla.actividadId, cla.descripcion) || rutaTexto(cla.actividadId) : '';
+  }),
+  columnaRef('ref.franquicia', 'Franquicia', 124, (n, r, c) => RESPUESTA_REF(franquiciaEn(c.db, n, r)?.respuesta)),
+  columnaRef('ref.digitalEstado', 'Digital', 100, (n, r, c) => {
+    const d = c.db.digital[kNC(n, r)];
+    return d ? (d.estado === 'verificada' ? 'Verificada' : 'Borrador') : 'Sin datos';
+  }),
+  ...VARIABLES_DIGITALES.map((d) =>
+    columnaRef(`ref.dig.${d.id}`, d.etiqueta, d.tipo === 'numero' ? 104 : 92, (n, r, c) => {
+      const x = c.db.digital[kNC(n, r)]?.datos[d.id];
+      if (!x) return '';
+      return d.tipo === 'numero' && x.respuesta === 'si' ? (x.valor === undefined ? '' : x.valor.toLocaleString('es-ES')) : RESPUESTA_REF(x.respuesta);
+    }),
+  ),
+];
+
+/** Columna actual → su columna de referencia (para «Comparar con la campaña anterior»). */
+export const REFERENCIA_DE: Record<string, string> = {
+  nombre: 'ref.negocio', actividad: 'ref.actividad', franquicia: 'ref.franquicia', digitalEstado: 'ref.digitalEstado',
+  ...Object.fromEntries(VARIABLES_DIGITALES.map((d) => [`dig.${d.id}`, `ref.dig.${d.id}`])),
+};
+
 export const COLUMNAS: Columna[] = [
-  COL_CALLE, COL_NUMERO, COL_NOMBRE, COL_SITUACION, COL_ACTIVIDAD, COL_DESCRIPCION, COL_GRUPO, COL_GRUPO_COMERCIO, COL_SUBGRUPO, COL_CATEGORIZACION,
-  COL_CADENA, COL_DIGITAL, ...VARIABLES_DIGITALES.map((d) => columnaDigital(d.id)), COL_INCIDENCIAS, COL_COMPROBAR, COL_ITINERARIO,
+  COL_CALLE, COL_NUMERO, COL_NOMBRE, COL_SITUACION, COL_ACTIVIDAD, COL_DESCRIPCION, COL_GRUPO, COL_GRUPO_COMERCIO, COL_SUBGRUPO, COL_CATEGORIZACION, COL_AVISOS,
+  COL_FRANQUICIA, COL_FRANQ_ESTADO, COL_CADENA, COL_DIGITAL, ...VARIABLES_DIGITALES.map((d) => columnaDigital(d.id)), COL_INCIDENCIAS, COL_COMPROBAR, COL_ITINERARIO,
+  ...COLUMNAS_REF,
 ];
 for (const c of COLUMNAS) c.orden ??= porTexto(c);
 export const COLUMNA_POR_ID: Record<string, Columna> = Object.fromEntries(COLUMNAS.map((c) => [c.id, c]));
 
 /** Columnas por defecto de cada tarea (el usuario puede mostrar, ocultar y fijar). */
 export const COLUMNAS_TAREA: Record<Tarea, string[]> = {
-  categorizacion: ['calle', 'numero', 'nombre', 'actividad', 'descripcion', 'grupo', 'grupoComercio', 'subgrupo', 'categorizacion', 'incidencias'],
-  franquicias: ['calle', 'numero', 'nombre', 'cadena', 'actividad', 'incidencias'],
+  categorizacion: ['calle', 'numero', 'nombre', 'actividad', 'descripcion', 'grupo', 'grupoComercio', 'subgrupo', 'categorizacion', 'avisos', 'incidencias'],
+  franquicias: ['calle', 'numero', 'nombre', 'franquicia', 'franquiciaEstado', 'cadena', 'actividad', 'incidencias'],
   digital: ['calle', 'numero', 'nombre', 'digitalEstado', ...VARIABLES_DIGITALES.map((d) => `dig.${d.id}`)],
   incidencias: ['calle', 'numero', 'nombre', 'situacion', 'incidencias', 'comprobar', 'actividad', 'itinerario'],
-  todos: ['calle', 'numero', 'nombre', 'situacion', 'actividad', 'categorizacion', 'cadena', 'digitalEstado', 'incidencias', 'itinerario'],
+  todos: ['calle', 'numero', 'nombre', 'situacion', 'actividad', 'categorizacion', 'franquiciaEstado', 'digitalEstado', 'incidencias', 'itinerario'],
 };
 
 /** ¿Se puede editar la celda? Devuelve el motivo si no. */

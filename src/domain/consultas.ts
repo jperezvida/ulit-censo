@@ -204,3 +204,20 @@ export function revisionDe(db: BaseDatos, campanaId: Id, localId: Id): Revision 
     }
   );
 }
+
+/**
+ * La aprobación general depende de los datos revisados: si uno cambia después de aprobar, la
+ * aprobación vuelve a «pendiente» y queda constancia de quién, cuándo y por qué. Muta la copia
+ * de `revisiones` que recibe.
+ */
+export function reabrirAprobaciones(revisiones: Record<string, Revision>, campanaId: Id, localIds: Id[], porId: Id, fecha: string, motivo: string): number {
+  let n = 0;
+  for (const id of localIds) {
+    const k = kRev(campanaId, id);
+    const r = revisiones[k];
+    if (r?.validacion !== 'aprobada') continue;
+    revisiones[k] = { ...r, validacion: 'pendiente', aprobacionReabierta: { porId, fecha, motivo } };
+    n++;
+  }
+  return n;
+}

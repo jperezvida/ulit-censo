@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, Clock, Globe, Lock, Map, Store, Tags } from 'lucide-react';
+import { AlertTriangle, ArrowRight, BadgeCheck, Clock, Globe, Lock, Map, Store, Tags } from 'lucide-react';
 import { useContexto } from '../../store/contexto';
 import { ESTADO_OFICINA_TXT } from '../../domain/bloqueo';
 import type { Contador, ResumenItinerario } from '../../domain/oficina';
@@ -79,16 +79,14 @@ function TarjetaItinerario({ r, quien, onAbrir }: { r: ResumenItinerario; quien?
       <Progreso titulo="Trabajo de campo" c={r.campo} etiquetaHechos="registrados" icono={<Store size={13} />} onClick={r.campo.pendientes ? () => onAbrir('?tarea=todos&filtro=sin-visitar') : undefined} />
       <Progreso titulo="Categorización" c={r.categorizacion} icono={<Tags size={13} />} onClick={() => onAbrir('?tarea=categorizacion&filtro=pendientes')} />
       <Progreso titulo="Presencia digital" c={r.digital} icono={<Globe size={13} />} onClick={() => onAbrir('?tarea=digital&filtro=pendientes')} />
-      <div className="ofi-fila-dato">
-        <span className="muted">Franquicias</span>
-        <span className="chip" title="El estado independiente de franquicias se incorporará en B5">pendiente de B5 · sin progreso</span>
-      </div>
+      <Progreso titulo="Franquicias" c={r.franquicias} icono={<BadgeCheck size={13} />} onClick={() => onAbrir('?tarea=franquicias&filtro=pendientes')} />
       <button className="ofi-fila-dato ofi-incid" onClick={() => onAbrir('?tarea=incidencias&filtro=pendientes')} disabled={!r.incidencias && !r.errores}>
         <span><AlertTriangle size={13} /> Incidencias y contradicciones</span>
         <span>
           <b className={r.incidencias ? 'ofi-pend' : 'muted'}>{fmt(r.incidencias)}</b>
           {r.errores > 0 && <span className="muted"> · {fmt(r.errores)} con errores</span>}
           {r.cronologiaIncierta > 0 && <span className="chip dudoso" style={{ marginLeft: 6 }}><Clock size={11} /> {r.cronologiaIncierta} cronología</span>}
+          {r.avisos > 0 && <span className="tag amarillo" style={{ marginLeft: 6 }} title="Clasificaciones sospechosas: avisos no bloqueantes para revisión humana">{fmt(r.avisos)} avisos de clasificación</span>}
         </span>
       </button>
       <div className="ofi-fila-dato">

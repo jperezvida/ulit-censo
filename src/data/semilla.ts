@@ -1,3 +1,4 @@
+import { franquiciasHistoricas } from './franquiciasDemo';
 import { baseVacia, kCob, kNC, kRev, siguienteOrden, type BaseDatos } from '../domain/db';
 import { ACTIVIDADES_HOJA, buscarActividadPorNombre, rutaActividad } from '../domain/taxonomy';
 import { asignarCatalogos } from '../domain/migraciones';
@@ -83,6 +84,8 @@ export function generarDemo(medina: SemillaMedina): BaseDatos {
   db.personas = Object.fromEntries(PERSONAS.map((p) => [p.id, p]));
   db = generarMedina(db, medina);
   db = generarValladolid(db);
+  // Franquicias de referencia (ficticias) de las campañas cerradas: se comprueban de nuevo en 2026.
+  for (const c of Object.values(db.campanas)) if (c.anio < 2026) db = franquiciasHistoricas(db, c.id);
   // Las campañas de 2026 usan el catálogo oficial de clasificación (el 2025 sigue siendo ficticio).
   return asignarCatalogos(db).db;
 }
