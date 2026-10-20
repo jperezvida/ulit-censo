@@ -539,6 +539,7 @@ Detalle de uso y pruebas manuales en [`OFICINA-RAPIDA.md`](OFICINA-RAPIDA.md).
 
 1. **Twitter / X** se comprueba cada año y hay que registrar **Sí o No**. «Sin información» se guarda, pero no permite verificar. Si existe, se piden los seguidores; si no pueden obtenerse, se admite «sin información» y **nunca se inventa un cero**.
 2. **Facebook** y sus seguidores siguen el mismo criterio condicional (`exigeSiNo` en `domain/digital.ts`).
+   **Instagram** sigue exactamente el mismo criterio (decisión del 20/10/2026). Así, una revisión es verificable si y solo si **Nº redes** tiene un total definitivo. Lo comprueba una prueba que recorre las 64 combinaciones de respuestas.
 3. **Valoración media** de Google es un campo adicional **opcional**: no bloquea la verificación.
 4. **Otras redes** es un campo opcional que tampoco bloquea la verificación.
 5. **Nº redes** = Instagram + Facebook + Twitter / X. Solo hay total si las tres están contestadas con Sí o No; con alguna pendiente o «sin información» queda **sin determinar**, porque «sin información» no equivale a «No».

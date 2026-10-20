@@ -31,7 +31,7 @@ export interface DefVariable {
   admiteNa?: boolean;
   /**
    * La presencia debe comprobarse y registrarse como Sí o No para verificar: «sin información»
-   * queda registrada pero no permite verificar (procedimiento 2026: Facebook y Twitter / X).
+   * queda registrada pero no permite verificar (procedimiento 2026: Instagram, Facebook y Twitter / X).
    */
   exigeSiNo?: boolean;
 }
@@ -44,7 +44,7 @@ export const VARIABLES_DIGITALES: DefVariable[] = [
   { id: 'valoracion', etiqueta: 'Valoración media', tipo: 'numero', depende: 'googleBusiness', obligatoria: false, rango: [1, 5] },
   { id: 'numResenas', etiqueta: 'Nº de reseñas', tipo: 'numero', depende: 'googleBusiness', obligatoria: true, rango: [0, 1e6] },
   { id: 'respondeResenas', etiqueta: 'Responde reseñas', tipo: 'respuesta', depende: 'googleBusiness', obligatoria: true },
-  { id: 'instagram', etiqueta: 'Instagram', tipo: 'respuesta', obligatoria: true },
+  { id: 'instagram', etiqueta: 'Instagram', tipo: 'respuesta', obligatoria: true, exigeSiNo: true },
   { id: 'seguidoresInstagram', etiqueta: 'Seguidores Instagram', tipo: 'numero', depende: 'instagram', obligatoria: true, rango: [0, 1e9] },
   { id: 'facebook', etiqueta: 'Facebook', tipo: 'respuesta', obligatoria: true, exigeSiNo: true },
   { id: 'seguidoresFacebook', etiqueta: 'Seguidores Facebook', tipo: 'numero', depende: 'facebook', obligatoria: true, rango: [0, 1e9] },
