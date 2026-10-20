@@ -18,7 +18,8 @@
     "comprobar-datos": "node scripts/comprobar-datos-reales.mjs",
     "hooks": "git config core.hooksPath .githooks",
     "analizar": "tsx scripts/analizar-xlsx.ts",
-    "xlsx-ficticio": "tsx scripts/generar-xlsx-ficticio.ts"
+    "xlsx-ficticio": "tsx scripts/generar-xlsx-ficticio.ts",
+    "interpretar": "tsx scripts/interpretar-xlsx.ts"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.1.0",

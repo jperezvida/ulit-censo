@@ -48,6 +48,21 @@ describe('C1a · Análisis previo en la interfaz', () => {
     expect(within(inf).getAllByText(/Se conservará ausente/)).toHaveLength(3);
   });
 
+  it('C1b: interpreta los valores desde el mismo archivo, sin importar nada ni mostrar nombres', async () => {
+    const esc = escenarioOficina({ calles: 2, localesPorCalle: 4 });
+    useStore.setState({ db: esc.db });
+    const antes = useStore.getState().db;
+    await analizar(await libroFicticio({ filas: 30, anomalias: true }), 'ficticio.xlsx');
+    fireEvent.click(screen.getByRole('button', { name: /Interpretar valores \(C1b\)/ }));
+    const panel = await waitFor(() => screen.getByLabelText('Interpretación de valores'), { timeout: 15000 });
+    expect(within(panel).getByText('Valor 0/1 imposible')).toBeInTheDocument();
+    expect(within(panel).getByText('Texto candidato a «sin información»')).toBeInTheDocument();
+    expect(within(panel).getByText(/Decisión 1: Diccionario de equivalencias/)).toBeInTheDocument();
+    expect(panel.textContent).not.toMatch(/COMERCIO FICTICIO|VÍA FICTICIA/);
+    expect(screen.getByRole('button', { name: /Informe de interpretación/ })).toBeInTheDocument();
+    expect(useStore.getState().db).toBe(antes);
+  });
+
   it('un archivo que no es XLSX muestra un error claro', async () => {
     render(<AnalisisPrevio municipioId="mun-medina" onCerrar={() => undefined} />);
     fireEvent.change(screen.getByLabelText('Archivo xlsx'), { target: { files: [new File(['Calle;Num'], 'datos.csv')] } });

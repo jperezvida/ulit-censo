@@ -158,3 +158,4 @@ datos-reales/
 *.ods
 *.perfil.json
 *.informe-estructural.json
+*.informe-interpretacion.json

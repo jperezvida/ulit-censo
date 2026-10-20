@@ -205,3 +205,7 @@
   flex-direction: column;
   gap: 3px;
 }
+/* C1b: incidencias por tipo con textos largos (se ajustan en vez de ensanchar el modal) */
+.ap-ajuste td {
+  white-space: normal;
+}

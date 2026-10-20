@@ -1,5 +1,5 @@
 import type ExcelJS from 'exceljs';
-import { leerLibro, type AdaptacionParte } from './lector';
+import { leerLibro, type AdaptacionParte, type LibroLeido } from './lector';
 import { compararCabecera, normalizarCabecera, PERFILES_IMPORTACION, type Coincidencia, type ColumnaPerfil, type PerfilImportacion, type TipoEsperado } from './perfilesImportacion';
 import { evaluarCampoTerritorial, type ConfigTerritorial, type EvaluacionTerritorial } from '../territorio';
 
@@ -103,7 +103,7 @@ export function letraColumna(n: number): string {
   return s;
 }
 
-function valorPlano(v: ExcelJS.CellValue): unknown {
+export function valorPlano(v: ExcelJS.CellValue): unknown {
   if (v === null || v === undefined) return null;
   if (typeof v === 'object' && !(v instanceof Date)) {
     if ('result' in v) return (v as { result?: unknown }).result ?? null;
@@ -114,7 +114,7 @@ function valorPlano(v: ExcelJS.CellValue): unknown {
   return v;
 }
 
-const esFormula = (v: ExcelJS.CellValue) => !!v && typeof v === 'object' && !(v instanceof Date) && ('formula' in v || 'sharedFormula' in v);
+export const esFormula = (v: ExcelJS.CellValue) => !!v && typeof v === 'object' && !(v instanceof Date) && ('formula' in v || 'sharedFormula' in v);
 
 function tipoDe(v: unknown): TipoDetectado | null {
   if (v === null || v === undefined) return null;
@@ -266,8 +266,12 @@ async function sha256(datos: Uint8Array): Promise<string> {
 
 export async function analizarXlsx(datos: ArrayBuffer | Uint8Array, nombreArchivo: string, opciones: OpcionesAnalisis = {}): Promise<InformeEstructural> {
   const bytes = datos instanceof Uint8Array ? datos : new Uint8Array(datos);
+  return analizarLibroLeido(await leerLibro(bytes), bytes, nombreArchivo, opciones);
+}
+
+/** Igual que `analizarXlsx`, sobre un libro ya leído con el lector seguro (C1b lo reutiliza para no leerlo dos veces). */
+export async function analizarLibroLeido(leido: LibroLeido, bytes: Uint8Array, nombreArchivo: string, opciones: OpcionesAnalisis = {}): Promise<InformeEstructural> {
   const perfiles = opciones.perfiles ?? PERFILES_IMPORTACION;
-  const leido = await leerLibro(bytes);
   const avisos: string[] = [];
   if (leido.adaptaciones.length) {
     avisos.push(`El libro usa XML con prefijo de espacio de nombres (válido en OOXML, pero no lo guarda así Excel). Se ha leído con una adaptación en memoria de ${leido.adaptaciones.length} parte(s); el archivo original no se modifica.`);

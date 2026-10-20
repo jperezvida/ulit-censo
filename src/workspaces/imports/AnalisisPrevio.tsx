@@ -4,6 +4,7 @@ import { Modal, fmt } from '../../components/ui';
 import { descargar } from '../../domain/exportacion';
 import { CONFIG_TERRITORIAL } from '../../domain/territorio';
 import type { InformeEstructural } from '../../domain/xlsx/analisis';
+import type { InformeInterpretacion } from '../../domain/xlsx/informeInterpretacion';
 
 const ROL_TXT = { datos: 'Datos', listas: 'Listas (Hoja1)', resumen: 'Resumen (no es fuente)', otra: 'Otra' } as const;
 const COINC_TXT = { exacta: 'exacta', espacios: 'difiere en espacios', mayusculas: 'difiere en mayúsculas', tildes: 'difiere en tildes (revisar)', alias: 'alias admitido' } as const;
@@ -17,6 +18,31 @@ export function AnalisisPrevio({ municipioId, onCerrar }: { municipioId: string;
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
   const [municipio, setMunicipio] = useState<string>(CONFIG_TERRITORIAL[municipioId] ? municipioId : '');
+  const [anio, setAnio] = useState('');
+  // Bytes del archivo SOLO en memoria (para C1b); se descartan al cerrar o analizar otro.
+  const [bytes, setBytes] = useState<Uint8Array | null>(null);
+  const [interpretacion, setInterpretacion] = useState<InformeInterpretacion | null>(null);
+
+  const interpretar = async () => {
+    if (!bytes || !informe) return;
+    setCargando(true);
+    setError(null);
+    try {
+      const [{ interpretarXlsx }, { informeInterpretacion }] = await Promise.all([import('../../domain/xlsx/interpretacion'), import('../../domain/xlsx/informeInterpretacion')]);
+      const cfg = municipio ? CONFIG_TERRITORIAL[municipio] : undefined;
+      const res = await interpretarXlsx(bytes, informe.archivo.nombre, { territorio: cfg, periodo: /^\d{4}$/.test(anio) ? { desde: `${anio}-01-01`, hasta: `${anio}-12-31` } : undefined });
+      setInterpretacion(informeInterpretacion(res, cfg?.municipio));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCargando(false);
+    }
+  };
+  const otro = () => {
+    setInforme(null);
+    setInterpretacion(null);
+    setBytes(null);
+  };
 
   const leer = async (f: File) => {
     setCargando(true);
@@ -28,7 +54,9 @@ export function AnalisisPrevio({ municipioId, onCerrar }: { municipioId: string;
         throw new Error(`El archivo ocupa ${(f.size / 1048576).toFixed(1)} MB y el máximo admitido es ${LIMITES_XLSX.maxBytesArchivo / 1048576} MB. No se ha leído.`);
       }
       const { analizarXlsx } = await import('../../domain/xlsx/analisis');
-      setInforme(await analizarXlsx(new Uint8Array(await f.arrayBuffer()), f.name, { territorio: municipio ? CONFIG_TERRITORIAL[municipio] : undefined }));
+      const b = new Uint8Array(await f.arrayBuffer());
+      setInforme(await analizarXlsx(b, f.name, { territorio: municipio ? CONFIG_TERRITORIAL[municipio] : undefined }));
+      setBytes(b);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -39,17 +67,26 @@ export function AnalisisPrevio({ municipioId, onCerrar }: { municipioId: string;
   return (
     <Modal
       ancho
-      titulo="Análisis previo de un Excel (C1a)"
+      titulo="Análisis previo de un Excel (C1a · C1b)"
       sub="Identifica la hoja de datos, las columnas, los tipos y los perfiles compatibles. Solo lectura: no importa negocios, no crea locales ni modifica campañas. El archivo no se guarda ni se envía."
       onCerrar={onCerrar}
       pie={
         informe && (
           <>
             <span className="muted esp"><ShieldCheck size={13} /> El informe no contiene nombres de negocio ni direcciones.</span>
-            <button className="btn" onClick={() => setInforme(null)}>Analizar otro</button>
-            <button className="btn primario" onClick={() => descargar(`${informe.archivo.nombre}.informe-estructural.json`, JSON.stringify(informe, null, 2), 'application/json')}>
-              <Download size={15} /> Descargar informe
+            <button className="btn" onClick={otro}>Analizar otro</button>
+            <button className="btn" onClick={() => descargar(`${informe.archivo.nombre}.informe-estructural.json`, JSON.stringify(informe, null, 2), 'application/json')}>
+              <Download size={15} /> Informe estructural
             </button>
+            {interpretacion ? (
+              <button className="btn primario" onClick={() => descargar(`${informe.archivo.nombre}.informe-interpretacion.json`, JSON.stringify(interpretacion, null, 2), 'application/json')}>
+                <Download size={15} /> Informe de interpretación
+              </button>
+            ) : (
+              <button className="btn primario" disabled={!informe.perfilPropuesto || !bytes || cargando} onClick={interpretar} title={informe.perfilPropuesto ? 'Interpreta cada celda sin importar nada' : 'Requiere un perfil compatible'}>
+                <FileSearch size={15} /> {cargando ? 'Interpretando…' : 'Interpretar valores (C1b)'}
+              </button>
+            )}
           </>
         )
       }
@@ -63,6 +100,10 @@ export function AnalisisPrevio({ municipioId, onCerrar }: { municipioId: string;
               {Object.values(CONFIG_TERRITORIAL).map((c) => <option key={c.municipioId} value={c.municipioId}>{c.municipio}</option>)}
             </select>
           </label>
+          <label className="campo" style={{ maxWidth: 360 }}>
+            <span>Año de la campaña (opcional: comprueba las fechas en C1b)</span>
+            <input className="input" inputMode="numeric" maxLength={4} value={anio} onChange={(e) => setAnio(e.target.value.replace(/\D/g, ''))} aria-label="Año de la campaña" placeholder="p. ej. 2025" />
+          </label>
           <label className="kml-drop">
             <FileSearch size={26} />
             <b>{cargando ? 'Analizando…' : 'Selecciona un archivo .xlsx'}</b>
@@ -72,7 +113,11 @@ export function AnalisisPrevio({ municipioId, onCerrar }: { municipioId: string;
           {error && <div className="t-info error" role="alert">{error}</div>}
         </div>
       ) : (
-        <Informe inf={informe} />
+        <>
+          {error && <div className="t-info error" role="alert">{error}</div>}
+          {interpretacion && <Interpretacion inf={interpretacion} />}
+          <Informe inf={informe} />
+        </>
       )}
     </Modal>
   );
@@ -158,6 +203,53 @@ function Informe({ inf }: { inf: InformeEstructural }) {
         <ul className="ap-lista">{inf.avisos.map((a) => <li key={a}>{a}</li>)}</ul>
       </section>
       <section className="ap-garantias" aria-label="Garantías">
+        {inf.garantias.map((g) => <div key={g}><ShieldCheck size={13} /> {g}</div>)}
+      </section>
+    </div>
+  );
+}
+
+const ESTADO_TXT = { valido: 'Válido', transformado: 'Transformado', vacio: 'Vacío', 'no-aplica': 'No aplica', pendiente: 'Pendiente', invalido: 'Inválido' } as const;
+const DECISION_TXT = { catedra: 'Cátedra', revision: 'Revisión', informativa: '—' } as const;
+
+/** C1b · Resumen de la interpretación (sin nombres ni direcciones). No importa nada. */
+function Interpretacion({ inf }: { inf: InformeInterpretacion }) {
+  const c = inf.celdas;
+  const pct = (n: number) => `${((100 * n) / (c.total || 1)).toLocaleString('es-ES', { maximumFractionDigits: 2 })} %`;
+  return (
+    <div className="col ap" style={{ gap: 14 }} aria-label="Interpretación de valores">
+      <section className="ap-resumen">
+        <div><span className="muted">Registros</span><b>{fmt(inf.filas.registros)}</b><span className="muted">{inf.filas.locales.ocupado} ocupados · {inf.filas.locales.vacio} vacíos{inf.filas.locales.desconocido ? ` · ${inf.filas.locales.desconocido} sin estado` : ''}</span></div>
+        <div><span className="muted">Celdas sin revisión</span><b>{fmt(c.sinRevision)}</b><span className="muted">{pct(c.sinRevision)} de {fmt(c.total)}</span></div>
+        <div><span className="muted">Requieren revisión</span><b>{fmt(c.requierenRevision)}</b><span className="muted">{pct(c.requierenRevision)}</span></div>
+        <div><span className="muted">Incidencias</span><b>{fmt(inf.incidencias.total)}</b><span className="muted">{inf.incidencias.porGravedad.error} error · {inf.incidencias.porGravedad.aviso} aviso · {inf.incidencias.porGravedad.info} info</span></div>
+        <div><span className="muted">Nº redes</span><b>{inf.redes.coinciden} coinciden</b><span className="muted">{inf.redes.discrepan} discrepan · {inf.redes.noCalculables} sin calcular</span></div>
+      </section>
+      <section>
+        <h4 className="ap-tit">Estados de las celdas</h4>
+        <p className="muted" style={{ margin: 0 }}>{(Object.keys(ESTADO_TXT) as (keyof typeof ESTADO_TXT)[]).map((k) => `${ESTADO_TXT[k]} ${fmt(c.porEstado[k])}`).join(' · ')}</p>
+      </section>
+      <section>
+        <h4 className="ap-tit">Incidencias por tipo</h4>
+        <div className="dat-tabla scroll-fino" style={{ maxHeight: 260 }}>
+          <table className="tabla ap-tabla" style={{ tableLayout: 'fixed', width: '100%' }}>
+            <colgroup><col style={{ width: '26%' }} /><col style={{ width: 92 }} /><col style={{ width: 76 }} /><col style={{ width: 64 }} /><col style={{ width: '20%' }} /><col /></colgroup>
+            <thead><tr><th>Tipo</th><th>Gravedad</th><th>Decide</th><th className="num">Celdas</th><th>Columnas</th><th>Propuesta</th></tr></thead>
+            <tbody className="ap-ajuste">
+              {inf.incidencias.porTipo.map((t) => (
+                <tr key={t.tipo}><td>{t.titulo}</td><td className={t.gravedad === 'error' ? 'ap-mal' : ''}>{t.gravedad}</td><td>{DECISION_TXT[t.decision]}</td><td className="num">{fmt(t.n)}</td><td style={{ fontSize: 12 }}>{t.columnas.map((x) => `«${x}»`).join(', ')}</td><td className="muted" style={{ fontSize: 12 }}>{t.propuesta}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      {inf.decisionesPendientes.length > 0 && (
+        <section>
+          <h4 className="ap-tit">Pendiente de decisión (no se ha aplicado)</h4>
+          <ul className="ap-lista">{inf.decisionesPendientes.map((d) => <li key={d.decision}>Decisión {d.decision}: {d.descripcion} · {fmt(d.celdas)} celda(s)</li>)}</ul>
+        </section>
+      )}
+      <section className="ap-garantias" aria-label="Garantías de la interpretación">
         {inf.garantias.map((g) => <div key={g}><ShieldCheck size={13} /> {g}</div>)}
       </section>
     </div>
