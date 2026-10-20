@@ -22,6 +22,11 @@ export function AnalisisPrevio({ municipioId, onCerrar }: { municipioId: string;
     setCargando(true);
     setError(null);
     try {
+      // Límite de tamaño ANTES de leer el archivo en memoria.
+      const { LIMITES_XLSX } = await import('../../domain/xlsx/lector');
+      if (f.size > LIMITES_XLSX.maxBytesArchivo) {
+        throw new Error(`El archivo ocupa ${(f.size / 1048576).toFixed(1)} MB y el máximo admitido es ${LIMITES_XLSX.maxBytesArchivo / 1048576} MB. No se ha leído.`);
+      }
       const { analizarXlsx } = await import('../../domain/xlsx/analisis');
       setInforme(await analizarXlsx(new Uint8Array(await f.arrayBuffer()), f.name, { territorio: municipio ? CONFIG_TERRITORIAL[municipio] : undefined }));
     } catch (e) {
@@ -61,7 +66,7 @@ export function AnalisisPrevio({ municipioId, onCerrar }: { municipioId: string;
           <label className="kml-drop">
             <FileSearch size={26} />
             <b>{cargando ? 'Analizando…' : 'Selecciona un archivo .xlsx'}</b>
-            <span className="muted">Se admiten los formatos de 27 columnas (censo municipal) y 28 columnas (itinerario de Medina 2026).</span>
+            <span className="muted">Se admiten los formatos de 27 columnas (censo municipal) y 28 columnas (itinerario de Medina 2026). Por seguridad: hasta 25 MB y 250 MB descomprimidos.</span>
             <input type="file" aria-label="Archivo xlsx" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(e) => e.target.files?.[0] && leer(e.target.files[0])} />
           </label>
           {error && <div className="t-info error" role="alert">{error}</div>}

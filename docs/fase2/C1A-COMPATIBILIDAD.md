@@ -15,7 +15,7 @@
 | Perfiles | `src/domain/xlsx/perfilesImportacion.ts` | `censo-municipal-27` v1 y `itinerario-medina-2026-28` v1, con las cabeceras originales exactas, el tipo esperado y la clave interna. |
 | Análisis | `src/domain/xlsx/analisis.ts` | Informe estructural: hojas y su papel, hoja de datos, columnas, tipos, formatos, filas, perfiles compatibles y diferencias. |
 | Territorio | `src/domain/territorio.ts` | Reglas de Distrito, Zona y CP por municipio. Solo informan: nunca completan valores. |
-| Interfaz | Datos → **Análisis previo de importación** | Se elige el municipio de destino y el .xlsx; se ve el informe y se puede descargar en JSON. |
+| Interfaz | Datos → **Análisis previo de importación** (acción principal) | Se elige el municipio de destino y el .xlsx; se ve el informe y se puede descargar en JSON. |
 | Línea de órdenes | `npm run analizar -- archivo.xlsx --municipio=mun-medina` | Mismo informe; deja `<archivo>.informe-estructural.json` junto al Excel, ignorado por git. |
 | Libros ficticios | `npm run xlsx-ficticio -- <carpeta>` | Genera 4 libros de demostración (27 columnas, con prefijo, 28 columnas y estilo Valladolid). |
 
@@ -41,6 +41,50 @@ La adaptación solo actúa en partes `xl/**.xml` cuyo **elemento raíz** lleva u
 - declara el espacio de nombres como predeterminado.
 
 El resto del paquete queda byte a byte igual.
+
+## 2 bis. Límites de seguridad (antes de procesar el contenido)
+
+Un .xlsx es un ZIP: un archivo pequeño podría descomprimirse en cientos de GB («bomba ZIP») y bloquear el navegador. El lector aplica estos controles **en orden y antes de procesar el contenido**:
+
+1. **Tamaño del archivo:** se comprueba antes de leerlo. En la interfaz, con el tamaño del `File` y sin cargarlo en memoria.
+2. **Directorio central del ZIP:** se leen los tamaños **declarados** sin descomprimir nada, y se rechaza si se supera:
+   - el número de entradas;
+   - el tamaño por entrada;
+   - el total descomprimido;
+   - la proporción de compresión de una entrada de más de 1 MiB.
+
+   Un ZIP64 también se rechaza.
+3. **Descompresión por tramos** (16 KiB comprimidos) **contando los bytes reales**. Si una entrada supera lo que declaraba (cabeceras que mienten) o algún límite, se detiene en el acto.
+4. **ExcelJS solo recibe contenido ya verificado:** un paquete reconstruido **sin compresión**, de modo que nunca descomprime nada por su cuenta.
+
+| Límite (`LIMITES_XLSX`) | Valor por defecto | Referencia |
+|---|---|---|
+| Tamaño del archivo | 25 MB | Un censo de 889 filas ocupa ≈ 0,1 MB |
+| Entradas del ZIP | 1.000 | Un libro con 3 hojas tiene ≈ 10 |
+| Descomprimido por entrada | 150 MB | La hoja de 889 filas ocupa ≈ 1 MB descomprimida |
+| Descomprimido total | 250 MB | — |
+| Proporción por entrada (> 1 MiB) | 200 veces | Las hojas de Excel suelen comprimirse entre 5 y 20 veces |
+
+Pruebas de rechazo seguro (`src/domain/xlsx/limites.test.ts`, 9 pruebas):
+- archivo demasiado grande;
+- **bomba ZIP** de 40 MB de ceros en ≈ 40 KB, rechazada por la proporción declarada **sin descomprimir** y en milisegundos;
+- total y tamaño por entrada excesivos;
+- demasiadas entradas;
+- **cabeceras que mienten** (declaran 100 bytes y contienen 2 MB), detenidas durante la descompresión;
+- ZIP64 y directorio dañado;
+- libro normal, con y sin prefijo, que pasa los límites;
+- equivalencia exacta del contenido verificado.
+
+## 2 ter. Importador CSV antiguo: provisional y solo de demostración
+
+En Datos, **«Análisis previo de importación»** (C1a) es la acción principal. El antiguo «Nueva importación» pasa a llamarse **«Importador CSV provisional · demostración»**:
+
+- Un aviso explica sus problemas conocidos:
+  - convierte números distintos de 0 en «Sí» (p. ej. 83) y el vacío en «No»;
+  - asigna «Franquicia» al nombre de cadena;
+  - deduce si un local está vacío a partir del nombre.
+- **Solo incorpora los archivos de ejemplo simulados.** Un CSV subido se previsualiza, pero «Confirmar incorporación» queda deshabilitado, y la función de confirmación también lo impide.
+- Los escenarios ficticios y las pruebas existentes se conservan (`datos-importador-provisional.test.tsx`, 3 pruebas).
 
 ## 3. Perfiles y reconocimiento de cabeceras
 
