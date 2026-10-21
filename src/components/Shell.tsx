@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { BarChart3, ChevronDown, Compass, Database, FolderKanban, Inbox, Map, Smartphone, UserCog } from 'lucide-react';
+import { BarChart3, ChevronDown, Compass, Database, FolderKanban, Inbox, Map, PieChart, Smartphone, UserCog } from 'lucide-react';
 import { useStore } from '../store/store';
 import { useContexto, useFichaLocal } from '../store/contexto';
 import type { Rol } from '../domain/types';
@@ -13,6 +13,7 @@ const ESPACIOS = [
   { to: '/oficina', txt: 'Oficina', icono: Inbox },
   { to: '/datos', txt: 'Datos', icono: Database },
   { to: '/analisis', txt: 'Análisis', icono: BarChart3 },
+  { to: '/visualizacion', txt: 'Visualización', icono: PieChart },
 ];
 
 const ROLES: { r: Rol; t: string; d: string }[] = [
