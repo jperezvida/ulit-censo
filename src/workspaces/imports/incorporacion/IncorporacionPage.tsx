@@ -9,6 +9,7 @@ import { MUNICIPIO_DEMO, prepararMunicipioDemo, reiniciarEscenarioDemo } from '.
 import { RevisionGrupos } from './RevisionGrupos';
 import { Decisiones } from './Decisiones';
 import { DeshacerIncorporacion } from './DeshacerIncorporacion';
+import { ReintentarGuardado } from './ReintentarGuardado';
 import { firmaInterpretacion, useAsistente, type Etapa } from './estadoAsistente';
 import '../../../styles/datos.css';
 import '../../../styles/incorporacion.css';
@@ -103,6 +104,24 @@ function Etapa1({ onAnalizar }: { onAnalizar: () => void }) {
   const prefs = useStore((s) => s.prefs);
   const aplicarConGuardado = useStore((s) => s.aplicarConGuardado);
   const [reiniciar, setReiniciar] = useState(false);
+  /** Operación de la etapa 1 aplicada en memoria pero sin guardar (se reintenta sin repetirla). */
+  const [sinGuardar, setSinGuardar] = useState<{ que: 'preparar' | 'reiniciar'; error?: string } | null>(null);
+  const [reiniciando, setReiniciando] = useState(false);
+  const preparar = async () => {
+    const r = await aplicarConGuardado((d) => prepararMunicipioDemo(d), 'Escenario ficticio preparado');
+    if (!r.aplicado) st.set({ error: r.error ?? null });
+    else if (!r.guardado) setSinGuardar({ que: 'preparar', error: r.error });
+  };
+  const confirmarReinicio = async () => {
+    setReiniciando(true);
+    const r = await aplicarConGuardado((d) => reiniciarEscenarioDemo(d), 'Escenario ficticio reiniciado');
+    setReiniciando(false);
+    if (!r.aplicado) return st.set({ error: r.error ?? null });
+    // El asistente ya no puede apuntar a datos eliminados, se haya guardado o no.
+    st.reiniciar();
+    if (!r.guardado) return setSinGuardar({ que: 'reiniciar', error: r.error });
+    setReiniciar(false);
+  };
   const esc = ESCENARIOS_DEMO[st.escenarioId];
   const preparado = !!db.municipios[MUNICIPIO_DEMO.id];
   const actuales = Object.values(db.campanas).filter((c) => c.municipioId === MUNICIPIO_DEMO.id);
@@ -120,14 +139,15 @@ function Etapa1({ onAnalizar }: { onAnalizar: () => void }) {
         </select>
         <p className="muted">Municipio ficticio y aislado, con las reglas territoriales de Medina (sin Distrito ni Zona; CP 47400) y un callejero de «vías ficticias» sin geometría. No comparte datos con Medina ni con Valladolid.</p>
         {!preparado ? (
-          <button className="btn primario" onClick={() => aplicarConGuardado((d) => prepararMunicipioDemo(d), 'Escenario ficticio preparado')}><FlaskConical size={15} /> Preparar escenario ficticio</button>
+          <button className="btn primario" onClick={preparar}><FlaskConical size={15} /> Preparar escenario ficticio</button>
         ) : (
           <div className="fila" style={{ flexWrap: 'wrap' }}>
             <span className="chip ok">Escenario preparado</span>
             <span className="muted esp" style={{ minWidth: 160 }}>{actuales.length} campaña(s) en el municipio ficticio</span>
-            <button className="btn s peligro" onClick={() => setReiniciar(true)}><RotateCcw size={14} /> Reiniciar escenario</button>
+            <button className="btn s peligro" disabled={!!sinGuardar} onClick={() => setReiniciar(true)}><RotateCcw size={14} /> Reiniciar escenario</button>
           </div>
         )}
+        {sinGuardar?.que === 'preparar' && <ReintentarGuardado error={sinGuardar.error} onGuardado={() => setSinGuardar(null)} />}
       </section>
 
       <section className="tarjeta inc-bloque">
@@ -177,17 +197,21 @@ function Etapa1({ onAnalizar }: { onAnalizar: () => void }) {
       {reiniciar && (
         <Modal
           titulo="Reiniciar el escenario ficticio"
-          onCerrar={() => setReiniciar(false)}
+          onCerrar={() => !sinGuardar && setReiniciar(false)}
           pie={
-            <>
-              <button className="btn" onClick={() => setReiniciar(false)}>Cancelar</button>
-              <button className="btn peligro" onClick={async () => {
-                const r = await aplicarConGuardado((d) => reiniciarEscenarioDemo(d), 'Escenario ficticio reiniciado');
-                if (r.aplicado) { st.reiniciar(); setReiniciar(false); } else st.set({ error: r.error ?? null });
-              }}>Reiniciar</button>
-            </>
+            sinGuardar?.que === 'reiniciar' ? (
+              <span className="muted esp">El escenario se ha eliminado en memoria, pero todavía no está guardado.</span>
+            ) : (
+              <>
+                <button className="btn" onClick={() => setReiniciar(false)}>Cancelar</button>
+                <button className="btn peligro" disabled={reiniciando} onClick={confirmarReinicio}>{reiniciando ? 'Reiniciando…' : 'Reiniciar'}</button>
+              </>
+            )
           }
         >
+          {sinGuardar?.que === 'reiniciar' && (
+            <ReintentarGuardado error={sinGuardar.error} onGuardado={() => { setSinGuardar(null); setReiniciar(false); st.set({ error: null }); useStore.getState().avisar('Escenario ficticio reiniciado y guardado', 'ok'); }} />
+          )}
           <p>Se eliminará <b>todo</b> lo que pertenece al municipio ficticio «{MUNICIPIO_DEMO.nombre}»: su callejero, sus campañas, incorporaciones, registros, locales y negocios. Ningún otro municipio ni campaña se modifica. El historial de Ctrl+Z se vaciará.</p>
         </Modal>
       )}
@@ -334,13 +358,14 @@ function Etapa5() {
   const nav = useNavigate();
   const [deshacer, setDeshacer] = useState(false);
   const a = st.aplicado!;
+  const guardadoOk = () => st.set({ aplicado: { ...a, guardado: true, errorGuardado: undefined } });
   const imp = db.importaciones[a.importacionId];
   const deshecha = imp?.estado === 'descartada';
   return (
     <div className="inc-rejilla">
       <section className="tarjeta inc-bloque inc-ancho" aria-label="Resultado">
         {deshecha ? <div className="t-info aviso"><Undo2 size={15} /> Esta incorporación se ha deshecho. Su registro se conserva en Datos como «deshecha».</div> : <div className="t-info ok"><CheckCircle2 size={15} /> Incorporación aplicada como una única operación.</div>}
-        {!a.guardado && <div className="t-info error" role="alert"><AlertTriangle size={15} /> {a.errorGuardado}</div>}
+        {!a.guardado && <ReintentarGuardado error={a.errorGuardado} onGuardado={guardadoOk} />}
         {a.guardado && !deshecha && <p className="muted"><ShieldCheck size={13} /> Guardado en el almacenamiento de este navegador.</p>}
         <div className="ap-resumen">
           <div><span className="muted">Registros incorporados</span><b>{fmt(a.creadas.registros)}</b><span className="muted">todas las filas, con su original</span></div>
@@ -355,7 +380,7 @@ function Etapa5() {
         </dl>
         <div className="fila" style={{ flexWrap: 'wrap' }}>
           <button className="btn" onClick={() => { setPrefs({ municipioId: MUNICIPIO_DEMO.id, campanaId: a.campanaId }); nav('/datos'); }}><Database size={15} /> Ver en el historial de Datos</button>
-          {!deshecha && <button className="btn peligro" onClick={() => setDeshacer(true)}><Undo2 size={15} /> Deshacer la incorporación…</button>}
+          {!deshecha && <button className="btn peligro" disabled={!a.guardado} title={a.guardado ? undefined : 'Guarda primero la incorporación'} onClick={() => setDeshacer(true)}><Undo2 size={15} /> Deshacer la incorporación…</button>}
           <span className="esp" />
           <button className="btn primario" onClick={() => st.reiniciar()}>Nueva demostración</button>
         </div>

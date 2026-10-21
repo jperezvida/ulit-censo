@@ -37,6 +37,7 @@ describe('C1d-B · Datos del dashboard calculados sobre el modelo', () => {
     const d = datosCampana(conHistorico, campanaHist);
     const r = resumen(d.unidades);
     expect(d.registrosCensales).toBe(890);
+    expect(d.registrosSinEstablecimiento).toBe(30);
     expect(r).toMatchObject({ establecimientos: 860, locales: 842, negocios: 620, ocupados: 620, vacios: 240, sinLocal: 18 });
     expect(d.correspondencias).toEqual({ confirmada: 0, probable: 842, dudosa: 16, sinVinculo: 32 });
     expect(d.historica).toBe(true);
@@ -63,6 +64,24 @@ describe('C1d-B · Datos del dashboard calculados sobre el modelo', () => {
     const a = ambitos(conHistorico).find((x) => x.id === MUNICIPIO_DEMO.id)!;
     expect(a.campanas.map((c) => c.id)).toEqual([campanaHist]);
     expect(a.tipo).toBe('municipio');
+  });
+
+  it('registros sin establecimiento observado: se calcula registro a registro, también con observaciones manuales en la misma campaña', () => {
+    const base = datosCampana(conHistorico, campanaHist);
+    const calleId = base.unidades[0].calleId;
+    // 40 observaciones manuales (oficina) en la MISMA campaña histórica, sin registro de origen.
+    const manuales = Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`obs-manual-${i}`, {
+      id: `obs-manual-${i}`, campanaId: campanaHist, localId: null, calleId, fuente: 'oficina' as const, tipo: 'vacio' as const, datos: { numero: 900 + i, vacio: true }, verificacion: 'pendiente' as const,
+    }]));
+    const mixta: BaseDatos = { ...conHistorico, observaciones: { ...conHistorico.observaciones, ...manuales } };
+    const d = datosCampana(mixta, campanaHist);
+    expect(d.unidades).toHaveLength(base.unidades.length + 40);
+    expect(d.registrosCensales).toBe(890);
+    // Una resta daría 890 − 900 = −10; el cálculo directo no cambia: siguen siendo los mismos 30 registros.
+    expect(d.registrosCensales - d.unidades.length).toBeLessThan(0);
+    expect(d.registrosSinEstablecimiento).toBe(base.registrosSinEstablecimiento);
+    // Una campaña sin importaciones no tiene registros sin establecimiento.
+    expect(datosCampana(conHistorico, 'camp-medina-2026').registrosSinEstablecimiento).toBe(0);
   });
 });
 

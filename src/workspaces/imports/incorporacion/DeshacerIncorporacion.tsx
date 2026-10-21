@@ -3,6 +3,7 @@ import { ShieldAlert, Undo2 } from 'lucide-react';
 import { Modal, fmt } from '../../../components/ui';
 import { useStore } from '../../../store/store';
 import { deshacerIncorporacion } from '../../../domain/incorporacion';
+import { ReintentarGuardado } from './ReintentarGuardado';
 import { previsualizarDeshacer, puedeDecidir } from '../../../domain/incorporacionDemo';
 import type { ColeccionIncorporada, Id } from '../../../domain/types';
 
@@ -23,16 +24,30 @@ export function DeshacerIncorporacion({ importacionId, onCerrar, onHecho }: { im
   const vista = useMemo(() => previsualizarDeshacer(db, importacionId, prefs.personaId), [db, importacionId, prefs.personaId]);
   const [ok, setOk] = useState(false);
   const [estado, setEstado] = useState<{ cargando?: boolean; error?: string }>({});
+  /** Deshecho en memoria pero sin guardar: no se vuelve a deshacer, solo se reintenta el guardado. */
+  const [sinGuardar, setSinGuardar] = useState<{ error?: string } | null>(null);
+  const terminar = () => {
+    onHecho?.();
+    onCerrar();
+  };
   const autorizado = puedeDecidir(prefs.roles);
 
   const confirmar = async () => {
     setEstado({ cargando: true });
     const r = await aplicarConGuardado((d) => deshacerIncorporacion(d, importacionId, prefs.personaId), `Incorporación deshecha: ${vista.archivo}`);
     if (!r.aplicado) return setEstado({ error: r.error ?? 'No se ha podido deshacer.' });
-    if (!r.guardado) return setEstado({ error: r.error });
-    onHecho?.();
-    onCerrar();
+    setEstado({});
+    if (!r.guardado) return setSinGuardar({ error: r.error });
+    terminar();
   };
+
+  if (sinGuardar) {
+    return (
+      <Modal titulo="Deshacer la incorporación" sub={vista.archivo} onCerrar={() => undefined} pie={<span className="muted esp">La incorporación ya se ha deshecho en memoria; falta guardarlo.</span>}>
+        <ReintentarGuardado error={sinGuardar.error} onGuardado={terminar} />
+      </Modal>
+    );
+  }
 
   return (
     <Modal

@@ -32,7 +32,12 @@ export default function VisualizacionPage() {
   const datos = useMemo(() => (campana ? datosCampana(db, campana.id) : null), [db, campana]);
   const cps = useMemo(() => (datos ? distribucion(datos.unidades, (u) => u.cp, '__sin__') : []), [datos]);
   const sectorPestana = SECTOR_DE[pestana];
-  const unidades = useMemo(() => (datos ? filtrar(datos.unidades, { ...filtros, sector: sectorPestana ?? filtros.sector }) : []), [datos, filtros, sectorPestana]);
+  const enVacios = pestana === 'vacios';
+  // En «Locales vacíos» no se aplican sector ni franquicia (los vacíos no los tienen; se explica en la pestaña).
+  const unidades = useMemo(
+    () => (datos ? filtrar(datos.unidades, enVacios ? { ...filtros, sector: undefined, franquicia: undefined } : { ...filtros, sector: sectorPestana ?? filtros.sector }) : []),
+    [datos, filtros, sectorPestana, enVacios],
+  );
   const cambiarAmbito = (id: Id) => {
     setAmbitoId(id);
     setCampanaId(lista.find((a) => a.id === id)?.campanas[0]?.id);

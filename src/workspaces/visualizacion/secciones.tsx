@@ -6,7 +6,7 @@ import {
   adopcion, compararGrupos, datosCampana, distribucion, estadisticos, filtrar, histograma, indicePresencia, matrizCalor, MIN_CELDA, MIN_GRUPO, pct, respuestas, resumen,
   RESPUESTAS, SECTORES, topCalles, UMBRAL_CALLE, valores, VARIABLES_PRESENCIA, type DatosCampana, type FiltrosPanel, type Sector, type UnidadPanel,
 } from '../../domain/panel';
-import type { VariableDigital } from '../../domain/types';
+import type { Id, VariableDigital } from '../../domain/types';
 import { Apilada, BarrasH, Bloque, fmtNum, fmtPct, Histograma, Kpi, MapaCalles, MatrizCalor, SinDatos, textoProp } from './graficos';
 
 export const COLOR_SECTOR: Record<string, string> = { Comercio: '#0065fe', Servicios: '#7a4fd1', 'Hostelería y Restauración': '#d98f00', 'Sin clasificar': '#b9c2cf' };
@@ -119,7 +119,15 @@ export function SectorTab({ sector, datos, unidades, filtros, setFiltros }: { se
   );
 }
 
+const FRANQUICIA_FILTRO_TXT: Record<NonNullable<FiltrosPanel['franquicia']>, string> = { si: 'Sí', no: 'No', pendiente: 'Pendiente o sin dato' };
+
+/**
+ * Los filtros globales de sector y franquicia no se aplican a «Locales vacíos» (lo resuelve la página):
+ * un local vacío no tiene sector ni franquicia, así que esos filtros lo eliminarían siempre y darían un
+ * cero engañoso. Aquí se explica al usuario y se ofrece quitarlos.
+ */
 export function Vacios({ unidades, hayCp, filtros, setFiltros }: { unidades: UnidadPanel[]; hayCp: boolean; filtros: FiltrosPanel; setFiltros: SetFiltros }) {
+  const ignorados = [filtros.sector && `sector «${filtros.sector}»`, filtros.franquicia && `franquicia «${FRANQUICIA_FILTRO_TXT[filtros.franquicia]}»`].filter(Boolean) as string[];
   const vac = unidades.filter((u) => u.vacio);
   const m = estadisticos(vac.filter((u) => typeof u.metros === 'number').map((u) => u.metros!));
   const porCp = useMemo(() => {
@@ -136,6 +144,15 @@ export function Vacios({ unidades, hayCp, filtros, setFiltros }: { unidades: Uni
   const mayorProp = porCp.filter((c) => c.n >= UMBRAL_CALLE).sort((a, b) => b.prop - a.prop)[0];
   return (
     <>
+      {ignorados.length > 0 && (
+        <div className="t-info aviso vz-aviso vz-ancho" role="note" aria-label="Filtros no aplicados">
+          <AlertTriangle size={14} />
+          <span className="esp">
+            En esta pestaña no se aplica el filtro de {ignorados.join(' ni el de ')}: un local vacío no tiene sector ni franquicia, y filtrar por ellos daría siempre cero vacíos. Las cifras incluyen todos los establecimientos observados (con los demás filtros). En las otras pestañas el filtro sigue activo.
+          </span>
+          <button className="btn s" onClick={() => setFiltros({ ...filtros, sector: undefined, franquicia: undefined })}>Quitar estos filtros</button>
+        </div>
+      )}
       <div className="vz-kpis vz-ancho">
         <Kpi etq="Locales vacíos" valor={fmt(vac.length)} sub={`${fmtPct(pct({ n: vac.length, den: unidades.length }))} de ${fmt(unidades.length)} observados`} />
         <Kpi etq="Fachada media" valor={m ? `${fmtNum(m.media)} m` : '—'} sub={m ? `mediana ${fmtNum(m.mediana)} m · ${fmt(m.n)} con medida` : 'sin medidas'} />
@@ -260,7 +277,8 @@ export function Cobertura({ datos, unidades }: { datos: DatosCampana; unidades: 
         <Kpi etq="Calles con registros" valor={`${fmt(datos.callesConRegistros)} de ${fmt(datos.callesAmbito)}`} sub="del ámbito de la campaña" />
         <Kpi etq="Pendientes de visita" valor={fmt(datos.pendientesVisita)} sub="locales de la campaña anterior aún no observados" tono={datos.pendientesVisita ? 'aviso' : undefined} />
         <Kpi etq="Sin local identificado" valor={fmt(unidades.filter((u) => u.sinLocal).length)} sub="registros con correspondencia pendiente" />
-        {datos.registrosCensales > 0 && <Kpi etq="Registros censales" valor={fmt(datos.registrosCensales)} sub={`${fmt(datos.registrosCensales - unidades.length)} sin establecimiento observado (calle no reconocida, estado desconocido…)`} />}
+        {datos.registrosCensales > 0 && <Kpi etq="Registros censales" valor={fmt(datos.registrosCensales)} sub="filas importadas de la campaña" />}
+        {datos.registrosCensales > 0 && <Kpi etq="Registros sin establecimiento observado" valor={fmt(datos.registrosSinEstablecimiento)} sub="filas importadas sin local observado ni observación propia (calle no reconocida, estado desconocido…)" tono={datos.registrosSinEstablecimiento ? 'aviso' : undefined} />}
       </div>
       <Bloque titulo="Correspondencias registro–local" nota="Solo en importaciones: «probable» se creó a partir de la fila y está pendiente de conciliar con otras campañas.">
         <Apilada etiqueta="Correspondencias" segmentos={[{ t: 'Confirmada', n: c.confirmada, color: '#0b7a53' }, { t: 'Probable', n: c.probable, color: '#7fb6ff' }, { t: 'Dudosa', n: c.dudosa, color: '#f0b44c' }, { t: 'Sin vínculo', n: c.sinVinculo, color: '#dfe4ec' }]} />
@@ -276,7 +294,18 @@ export function Cobertura({ datos, unidades }: { datos: DatosCampana; unidades: 
 export function Comparar({ datos, filtros }: { datos: DatosCampana; filtros: FiltrosPanel }) {
   const db = useStore((s) => s.db!);
   const otras = Object.values(db.campanas).filter((c) => c.id !== datos.campana.id).sort((a, b) => (a.municipioId === datos.municipio.id ? -1 : 1) - (b.municipioId === datos.municipio.id ? -1 : 1) || b.anio - a.anio);
-  const [otraId, setOtraId] = useState(datos.campana.campanaReferenciaId ?? otras[0]?.id);
+  // La campaña secundaria se valida en cada render: si cambia la principal (o desaparece la elegida),
+  // nunca se compara una campaña consigo misma ni se conserva en silencio una selección inexistente.
+  const [elegida, setElegida] = useState<Id | undefined>();
+  const ref = datos.campana.campanaReferenciaId;
+  const porDefecto = ref && ref !== datos.campana.id && db.campanas[ref] ? ref : otras[0]?.id;
+  const elegidaValida = !!elegida && elegida !== datos.campana.id && !!db.campanas[elegida];
+  const otraId = elegidaValida ? elegida : porDefecto;
+  const avisoSeleccion = elegida && !elegidaValida
+    ? elegida === datos.campana.id
+      ? `La campaña que habías elegido para comparar («${db.campanas[elegida]?.nombre}») es ahora la campaña principal: una campaña no se compara consigo misma.`
+      : 'La campaña que habías elegido para comparar ya no existe.'
+    : undefined;
   const otro = useMemo(() => (otraId && db.campanas[otraId] ? datosCampana(db, otraId) : null), [db, otraId]);
   if (!otro) return <SinDatos texto="No hay otra campaña con la que comparar." />;
   const filas = [datos, otro].map((d) => {
@@ -298,9 +327,14 @@ export function Comparar({ datos, filtros }: { datos: DatosCampana; filtros: Fil
   return (
     <>
       <Bloque titulo="Comparar con" ancho>
-        <select className="input" aria-label="Campaña con la que comparar" style={{ maxWidth: 420 }} value={otraId} onChange={(e) => setOtraId(e.target.value)}>
+        <select className="input" aria-label="Campaña con la que comparar" style={{ maxWidth: 420 }} value={otraId} onChange={(e) => setElegida(e.target.value)}>
           {otras.map((c) => <option key={c.id} value={c.id}>{db.municipios[c.municipioId]?.nombre} · {c.nombre}</option>)}
         </select>
+        {avisoSeleccion && (
+          <div className="t-info aviso vz-aviso" role="status" aria-label="Selección de comparación cambiada">
+            <AlertTriangle size={14} /> <span>{avisoSeleccion} Se compara con «{otro.municipio.nombre} · {otro.campana.nombre}»; elige otra campaña si lo prefieres.</span>
+          </div>
+        )}
         <div className="t-info aviso vz-aviso" role="note"><AlertTriangle size={14} /> <div>Las diferencias <b>no</b> son aperturas ni cierres confirmados: para eso hace falta la correspondencia confirmada entre locales (pestaña «Evolución» de Análisis).{avisos.length > 0 && <ul className="vz-destacados">{avisos.map((x) => <li key={x}>{x}</li>)}</ul>}</div></div>
         <table className="tabla vz-tabla" aria-label="Comparación">
           <thead><tr><th>Indicador</th><th className="num">{a.d.municipio.nombre} · {a.d.campana.nombre}</th><th className="num">{b.d.municipio.nombre} · {b.d.campana.nombre}</th></tr></thead>

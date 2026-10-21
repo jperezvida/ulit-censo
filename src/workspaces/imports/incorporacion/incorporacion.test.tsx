@@ -7,7 +7,7 @@ import { useAsistente } from './estadoAsistente';
 import { useStore } from '../../../store/store';
 import { generarDemo } from '../../../data/semilla';
 import { callejeroSimulado, MEDINA } from '../../../data/callejero';
-import { ANOMALIAS_ESCENARIO, MUNICIPIO_DEMO } from '../../../data/escenarioIncorporacion';
+import { ANOMALIAS_ESCENARIO, MUNICIPIO_DEMO, prepararMunicipioDemo } from '../../../data/escenarioIncorporacion';
 import { filasOficina } from '../../../domain/oficina';
 import { indiceObservaciones, indiceOcupaciones } from '../../../domain/consultas';
 import type { BaseDatos } from '../../../domain/db';
@@ -143,4 +143,45 @@ describe('C1d-A · Asistente de incorporación con el escenario ficticio de Medi
     expect(vista2026(db2)).toBe(antes2026);
     await esperar(() => screen.getByText(/Esta incorporación se ha deshecho/));
   }, 240000);
+
+  it('reinicio con guardado fallido: el cuadro sigue abierto, no se anuncia como guardado y se reintenta sin repetir la operación', async () => {
+    const db0 = prepararMunicipioDemo(generarDemo({ calles: callejeroSimulado(MEDINA.id, MEDINA.centro), fuente: 'simulado', detalleFuente: 'c1d-reinicio' }));
+    const original = { aplicarConGuardado: useStore.getState().aplicarConGuardado, reintentarGuardado: useStore.getState().reintentarGuardado };
+    let operaciones = 0;
+    let reintentos = 0;
+    let falla = true;
+    // Simula un almacenamiento del navegador que falla: la operación se aplica en memoria, el guardado no.
+    useStore.setState({
+      db: db0, pilaDeshacer: [], pilaRehacer: [], prefs: { ...useStore.getState().prefs, personaId: 'p-elena', roles: ['coordinador'] },
+      aplicarConGuardado: async (fn) => {
+        operaciones++;
+        useStore.setState({ db: fn(useStore.getState().db!), guardado: { estado: 'error' } });
+        return { aplicado: true, guardado: false, error: 'No se ha podido guardar (simulado).' };
+      },
+      reintentarGuardado: async () => {
+        reintentos++;
+        return falla ? { guardado: false, error: 'Sigue sin poder guardarse (simulado).' } : { guardado: true };
+      },
+    });
+    useAsistente.getState().reiniciar();
+    try {
+      montar();
+      fireEvent.click(screen.getByRole('button', { name: /Reiniciar escenario/ }));
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Reiniciar' }));
+      const aviso = await esperar(() => within(screen.getByRole('dialog')).getByLabelText('Guardado fallido'));
+      expect(aviso).toHaveTextContent(/no se ha guardado.*No se ha podido guardar \(simulado\)/);
+      expect(useStore.getState().db!.municipios[MUNICIPIO_DEMO.id]).toBeUndefined();
+      // Sin «Reiniciar» de nuevo: solo se puede reintentar el guardado
+      expect(within(screen.getByRole('dialog')).queryByRole('button', { name: 'Reiniciar' })).toBeNull();
+      fireEvent.click(within(aviso).getByRole('button', { name: /Reintentar guardado/ }));
+      await esperar(() => expect(within(screen.getByRole('dialog')).getByLabelText('Guardado fallido')).toHaveTextContent(/Sigue sin poder guardarse/));
+      falla = false;
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /Reintentar guardado/ }));
+      await esperar(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(operaciones).toBe(1);
+      expect(reintentos).toBe(2);
+    } finally {
+      useStore.setState(original);
+    }
+  });
 });

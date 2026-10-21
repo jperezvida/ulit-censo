@@ -86,6 +86,8 @@ interface Estado {
    * Devuelve si se aplicó y si se guardó; el error se devuelve a quien llama (no se muestra aviso).
    */
   aplicarConGuardado: (fn: (db: BaseDatos) => BaseDatos, etiqueta: string) => Promise<{ aplicado: boolean; guardado: boolean; error?: string }>;
+  /** Vuelve a escribir en el navegador la versión vigente en memoria (sin repetir ninguna operación). */
+  reintentarGuardado: () => Promise<{ guardado: boolean; error?: string }>;
   deshacer: () => void;
   rehacer: () => void;
   setPrefsOficina: (personaId: Id, p: Partial<PrefsOficina>) => void;
@@ -96,18 +98,45 @@ interface Estado {
 
 let temporizador: ReturnType<typeof setTimeout> | undefined;
 let marcarGuardado: (g: Estado['guardado']) => void = () => undefined;
-function persistir(db: BaseDatos) {
+let dbActual: () => BaseDatos | null = () => null;
+
+/**
+ * Escritura en IndexedDB SERIALIZADA: las escrituras se encadenan (nunca dos a la vez) y cada una
+ * escribe la versión VIGENTE en memoria en el momento de ejecutarse, no la que la programó. Así, por
+ * mucho que se crucen operaciones, lo último que queda guardado nunca es una versión anterior.
+ * «guardado» solo se marca si lo escrito es exactamente lo que hay en memoria; si no, sigue
+ * «pendiente» hasta la siguiente escritura.
+ */
+let cola: Promise<unknown> = Promise.resolve();
+function escribir(): Promise<void> {
+  const tarea = cola.then(async () => {
+    const vigente = dbActual();
+    if (!vigente) return;
+    try {
+      await idbSet(CLAVE_DB, vigente);
+    } catch (e) {
+      if (dbActual() === vigente) marcarGuardado({ estado: 'error', momento: Date.now() });
+      throw e;
+    }
+    marcarGuardado(dbActual() === vigente ? { estado: 'guardado', momento: Date.now() } : { estado: 'pendiente' });
+  });
+  cola = tarea.catch(() => undefined);
+  return tarea;
+}
+
+/** Guardado diferido (operaciones normales): agrupa cambios seguidos en una sola escritura. */
+function persistir() {
   clearTimeout(temporizador);
   marcarGuardado({ estado: 'pendiente' });
   temporizador = setTimeout(() => {
-    idbSet(CLAVE_DB, db)
-      .then(() => marcarGuardado({ estado: 'guardado', momento: Date.now() }))
-      .catch(() => {
-        /* almacenamiento no disponible: la demo sigue funcionando en memoria */
-        marcarGuardado({ estado: 'error', momento: Date.now() });
-      });
+    escribir().catch(() => {
+      /* almacenamiento no disponible: la demo sigue funcionando en memoria; queda en «error» */
+    });
   }, 600);
 }
+
+const textoErrorGuardado = (e: unknown) =>
+  `No se ha podido guardar en el almacenamiento del navegador (${e instanceof Error ? e.message : String(e)}). Los datos siguen en memoria: no cierres la pestaña y pulsa «Reintentar guardado».`;
 
 let nAviso = 0;
 
@@ -133,7 +162,7 @@ export const useStore = create<Estado>((set, get) => ({
         if (guardada && (guardada.version === 9 || guardada.version === 10)) {
           const { db: migrada, avisos } = migrarALaActual(guardada);
           set({ db: migrada, carga: { fase: 'lista', mensaje: '' } });
-          persistir(migrada);
+          persistir();
           for (const a of avisos) get().avisar(a, 'info');
           return;
         }
@@ -145,7 +174,7 @@ export const useStore = create<Estado>((set, get) => ({
       await new Promise((r) => setTimeout(r, 30));
       const db = generarDemo({ calles: callejero.calles, fuente: callejero.fuente, detalleFuente: callejero.detalle });
       set({ db, carga: { fase: 'lista', mensaje: '' }, pilaDeshacer: [], pilaRehacer: [] });
-      persistir(db);
+      persistir();
     } catch (e) {
       console.error(e);
       set({ carga: { fase: 'error', mensaje: e instanceof Error ? e.message : String(e) } });
@@ -159,7 +188,7 @@ export const useStore = create<Estado>((set, get) => ({
       const nueva = fn(db);
       if (nueva === db) return false;
       set({ db: nueva, pilaDeshacer: [...pilaDeshacer.slice(-49), { db, etiqueta }], pilaRehacer: [] });
-      persistir(nueva);
+      persistir();
       if (!opciones?.silencioso) get().avisar(etiqueta, 'ok', true);
       return true;
     } catch (e) {
@@ -181,14 +210,25 @@ export const useStore = create<Estado>((set, get) => ({
     clearTimeout(temporizador);
     set({ db: nueva, pilaDeshacer: [], pilaRehacer: [], guardado: { estado: 'pendiente' } });
     try {
-      await idbSet(CLAVE_DB, nueva);
-      // Si mientras tanto hubo otra operación, su propio guardado diferido prevalece.
-      if (get().db === nueva) set({ guardado: { estado: 'guardado', momento: Date.now() } });
+      // Escribe la versión vigente (que incluye esta operación) en la cola serializada.
+      await escribir();
       get().avisar(etiqueta, 'ok');
       return { aplicado: true, guardado: true };
     } catch (e) {
-      set({ guardado: { estado: 'error', momento: Date.now() } });
-      return { aplicado: true, guardado: false, error: `No se ha podido guardar en el almacenamiento del navegador (${e instanceof Error ? e.message : String(e)}). Los datos siguen en memoria: no cierres la pestaña y vuelve a intentarlo.` };
+      return { aplicado: true, guardado: false, error: textoErrorGuardado(e) };
+    }
+  },
+
+  reintentarGuardado: async () => {
+    if (!get().db) return { guardado: false, error: 'Los datos todavía no están cargados.' };
+    clearTimeout(temporizador);
+    set({ guardado: { estado: 'pendiente' } });
+    try {
+      // Solo vuelve a escribir: nunca repite la operación de dominio.
+      await escribir();
+      return { guardado: true };
+    } catch (e) {
+      return { guardado: false, error: textoErrorGuardado(e) };
     }
   },
 
@@ -197,7 +237,7 @@ export const useStore = create<Estado>((set, get) => ({
     const ultimo = pilaDeshacer[pilaDeshacer.length - 1];
     if (!ultimo || !db) return;
     set({ db: ultimo.db, pilaDeshacer: pilaDeshacer.slice(0, -1), pilaRehacer: [...pilaRehacer, { db, etiqueta: ultimo.etiqueta }] });
-    persistir(ultimo.db);
+    persistir();
     get().avisar(`Deshecho: ${ultimo.etiqueta}`, 'info');
   },
 
@@ -206,7 +246,7 @@ export const useStore = create<Estado>((set, get) => ({
     const siguiente = pilaRehacer[pilaRehacer.length - 1];
     if (!siguiente || !db) return;
     set({ db: siguiente.db, pilaRehacer: pilaRehacer.slice(0, -1), pilaDeshacer: [...pilaDeshacer, { db, etiqueta: siguiente.etiqueta }] });
-    persistir(siguiente.db);
+    persistir();
     get().avisar(`Rehecho: ${siguiente.etiqueta}`, 'info');
   },
 
@@ -239,3 +279,4 @@ export function useDB(): BaseDatos {
 }
 
 marcarGuardado = (g) => useStore.setState({ guardado: g });
+dbActual = () => useStore.getState().db;

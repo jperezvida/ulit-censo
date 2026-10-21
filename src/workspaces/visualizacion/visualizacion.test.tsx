@@ -74,4 +74,43 @@ describe('C1d-B · Dashboard', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Digitalización 1' }));
     expect(screen.getByRole('img', { name: 'Mapa por calle' })).toBeInTheDocument();
   });
+
+  it('comparar: al cambiar el año principal, la campaña secundaria nunca es la misma y se avisa del cambio', () => {
+    montar();
+    fireEvent.click(screen.getByRole('tab', { name: 'Comparar' }));
+    const sel = () => screen.getByLabelText('Campaña con la que comparar') as HTMLSelectElement;
+    fireEvent.change(sel(), { target: { value: 'camp-medina-2025' } });
+    expect(sel().value).toBe('camp-medina-2025');
+    expect(screen.queryByLabelText('Selección de comparación cambiada')).toBeNull();
+    // Con la pestaña Comparar abierta, el año principal pasa a ser 2025 (la campaña elegida).
+    fireEvent.click(screen.getByRole('tab', { name: '2025 Censo 2025 histórico' }));
+    expect(sel().value).not.toBe('camp-medina-2025');
+    expect([...sel().options].map((o) => o.value)).not.toContain('camp-medina-2025');
+    expect([...sel().options].map((o) => o.value)).toContain(sel().value);
+    expect(screen.getByLabelText('Selección de comparación cambiada')).toHaveTextContent(/es ahora la campaña principal: una campaña no se compara consigo misma/);
+    const cab = within(screen.getByRole('table', { name: 'Comparación' })).getAllByRole('columnheader').map((h) => h.textContent);
+    expect(cab[1]).not.toBe(cab[2]);
+    // Elegir de nuevo explícitamente quita el aviso.
+    fireEvent.change(sel(), { target: { value: 'camp-medina-2026' } });
+    expect(screen.queryByLabelText('Selección de comparación cambiada')).toBeNull();
+  });
+
+  it('locales vacíos: los filtros de sector y franquicia no producen un cero engañoso; se explica y se pueden quitar', () => {
+    montar();
+    fireEvent.change(screen.getByLabelText('Ámbito'), { target: { value: MUNICIPIO_DEMO.id } });
+    fireEvent.change(screen.getByLabelText('Filtro de sector'), { target: { value: 'Comercio' } });
+    fireEvent.change(screen.getByLabelText('Filtro de franquicia'), { target: { value: 'no' } });
+    fireEvent.click(screen.getByRole('tab', { name: 'Locales vacíos' }));
+    expect(screen.getByLabelText('Filtros no aplicados')).toHaveTextContent(/no se aplica el filtro de sector «Comercio» ni el de franquicia «No»/);
+    expect(screen.getByText('Locales vacíos', { selector: '.vz-kpi-etq' }).parentElement).toHaveTextContent(/Locales vacíos240/);
+    expect(screen.getByText(/de 860 establecimientos observados/).textContent).toMatch(/^860 de 860/);
+    // Los filtros siguen activos en las demás pestañas
+    fireEvent.click(screen.getByRole('tab', { name: 'Resumen' }));
+    expect(screen.getByText(/de 860 establecimientos observados/).textContent).not.toMatch(/^860 de/);
+    fireEvent.click(screen.getByRole('tab', { name: 'Locales vacíos' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Quitar estos filtros' }));
+    expect(screen.queryByLabelText('Filtros no aplicados')).toBeNull();
+    expect((screen.getByLabelText('Filtro de sector') as HTMLSelectElement).value).toBe('');
+    expect((screen.getByLabelText('Filtro de franquicia') as HTMLSelectElement).value).toBe('');
+  });
 });

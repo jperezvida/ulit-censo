@@ -93,7 +93,14 @@ Cada decisión registra **persona** (la del contexto), **fecha** y **motivo o re
 - **Guardado comprobado** (`aplicarConGuardado`, en el almacén):
   - aplica la operación como una unidad;
   - **guarda de inmediato** en IndexedDB y **comprueba** el resultado;
-  - si el almacenamiento falla, lo dice claramente («los datos siguen en memoria: no cierres la pestaña»).
+  - si el almacenamiento falla, lo dice claramente («los datos siguen en memoria: no cierres la pestaña») y ofrece un botón **«Reintentar guardado»**.
+- **Reintentar guardado** (`reintentarGuardado`): solo vuelve a escribir en el navegador la versión que ya está en memoria. **Nunca repite la operación** (incorporar, deshacer, preparar o reiniciar). Está en:
+  - la etapa 5 (el botón «Deshacer la incorporación…» espera a que esté guardada);
+  - el cuadro «Deshacer la incorporación», que no se cierra hasta guardar;
+  - el cuadro «Reiniciar el escenario», que **no se cierra ni anuncia el reinicio como guardado** mientras falle; solo ofrece reintentar;
+  - «Preparar escenario ficticio».
+- **Estados del guardado:** «pendiente» mientras se escribe; «guardado» solo cuando lo escrito es exactamente la versión vigente en memoria; «error» si falla. Una operación en curso o un fallo nunca se muestran como guardado correcto.
+- **Escrituras serializadas:** todas las escrituras en IndexedDB (las diferidas de la edición normal y las inmediatas) pasan por una única cola. Nunca hay dos a la vez, y cada una escribe la versión **vigente** al ejecutarse, no la que la programó. Así, aunque se crucen dos operaciones, lo último guardado nunca es una versión anterior.
 - **Historial de Ctrl+Z:** incorporar, deshacer y reiniciar **vacían** el historial. Así un Ctrl+Z no puede revertir una incorporación sin sus comprobaciones; se deshace con su botón propio.
 - **Deshacer:**
   - antes de nada, muestra **qué se eliminará** (por tipo de entidad) y **qué trazabilidad permanece**:
@@ -165,6 +172,6 @@ El **Excel ficticio de Medina 2025** que facilitasteis, comprobado fuera del rep
 | Archivo | Pruebas | Qué cubre |
 |---|---:|---|
 | `src/domain/c1d.test.ts` | 12 | Escenario determinista y resultados esperados; aislamiento y reinicio; límite técnico (otro archivo, SHA-256 manipulado, escenario desconocido); estados y filtros de revisión; reglas independientes; nodos con D01–D14 o ICM; vista previa y bloqueo del deshacer |
-| `src/store/guardado.test.ts` | 3 | Guardado inmediato, fallo de almacenamiento informado y operación fallida sin cambios |
-| `src/workspaces/imports/incorporacion/incorporacion.test.tsx` | 1 | Asistente completo con el escenario: etapas, roles, decisiones trazadas, volver atrás, confirmación, incorporación, 2026 intacto, deshacer |
+| `src/store/guardado.test.ts` | 7 | Guardado inmediato; fallo informado; operación fallida sin cambios; reintento que falla y luego guarda sin repetir la operación; «pendiente» durante la escritura; dos escrituras cruzadas sin dejar guardada la versión anterior; una escritura diferida no sobrescribe un guardado posterior |
+| `src/workspaces/imports/incorporacion/incorporacion.test.tsx` | 2 | Asistente completo con el escenario: etapas, roles, decisiones trazadas, volver atrás, confirmación, incorporación, 2026 intacto, deshacer. Reinicio con guardado fallido: el cuadro sigue abierto, sin repetir la operación, y se cierra al reintentar con éxito |
 | `src/domain/c1c.test.ts` | +4 | SHA-256 (vectores y node:crypto), traza v2, compatibilidad v1, mismo archivo en dos municipios |

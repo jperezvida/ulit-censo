@@ -28,6 +28,7 @@ Nuevo espacio **Visualización** en la barra superior (ruta `#/visualizacion`).
 | Medida | Definición |
 |---|---|
 | **Registros censales** | Filas importadas (`RegistroOrigen`) de la campaña, sin contar las excluidas por una persona |
+| **Registros sin establecimiento observado** | Registros censales cuyo local no está entre los observados y que no tienen observación propia sin local. Se calcula **registro a registro**, no restando, porque las observaciones manuales de la misma campaña no tienen registro de origen |
 | **Establecimientos observados** | Unidad de los gráficos: los registros de Oficina de la campaña y las observaciones sin local identificado |
 | **Locales físicos identificados** | Locales distintos entre los establecimientos observados |
 | **Negocios** | Negocios distintos en establecimientos ocupados |
@@ -35,7 +36,7 @@ Nuevo espacio **Visualización** en la barra superior (ruta `#/visualizacion`).
 | **Correspondencias pendientes** | Vínculos registro–local probables, dudosos o sin vínculo, con su desglose |
 
 Ejemplo con el escenario ficticio, probado:
-- 890 registros censales;
+- 890 registros censales, 30 de ellos sin establecimiento observado;
 - 860 establecimientos observados, de ellos 18 sin local;
 - 842 locales;
 - 620 negocios;
@@ -68,11 +69,11 @@ Los establecimientos de Oficina coinciden con `filasOficina` (prueba), así que 
 |---|---|
 | **Resumen** | Indicadores con denominador:<br>• registros, establecimientos, locales, negocios y vacíos;<br>• ocupación;<br>• franquicias Sí entre Sí/No, con las pendientes;<br>• correspondencias pendientes.<br>Gráficos y tablas:<br>• distribución por sector (pulsar una barra filtra) y fuente de la clasificación;<br>• **calles con más locales ocupados\***;<br>• datos destacados calculados (calle con más ocupados, sector mayoritario, adopción de web, fachada media);<br>• periodo de observación;<br>• ocupados frente a vacíos. |
 | **Comercio / Servicios / Hostelería** | • establecimientos del sector y su peso entre los ocupados;<br>• franquicias;<br>• adopción de web, Google y venta online;<br>• subdivisiones: grupo de comercio y subgrupo, o subgrupo y actividad;<br>• calles con más establecimientos del sector (recuento absoluto);<br>• fuente de la clasificación. |
-| **Locales vacíos** | • número y proporción;<br>• fachada media, mediana y rango, con cuántos tienen medida;<br>• histograma de fachada;<br>• **calles con más vacíos\***;<br>• vacíos por CP, con el CP con más vacíos y el de mayor proporción, solo con al menos 5 observados. |
+| **Locales vacíos** | Los filtros de **sector y franquicia no se aplican** en esta pestaña, porque un local vacío no tiene ni sector ni franquicia y filtrar por ellos daría siempre cero vacíos. Un aviso lo explica y ofrece «Quitar estos filtros»; en las demás pestañas siguen activos.<br>• número y proporción;<br>• fachada media, mediana y rango, con cuántos tienen medida;<br>• histograma de fachada;<br>• **calles con más vacíos\***;<br>• vacíos por CP, con el CP con más vacíos y el de mayor proporción, solo con al menos 5 observados. |
 | **Digitalización 1** (presencia y adopción) | • estado de la revisión digital;<br>• por canal (web, Google, venta online, Instagram, Facebook, Twitter / X): barra apilada de las cinco respuestas y adopción;<br>• **mapa de calor calle × canal**;<br>• **mapa por calle**. |
 | **Digitalización 2** (intensidad) | • reseñas de Google (mediana, P25–P75, máximo, histograma);<br>• respuesta a reseñas entre quienes tienen Google;<br>• seguidores por red (mediana y cuartiles);<br>• **índice de presencia digital (0–6)**;<br>• comparación por sector y por franquicia, solo con grupos suficientes. |
-| **Cobertura y calidad** | • calles con registros frente al ámbito;<br>• pendientes de visita;<br>• sin local identificado;<br>• registros sin establecimiento observado;<br>• correspondencias por confianza;<br>• fuentes de clasificación y de franquicia. |
-| **Comparar** | Dos campañas cualesquiera, en paralelo y con los mismos filtros. Avisos automáticos:<br>• ámbitos geográficos distintos;<br>• cobertura distinta;<br>• histórico frente a campaña;<br>• fuentes de clasificación distintas;<br>• campaña incompleta.<br>Siempre indica que **las diferencias no son aperturas ni cierres confirmados**. |
+| **Cobertura y calidad** | • calles con registros frente al ámbito;<br>• pendientes de visita;<br>• sin local identificado;<br>• registros sin establecimiento observado (cálculo directo, nunca negativo);<br>• correspondencias por confianza;<br>• fuentes de clasificación y de franquicia. |
+| **Comparar** | Dos campañas cualesquiera, en paralelo y con los mismos filtros. La campaña secundaria se revalida al cambiar la principal: nunca es la misma y, si la elegida pasa a ser la principal o deja de existir, se elige otra y se avisa. Avisos automáticos:<br>• ámbitos geográficos distintos;<br>• cobertura distinta;<br>• histórico frente a campaña;<br>• fuentes de clasificación distintas;<br>• campaña incompleta.<br>Siempre indica que **las diferencias no son aperturas ni cierres confirmados**. |
 
 ## 5. Criterios estadísticos
 
@@ -126,16 +127,16 @@ Los establecimientos de Oficina coinciden con `filasOficina` (prueba), así que 
 5. **Prueba lo siguiente:**
    - en **Resumen**, pulsa una barra de sector, que filtra todo, y una calle de la tabla, que añade el filtro de calle; se quita con la ✕;
    - **Franquicia: Sí** cambia el contador, por ejemplo «58 de 860» en el escenario;
-   - **Locales vacíos:** CP 47400 y 47001, que solo existen en el escenario;
+   - **Locales vacíos:** CP 47400 y 47001, que solo existen en el escenario; con un filtro de sector o franquicia activo aparece el aviso de que no se aplican;
    - **Digitalización 1:** estado «Borrador o importada»; en el escenario no hay mapa por calle porque no tiene geometría; en las campañas de Medina sí;
-   - **Comparar:** elige otra campaña y lee los avisos de comparabilidad.
+   - **Comparar:** elige otra campaña y lee los avisos de comparabilidad; después pulsa en la pestaña de año de esa misma campaña y comprueba el aviso de cambio de selección.
 
 ## 10. Pruebas
 
 | Archivo | Pruebas | Qué cubre |
 |---|---:|---|
-| `src/domain/panel.test.ts` | 8 | Medidas distintas; clasificación histórica sin convertir; CP solo del origen; coincidencia con Oficina; sin contaminación; umbral de calles; denominadores y adopción; mapa de calor con mínimo; índice de presencia y grupos insuficientes; filtros |
-| `src/workspaces/visualizacion/visualizacion.test.tsx` | 4 | Ámbito, año y emblema neutro; tipos sin datos deshabilitados; CP deshabilitado sin datos; aviso del histórico e indicadores; filtros vinculados; vacíos con CP; estado digital importado; sin geometría inventada; mapa por calle con geometría; comparar con avisos |
+| `src/domain/panel.test.ts` | 9 | Medidas distintas; registros sin establecimiento con observaciones manuales en la misma campaña (sin resta ni negativos); clasificación histórica sin convertir; CP solo del origen; coincidencia con Oficina; sin contaminación; umbral de calles; denominadores y adopción; mapa de calor con mínimo; índice de presencia y grupos insuficientes; filtros |
+| `src/workspaces/visualizacion/visualizacion.test.tsx` | 6 | Ámbito, año y emblema neutro; tipos sin datos deshabilitados; CP deshabilitado sin datos; aviso del histórico e indicadores; filtros vinculados; vacíos con CP; estado digital importado; sin geometría inventada; mapa por calle con geometría; comparar con avisos; cambio del año principal con Comparar abierta; vacíos con filtros de sector y franquicia |
 
 ## 11. Limitaciones conocidas
 

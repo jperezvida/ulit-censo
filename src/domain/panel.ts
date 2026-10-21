@@ -60,6 +60,13 @@ export interface DatosCampana {
   historica: boolean;
   /** Filas originales importadas (RegistroOrigen) de la campaña, excluidas las que una persona excluyó. */
   registrosCensales: number;
+  /**
+   * Registros censales (no excluidos) sin ningún establecimiento observado asociado: ni su local
+   * (por la correspondencia registro–local) está entre los observados, ni hay una observación suya
+   * sin local. Se calcula registro a registro, no restando: las observaciones manuales de la misma
+   * campaña no tienen registro de origen y no deben descontarse.
+   */
+  registrosSinEstablecimiento: number;
   /** Locales de la campaña de referencia aún sin visitar (no cuentan como observados). */
   pendientesVisita: number;
   correspondencias: { confirmada: number; probable: number; dudosa: number; sinVinculo: number };
@@ -165,10 +172,21 @@ export function datosCampana(db: BaseDatos, campanaId: Id): DatosCampana {
     const reg = regPorId.get(o.id.replace(/^obs-/, 'reg-'));
     unidades.push(unidad({ clave: o.id, localId: null, calleId: o.calleId, calle: db.calles[o.calleId]?.nombre ?? '¿?', numero: o.datos.numero, vacio: o.datos.vacio, negocioId: o.datos.negocioId ?? null, metros: o.datos.metrosFachada, fecha: o.fecha, sinLocal: true }, reg));
   }
+  // Registros con establecimiento observado: por su local o por su observación sin local.
+  const localesObservados = new Set(unidades.map((u) => u.localId).filter((l): l is Id => !!l));
+  const conEstablecimiento = new Set<Id>();
+  for (const v of Object.values(db.vinculos)) {
+    if (v.origen.tipo === 'registro' && regPorId.has(v.origen.id) && v.localId && localesObservados.has(v.localId)) conEstablecimiento.add(v.origen.id);
+  }
+  for (const u of unidades) {
+    const reg = u.sinLocal ? regPorId.get(u.clave.replace(/^obs-/, 'reg-')) : undefined;
+    if (reg) conEstablecimiento.add(reg.id);
+  }
   const conRegistros = new Set(unidades.map((u) => u.calleId));
   return {
     campana, municipio, unidades, historica,
     registrosCensales: registros.filter((r) => !r.exclusion).length,
+    registrosSinEstablecimiento: registros.filter((r) => !r.exclusion && !conEstablecimiento.has(r.id)).length,
     pendientesVisita: filas.filter((f) => f.situacion === 'pendiente-visita').length,
     correspondencias: corr,
     callesAmbito: new Set([...campana.ambitoCalleIds, ...conRegistros]).size,
