@@ -227,12 +227,55 @@ export interface Observacion {
   sync?: 'local' | 'sincronizada' | 'conflicto';
 }
 
+/**
+ * Celda original tal como se leyó del XLSX (C1b): tipo, valor y formato. Serializable.
+ * Ampliación compatible de `RegistroOrigen.datos`, que solo guarda texto.
+ */
+export type CeldaOriginal = (
+  | { t: 'vacio' }
+  | { t: 'numero'; v: number; formato?: string }
+  | { t: 'fecha'; v: string; formato?: string }
+  | { t: 'texto'; v: string }
+  | { t: 'booleano'; v: boolean }
+  | { t: 'error'; v: string }
+) & { formula?: true };
+
+/** Interpretación (C1b) de una celda, guardada junto al original para trazabilidad. */
+export interface CeldaInterpretadaRegistro {
+  estado: 'valido' | 'vacio' | 'no-aplica' | 'invalido' | 'transformado' | 'pendiente';
+  valor?: boolean | number | string | { tipo: 'numero'; numero: number; sufijo?: string } | { tipo: 'sin-numero' };
+  regla: string;
+}
+
 /** Fila original importada. Inmutable; conserva la procedencia. */
 export interface RegistroOrigen {
   id: Id;
   importacionId: Id;
   fila: number;
+  /**
+   * Representación TEXTUAL por cabecera (compatibilidad con importaciones anteriores). No conserva
+   * tipos ni formatos: en las importaciones de C1c el original fiel está en `original`.
+   */
   datos: Record<string, string>;
+  /** C1c: celdas originales con su tipo, valor y formato, por clave de columna del perfil. */
+  original?: Record<string, CeldaOriginal>;
+  /**
+   * C1c: interpretación de C1b, sin confirmar nada. `celdas` solo contiene las celdas no triviales
+   * (vacías, no aplicables, inválidas, transformadas o pendientes); las válidas por lectura directa
+   * se deducen del original.
+   */
+  interpretacion?: {
+    celdas: Record<string, CeldaInterpretadaRegistro>;
+    local: 'vacio' | 'ocupado' | 'desconocido';
+    redesCalculadas: number | null;
+    /** Clasificación histórica: los cinco textos se conservan en `original`; aquí, su diagnóstico. */
+    clasificacion?: { diagnostico: string; confirmada: false };
+    incidencias: string[];
+  };
+  /** C1c: huella del contenido original de la fila (detecta cambios al reimportar). */
+  huellaFila?: string;
+  /** C1c: exclusión de la aplicación operativa decidida por una persona (la fila se conserva). */
+  exclusion?: { porId: Id; fecha: string; motivo: string };
 }
 
 export type Confianza = 'confirmada' | 'probable' | 'dudosa' | 'sin-vinculo';
@@ -262,6 +305,32 @@ export interface Importacion {
   resumen: Record<string, number>;
   procedencia: Procedencia;
   nota?: string;
+  /** C1c: trazabilidad completa de una incorporación desde XLSX (ausente en las anteriores). */
+  c1?: TrazaIncorporacion;
+}
+
+/** Colecciones de la base en las que C1c crea entidades. */
+export type ColeccionIncorporada = 'campanas' | 'registros' | 'locales' | 'negocios' | 'observaciones' | 'ocupaciones' | 'vinculos' | 'franquicias' | 'digital' | 'clasificaciones';
+
+export interface TrazaIncorporacion {
+  version: 1;
+  /** SHA-256 del archivo (también en `huella`). Los bytes del archivo NO se guardan. */
+  sha256: string;
+  perfil: { id: string; version: number };
+  hoja: string;
+  anio: number;
+  /** Columnas del perfil con su cabecera EXACTA en el archivo. */
+  columnas: { clave: string; letra: string; cabecera: string; tipo: string }[];
+  porId: Id;
+  /** Reglas y decisiones con las que se interpretó y aplicó (todas trazadas). */
+  decisiones: Record<string, unknown>;
+  /** Firma del plan aprobado. */
+  firmaPlan: string;
+  /** Entidades creadas, por colección, con la huella de su contenido en el momento de crearlas. */
+  creadas: Partial<Record<ColeccionIncorporada, Record<Id, string>>>;
+  /** Entidades existentes modificadas (C1c no modifica ninguna; se registra por completitud). */
+  modificadas: Partial<Record<ColeccionIncorporada, Id[]>>;
+  deshecha?: { porId: Id; fecha: string };
 }
 
 // ───────────────────────── Revisión de oficina ─────────────────────────

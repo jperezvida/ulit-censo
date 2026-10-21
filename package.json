@@ -19,7 +19,8 @@
     "hooks": "git config core.hooksPath .githooks",
     "analizar": "tsx scripts/analizar-xlsx.ts",
     "xlsx-ficticio": "tsx scripts/generar-xlsx-ficticio.ts",
-    "interpretar": "tsx scripts/interpretar-xlsx.ts"
+    "interpretar": "tsx scripts/interpretar-xlsx.ts",
+    "simular-incorporacion": "tsx scripts/simular-incorporacion.ts"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.1.0",

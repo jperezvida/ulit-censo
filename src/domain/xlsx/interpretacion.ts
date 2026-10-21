@@ -5,6 +5,7 @@ import { PERFILES_IMPORTACION, type TipoEsperado } from './perfilesImportacion';
 import { CATEGORIA_DIAGNOSTICO, ETIQUETA_DIAGNOSTICO, diagnosticarClasificacion, type ResultadoClasificacion } from './clasificacionHistorica';
 import { DICCIONARIO_SIN_INFORMACION_PROPUESTO, TIPOS_INCIDENCIA, type Decision, type Gravedad, type IdTipoIncidencia } from './reglasInterpretacion';
 import type { ConfigTerritorial, ReglaTerritorial } from '../territorio';
+import type { CeldaOriginal } from '../types';
 
 /**
  * C1b · Interpretación de valores e incidencias.
@@ -23,14 +24,8 @@ import type { ConfigTerritorial, ReglaTerritorial } from '../territorio';
 
 // ───────────── Capa original ─────────────
 
-export type ValorOriginal = (
-  | { t: 'vacio' }
-  | { t: 'numero'; v: number; formato?: string }
-  | { t: 'fecha'; v: string; formato?: string }
-  | { t: 'texto'; v: string }
-  | { t: 'booleano'; v: boolean }
-  | { t: 'error'; v: string }
-) & { formula?: true };
+/** Mismo tipo que `CeldaOriginal` del modelo: la capa original se guarda tal cual en C1c. */
+export type ValorOriginal = CeldaOriginal;
 
 export interface ColumnaOrigen {
   clave: string;
