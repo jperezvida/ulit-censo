@@ -73,73 +73,69 @@ export default function VisualizacionPage() {
 
   return (
     <div className="pagina vz">
-      <header className="vz-cabecera">
-        <div className="vz-cab-sup">
-          <Emblema municipio={ambito} tamano={52} />
-          <div className="vz-cab-tit">
-            <span className="vz-rotulo">07 · Visualización · {TIPO_AMBITO_TXT[ambito.tipo]}</span>
+      <header className="vz-cab2">
+        <div className="vz-cab2-fila">
+          <Emblema municipio={ambito} tamano={38} />
+          <div className="vz-cab2-tit">
             <h1>{ambito.nombre}{ambito.escenarioDemo && <span className="vz-etiqueta-esc">escenario ficticio</span>}</h1>
-            <p>Cuadro de mando calculado sobre los datos del modelo, siempre con su denominador. Los datos de la demostración son ficticios.</p>
+            <span>{TIPO_AMBITO_TXT[ambito.tipo]} · cuadro de mando calculado sobre el modelo</span>
           </div>
-          <div className="vz-cab-sel">
-            <label>
-              Tipo de ámbito
-              <select aria-label="Tipo de ámbito" value={tipo} onChange={(e) => { const t = e.target.value as TipoAmbito; setTipo(t); const a = lista.find((x) => x.tipo === t); if (a) cambiarAmbito(a.id); }}>
-                {TIPOS.map((t) => <option key={t} value={t} disabled={!lista.some((a) => a.tipo === t)}>{TIPO_AMBITO_TXT[t]}{lista.some((a) => a.tipo === t) ? '' : ' (sin datos)'}</option>)}
-              </select>
-            </label>
-            <label>
-              Ámbito
-              <select aria-label="Ámbito" value={ambito.id} onChange={(e) => cambiarAmbito(e.target.value)}>
-                {delTipo.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
-              </select>
-            </label>
+          <div className="vz-anios2" role="tablist" aria-label="Año y campaña">
+            {ambito.campanas.map((c) => (
+              <button key={c.id} role="tab" aria-selected={c.id === campana.id} className={c.id === campana.id ? 'on' : ''} onClick={() => { setCampanaId(c.id); setFiltros({}); }} title={c.nombre}>
+                <b>{c.anio}</b><span className="vh">{c.nombre}</span>
+                <span className="muted">{c.tipo === 'historico-importado' ? 'histórico' : c.estados.campo === 'terminado' ? 'campaña cerrada' : 'en curso'}</span>
+              </button>
+            ))}
           </div>
+          <label className="vz-f">
+            <span>Tipo</span>
+            <select className="input" aria-label="Tipo de ámbito" value={tipo} onChange={(e) => { const t = e.target.value as TipoAmbito; setTipo(t); const a = lista.find((x) => x.tipo === t); if (a) cambiarAmbito(a.id); }}>
+              {TIPOS.map((t) => <option key={t} value={t} disabled={!lista.some((a) => a.tipo === t)}>{TIPO_AMBITO_TXT[t]}{lista.some((a) => a.tipo === t) ? '' : ' (sin datos)'}</option>)}
+            </select>
+          </label>
+          <label className="vz-f">
+            <span>Ámbito</span>
+            <select className="input vz-f-ancho" aria-label="Ámbito" value={ambito.id} onChange={(e) => cambiarAmbito(e.target.value)}>
+              {delTipo.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+            </select>
+          </label>
         </div>
-        <div className="vz-anios" role="tablist" aria-label="Año y campaña">
-          {ambito.campanas.map((c) => (
-            <button key={c.id} role="tab" aria-selected={c.id === campana.id} className={c.id === campana.id ? 'on' : ''} onClick={() => { setCampanaId(c.id); setFiltros({}); }}>
-              <b>{c.anio}</b><span>{c.nombre}</span>
-              <span className="muted">{c.tipo === 'historico-importado' ? 'histórico' : c.estados.campo === 'terminado' ? 'campaña cerrada' : 'en curso'}</span>
-            </button>
-          ))}
+
+        <div className="vz-cab2-filtros" role="group" aria-label="Filtros">
+          <label className="vz-f">
+            <span>Franquicia</span>
+            <select className={`input ${filtros.franquicia ? 'activo' : ''}`} aria-label="Filtro de franquicia" value={filtros.franquicia ?? ''} onChange={(e) => setFiltros({ ...filtros, franquicia: (e.target.value || undefined) as FiltrosPanel['franquicia'] })}>
+              <option value="">Todos</option><option value="si">Franquicia: Sí</option><option value="no">Franquicia: No</option><option value="pendiente">Pendiente o sin dato</option>
+            </select>
+          </label>
+          <label className="vz-f">
+            <span>Sector</span>
+            <select className={`input ${sectorPestana || filtros.sector ? 'activo' : ''}`} aria-label="Filtro de sector" value={sectorPestana ?? filtros.sector ?? ''} disabled={!!sectorPestana} title={sectorPestana ? 'Fijado por la pestaña' : undefined} onChange={(e) => setFiltros({ ...filtros, sector: (e.target.value || undefined) as Sector | undefined })}>
+              <option value="">Todos</option>{SECTORES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </label>
+          <label className="vz-f">
+            <span>CP</span>
+            <select className={`input ${filtros.cp ? 'activo' : ''}`} aria-label="Filtro de código postal" value={filtros.cp ?? ''} disabled={!hayCp} onChange={(e) => setFiltros({ ...filtros, cp: e.target.value || undefined })} title={hayCp ? undefined : 'Estos datos no incluyen código postal: no se deduce'}>
+              <option value="">{hayCp ? 'Todos' : 'Sin datos de CP'}</option>
+              {cps.filter((c) => c.clave !== '__sin__').map((c) => <option key={c.clave} value={c.clave}>{c.clave} ({fmt(c.n)})</option>)}
+              {hayCp && cps.some((c) => c.clave === '__sin__') && <option value="__sin__">Sin CP en el origen</option>}
+            </select>
+          </label>
+          <label className="vz-f">
+            <span>Calle</span>
+            <select className={`input vz-f-ancho ${filtros.calleId ? 'activo' : ''}`} aria-label="Filtro de calle" value={filtros.calleId ?? ''} onChange={(e) => setFiltros({ ...filtros, calleId: e.target.value || undefined })}>
+              <option value="">Todas ({fmt(calles.length)})</option>
+              {calles.map((c) => <option key={c.id} value={c.id}>{c.nombre} ({fmt(c.n)})</option>)}
+            </select>
+          </label>
+          <button className="btn s fantasma vz-limpiar" disabled={!hayFiltros} onClick={() => setFiltros({})}><FilterX size={14} /> Limpiar filtros</button>
+          <div className="vz-contador" aria-live="polite">
+            <span><b className="num">{fmt(unidades.length)}</b> de {fmt(datos.unidades.length)} establecimientos observados</span>
+          </div>
         </div>
       </header>
-
-      <div className="vz-filtros" role="group" aria-label="Filtros">
-        <label className="vz-filtro">
-          <span>Franquicia</span>
-          <select className={`input ${filtros.franquicia ? 'activo' : ''}`} aria-label="Filtro de franquicia" value={filtros.franquicia ?? ''} onChange={(e) => setFiltros({ ...filtros, franquicia: (e.target.value || undefined) as FiltrosPanel['franquicia'] })}>
-            <option value="">Todos</option><option value="si">Franquicia: Sí</option><option value="no">Franquicia: No</option><option value="pendiente">Pendiente o sin dato</option>
-          </select>
-        </label>
-        <label className="vz-filtro">
-          <span>Sector</span>
-          <select className={`input ${sectorPestana || filtros.sector ? 'activo' : ''}`} aria-label="Filtro de sector" value={sectorPestana ?? filtros.sector ?? ''} disabled={!!sectorPestana} title={sectorPestana ? 'Fijado por la pestaña' : undefined} onChange={(e) => setFiltros({ ...filtros, sector: (e.target.value || undefined) as Sector | undefined })}>
-            <option value="">Todos</option>{SECTORES.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </label>
-        <label className="vz-filtro">
-          <span>Código postal</span>
-          <select className={`input ${filtros.cp ? 'activo' : ''}`} aria-label="Filtro de código postal" value={filtros.cp ?? ''} disabled={!hayCp} onChange={(e) => setFiltros({ ...filtros, cp: e.target.value || undefined })} title={hayCp ? undefined : 'Estos datos no incluyen código postal: no se deduce'}>
-            <option value="">{hayCp ? 'Todos' : 'Sin datos de CP'}</option>
-            {cps.filter((c) => c.clave !== '__sin__').map((c) => <option key={c.clave} value={c.clave}>{c.clave} ({fmt(c.n)})</option>)}
-            {hayCp && cps.some((c) => c.clave === '__sin__') && <option value="__sin__">Sin CP en el origen</option>}
-          </select>
-        </label>
-        <label className="vz-filtro">
-          <span>Calle</span>
-          <select className={`input ancho ${filtros.calleId ? 'activo' : ''}`} aria-label="Filtro de calle" value={filtros.calleId ?? ''} onChange={(e) => setFiltros({ ...filtros, calleId: e.target.value || undefined })}>
-            <option value="">Todas ({fmt(calles.length)})</option>
-            {calles.map((c) => <option key={c.id} value={c.id}>{c.nombre} ({fmt(c.n)})</option>)}
-          </select>
-        </label>
-        <button className="btn s fantasma vz-limpiar" disabled={!hayFiltros} onClick={() => setFiltros({})}><FilterX size={14} /> Limpiar filtros</button>
-        <div className="vz-contador" aria-live="polite">
-          <span><b className="num">{fmt(unidades.length)}</b> de {fmt(datos.unidades.length)} establecimientos observados</span>
-          <span className="vz-mini" aria-hidden><span style={{ width: `${datos.unidades.length ? (unidades.length / datos.unidades.length) * 100 : 0}%` }} /></span>
-        </div>
-      </div>
 
       <AvisoOrigen origen={origen} />
 

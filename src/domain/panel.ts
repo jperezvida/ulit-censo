@@ -499,3 +499,27 @@ export function origenDatos(d: DatosCampana) {
 }
 export type OrigenDatos = ReturnType<typeof origenDatos>;
 
+
+// ───────────── Escalas del mapa ─────────────
+
+/**
+ * Cortes por cuantiles para una escala secuencial ajustada a los datos: con valores concentrados
+ * (p. ej., ocupación del 70 al 100 %) una escala fija 0–100 % pinta todo igual. Devuelve los límites
+ * superiores de cada clase (sin duplicados), de menor a mayor; como mucho `k` clases.
+ */
+export function cortesCuantiles(valores: number[], k = 5): number[] {
+  const xs = valores.filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
+  if (!xs.length) return [];
+  const cortes: number[] = [];
+  for (let i = 1; i <= k; i++) {
+    const v = cuantil(xs, i / k)!;
+    if (!cortes.length || v > cortes[cortes.length - 1] + 1e-9) cortes.push(v);
+  }
+  return cortes;
+}
+
+/** Clase (0…n-1) de un valor según los cortes de `cortesCuantiles`. */
+export const claseDe = (v: number, cortes: number[]) => {
+  const i = cortes.findIndex((c) => v <= c + 1e-9);
+  return i === -1 ? cortes.length - 1 : i;
+};

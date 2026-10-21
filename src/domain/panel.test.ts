@@ -5,7 +5,7 @@ import { callejeroSimulado, MEDINA } from '../data/callejero';
 import { MUNICIPIO_DEMO, prepararMunicipioDemo } from '../data/escenarioIncorporacion';
 import { aplicarEscenario, prepararEscenario } from './incorporacionDemo';
 import {
-  adopcion, ambitos, bandasVacancia, compararGrupos, concentracion, datosCampana, origenDatos, perfilGrupos, rankingCalles, distribucion, filtrar, indicePresencia, matrizCalor, MIN_CELDA, respuestas, resumen, topCalles, UMBRAL_CALLE, type UnidadPanel,
+  adopcion, ambitos, bandasVacancia, claseDe, cortesCuantiles, compararGrupos, concentracion, datosCampana, origenDatos, perfilGrupos, rankingCalles, distribucion, filtrar, indicePresencia, matrizCalor, MIN_CELDA, respuestas, resumen, topCalles, UMBRAL_CALLE, type UnidadPanel,
 } from './panel';
 import { filasOficina } from './oficina';
 import { indiceObservaciones, indiceOcupaciones } from './consultas';
@@ -196,5 +196,31 @@ describe('C1d-B · Agregaciones', () => {
     const b = bandasVacancia(calles);
     expect(b).toMatchObject({ consideradas: 2, total: 3, conVacios: 1 });
     expect(b.partes.map((x) => x.n)).toEqual([1, 0, 0, 1, 0]);
+  });
+
+  it('escala del mapa: cortes por cuantiles ajustados a los datos, sin clases duplicadas', () => {
+    // Ocupaciones concentradas (70–100 %): una escala fija 0–100 % las pintaría todas igual
+    const v = [0.7, 0.72, 0.75, 0.8, 0.82, 0.85, 0.9, 0.95, 1, 1];
+    const c = cortesCuantiles(v);
+    expect(c[c.length - 1]).toBe(1);
+    expect(c.length).toBeGreaterThanOrEqual(4);
+    expect([...c].sort((a, b) => a - b)).toEqual(c);
+    expect(claseDe(0.7, c)).toBe(0);
+    expect(claseDe(1, c)).toBe(c.length - 1);
+    expect(cortesCuantiles([0.5, 0.5, 0.5])).toEqual([0.5]);
+    expect(cortesCuantiles([])).toEqual([]);
+  });
+
+  it('coherencia: la composición por calle (mapa, matriz y rankings) suma lo mismo que los indicadores, con y sin filtros', () => {
+    const d = datosCampana(conHistorico, campanaHist);
+    for (const us of [d.unidades, filtrar(d.unidades, { cp: '47400' }), filtrar(d.unidades, { calleId: d.unidades[0].calleId })]) {
+      const r = resumen(us);
+      const calles = rankingCalles(us, 'ocupados', 1, Infinity).filas;
+      const suma = (k: 'Comercio' | 'Servicios' | 'Hostelería y Restauración' | 'Sin clasificar' | 'Vacíos') => calles.reduce((a, f) => a + f.composicion[k], 0);
+      expect(calles.reduce((a, f) => a + f.observados, 0)).toBe(r.establecimientos);
+      expect(suma('Vacíos')).toBe(r.vacios);
+      expect(suma('Comercio') + suma('Servicios') + suma('Hostelería y Restauración') + suma('Sin clasificar')).toBe(r.ocupados);
+      for (const s of ['Comercio', 'Servicios', 'Hostelería y Restauración'] as const) expect(suma(s)).toBe(us.filter((u) => !u.vacio && u.sector === s).length);
+    }
   });
 });

@@ -40,13 +40,14 @@ describe('C1d-B · Dashboard', () => {
     expect(aviso).toHaveTextContent(/Histórico importado · 2025/);
     expect(aviso).toHaveTextContent(/620 con el texto original de 2025 \(sin convertir al catálogo 2026\)/);
     expect(aviso).toHaveTextContent(/Datos de demostración/);
-    const kpis = screen.getByLabelText('Indicadores principales');
-    expect(kpis).toHaveTextContent('Registros censales890');
-    expect(kpis).toHaveTextContent('Establecimientos observados860');
-    expect(kpis).toHaveTextContent('Locales físicos identificados846');
-    expect(kpis).toHaveTextContent(/Correspondencias pendientes890.*846 probables · 12 dudosas · 32 sin vínculo/);
-    expect(screen.getByLabelText('Calles con más locales ocupados')).toBeInTheDocument();
-    expect(screen.getByText(/% solo en calles con al menos 5 observados/)).toBeInTheDocument();
+    // Cinco indicadores principales en una tira
+    const kpis = screen.getByRole('group', { name: 'Indicadores principales' });
+    expect(kpis).toHaveTextContent('Establecimientos observados860846 locales físicos · 14 sin local');
+    expect(kpis).toHaveTextContent(/Tasa de ocupación72,1 %620 ocupados de 860/);
+    expect(kpis).toHaveTextContent(/Locales vacíos240.*Negocios620.*Franquicias \(Sí\)9,4 %58 de 619 con respuesta Sí\/No/);
+    expect(kpis.children).toHaveLength(5);
+    // Registros censales y correspondencias se explican en «Cómo leer estas cifras» y en Cobertura
+    expect(screen.getByLabelText('Cómo leer estas cifras')).toHaveTextContent(/Registros censales890 filas importadas; 30 sin establecimiento observado/);
     // Filtro vinculado: pulsar un sector filtra todo
     fireEvent.click(within(screen.getByLabelText('Distribución por sector')).getByRole('row', { name: /^Servicios 203/ }));
     expect((screen.getByLabelText('Filtro de sector') as HTMLSelectElement).value).toBe('Servicios');
@@ -125,10 +126,9 @@ describe('C1d-B · Dashboard', () => {
   it('rediseño: ranking con criterio, pestaña sectorial con comparación, filtro de calle y trazabilidad de calidad', () => {
     montar();
     fireEvent.change(screen.getByLabelText('Ámbito'), { target: { value: MUNICIPIO_DEMO.id } });
-    // Resumen: ranking de calles con conmutador de criterio
-    fireEvent.click(within(screen.getByRole('group', { name: 'Criterio del ranking' })).getByRole('button', { name: 'Vacíos' }));
-    expect(screen.getByRole('table', { name: 'Calles con más locales vacíos' })).toBeInTheDocument();
-    expect(screen.getByRole('table', { name: 'Perfil de los sectores' })).toHaveTextContent(/Comercio292/);
+    // Resumen: distribución sectorial en una sola tabla (sin gráficos repetidos)
+    expect(screen.getByRole('table', { name: 'Distribución sectorial (tabla)' })).toHaveTextContent(/Comercio29234 %47,1 %/);
+    expect(screen.queryByRole('img', { name: 'Distribución por grandes grupos' })).toBeNull();
     // Comercio: indicadores con su denominador y comparación con los otros sectores
     fireEvent.click(screen.getByRole('tab', { name: 'Comercio' }));
     expect(screen.getByLabelText('Indicadores de Comercio')).toHaveTextContent(/Peso en ocupados47,1 %292 de 620 ocupados/);
@@ -160,5 +160,60 @@ describe('C1d-B · Dashboard', () => {
     fireEvent.change(screen.getByLabelText('Campaña con la que comparar'), { target: { value: 'camp-medina-2026' } });
     expect(screen.queryByLabelText('Ámbitos territoriales distintos')).toBeNull();
     expect(within(screen.getByRole('table', { name: 'Comparación' })).getByRole('columnheader', { name: 'Diferencia' })).toBeInTheDocument();
+  });
+
+  it('Resumen sin geometría: matriz calle × sector y cuatro rankings simultáneos, con selección vinculada', () => {
+    montar();
+    fireEvent.change(screen.getByLabelText('Ámbito'), { target: { value: MUNICIPIO_DEMO.id } });
+    expect(screen.queryByRole('img', { name: /^Mapa/ })).toBeNull();
+    const matriz = screen.getByRole('table', { name: 'Matriz territorial: calles × sector' });
+    const rankings = screen.getByRole('region', { name: 'Rankings de calles' });
+    for (const t of ['comercio', 'servicios', 'hostelería y restauración', 'locales vacíos']) expect(within(rankings).getByLabelText(`Calles con más ${t}`).querySelectorAll('li')).toHaveLength(5);
+    // Pulsar una calle en la matriz la fija también en los rankings donde aparece
+    const fila = within(matriz).getAllByRole('row')[1];
+    const calle = within(fila).getByRole('button').textContent!;
+    fireEvent.click(within(fila).getByRole('button'));
+    expect(fila).toHaveClass('fijada');
+    const enRankings = within(rankings).queryAllByRole('button', { name: calle });
+    for (const b of enRankings) expect(b.closest('li')).toHaveClass('fijada');
+    // Con filtro de sector, el mapa y los rankings siguen comparando los cuatro grupos y lo dicen
+    fireEvent.change(screen.getByLabelText('Filtro de sector'), { target: { value: 'Comercio' } });
+    expect(screen.getByText(/no se aplican al mapa ni a los rankings/)).toBeInTheDocument();
+    expect(within(rankings).getByLabelText('Calles con más locales vacíos').querySelectorAll('li')).toHaveLength(5);
+  });
+
+  it('Resumen con geometría: mapa agregado por calle con capas, escala por cuantiles y selección desde los rankings', () => {
+    montar();
+    fireEvent.click(screen.getByRole('tab', { name: '2025 Censo 2025 histórico' }));
+    expect(screen.getByRole('img', { name: 'Mapa por calle: Ocupación' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Escala: Ocupación').querySelectorAll('i').length).toBeGreaterThan(2);
+    fireEvent.click(within(screen.getByRole('group', { name: 'Capa del mapa' })).getByRole('button', { name: 'Vacíos' }));
+    expect(screen.getByRole('img', { name: 'Mapa por calle: Locales vacíos' })).toBeInTheDocument();
+    // Seleccionar desde el ranking: ficha de la calle junto al mapa y opción de filtrar todo el cuadro
+    const boton = within(screen.getByLabelText('Calles con más comercio')).getAllByRole('button')[0];
+    fireEvent.click(boton);
+    const ficha = screen.getByLabelText('Calle seleccionada');
+    expect(ficha).toHaveTextContent(boton.textContent!);
+    fireEvent.click(within(ficha).getByRole('button', { name: 'Filtrar por esta calle' }));
+    expect((screen.getByLabelText('Filtro de calle') as HTMLSelectElement).selectedOptions[0].textContent).toContain(boton.textContent!);
+  });
+
+  it('el mapa dibuja puntos solo para locales con coordenadas verificadas (nunca posiciones inventadas)', () => {
+    const antes = useStore.getState().db!;
+    const ids = Object.values(antes.locales).filter((l) => l.municipioId === 'mun-medina' && l.coord).slice(0, 12).map((l) => l.id);
+    const locales = { ...antes.locales };
+    for (const id of ids) locales[id] = { ...locales[id], coordVerificada: { fuente: 'gps-campo', fecha: '2026-09-10' } };
+    useStore.setState({ db: { ...antes, locales } });
+    try {
+      montar();
+      fireEvent.click(screen.getByRole('tab', { name: '2025 Censo 2025 histórico' }));
+      const mapa = screen.getByRole('img', { name: 'Mapa de establecimientos (coordenadas verificadas)' });
+      const n = mapa.querySelectorAll('circle').length;
+      expect(n).toBeGreaterThan(0);
+      expect(n).toBeLessThanOrEqual(ids.length);
+      expect(screen.getByText(/con coordenadas verificadas, en su posición/)).toBeInTheDocument();
+    } finally {
+      useStore.setState({ db: antes });
+    }
   });
 });

@@ -49,7 +49,7 @@ export function Bloque({ titulo, sub, nota, children, span = 6, etiqueta, accion
     <section className={`vz-bloque c-${span} ${className ?? ''}`} aria-label={etiqueta ?? (typeof titulo === 'string' ? titulo : undefined)}>
       <header className="vz-bloque-cab">
         <div className="vz-bloque-tit">
-          <h3>{titulo}</h3>
+          <h2>{titulo}</h2>
           {sub && <p>{sub}</p>}
         </div>
         {acciones && <div className="vz-bloque-acc">{acciones}</div>}

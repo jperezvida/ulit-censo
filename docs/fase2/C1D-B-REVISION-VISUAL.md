@@ -1,6 +1,8 @@
 # C1d-B · Revisión visual del cuadro de mando y propuesta de ajustes
 
-> **Estado:** evaluación y propuesta, **sin implementar**. Diseño evaluado: commit `df1b6fe`, con capturas a 1365 px. Datos ficticios: el escenario C1d y la campaña de demostración Medina 2025.
+> **Estado (22-10-2026):** los **bloques 1 y 2** están implementados. El bloque 1 cubre la corrección C1c-1, el aviso de origen calculado y Comparar descriptivo entre ámbitos (secciones 6.C.1 y 6.C.2). El bloque 2 es el rediseño del Resumen: sección 6.A con su cabecera compacta, más los puntos de legibilidad y rampas de 6.D aplicados al Resumen. Quedan pendientes 6.B (exportar, copiar, imprimir), 6.C.3 y 6.D–E en las demás pestañas.
+>
+> **Estado inicial:** evaluación y propuesta, **sin implementar**. Diseño evaluado: commit `df1b6fe`, con capturas a 1365 px. Datos ficticios: el escenario C1d y la campaña de demostración Medina 2025.
 >
 > **Pendiente:** la captura del dashboard anterior de la Cátedra **no ha llegado** al entorno de trabajo. La comparación con él se basa en su contenido descrito (total de locales, ocupación, grupos de actividad, calles con más comercio, servicios, hostelería y vacíos, digitalización y mapas) y en las dos ventajas que hay que conservar: **el protagonismo del mapa** y **los cuatro rankings simultáneos**. Cuando llegue la imagen, se completará la comparación punto por punto.
 
