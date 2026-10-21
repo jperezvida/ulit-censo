@@ -277,6 +277,41 @@ Queda como propuesta; no se ha aplicado.
 
 ## 12. Pendiente
 
+### 12.1 Corrección pendiente C1c-1: varios establecimientos en el mismo portal
+
+> **Estado:** documentada, **sin implementar**. Instrucción del responsable del proyecto (21-10-2026). Se abordará en una tarea propia, no en C1d ni en C2/C3.
+
+**Criterio correcto.** Cuando varias filas del archivo tienen la misma calle y el mismo número de portal, representan **locales físicos distintos** (por ejemplo, varios bajos comerciales o locales interiores de un mismo portal). **No es una ambigüedad.**
+
+**Comportamiento actual (incorrecto).** La regla `direccion-repetida-en-archivo` (sección 3, fila «Misma calle y número en varias filas del archivo») las marca como `ambigua`. Ocurre lo siguiente:
+- no se crea ningún local;
+- quedan observaciones y negocios sin local y un vínculo `dudosa`;
+- en el cuadro de mando cuentan como «sin local identificado» y como correspondencias dudosas.
+
+**Comportamiento esperado:**
+- se crea **un local nuevo por fila**, con su observación, su ocupación (cerrada en la campaña histórica) y su vínculo `probable`, igual que una fila inequívoca;
+- los locales del mismo portal se distinguen por su fila de origen y, si el archivo los trae, por sufijo, letra o planta. Nunca se fusionan por compartir número;
+- el plan informa de cuántos portales tienen varios locales, como dato y no como incidencia.
+
+**Alcance que hay que revisar al implementarlo:**
+- `src/domain/incorporacion.ts` (`planificarIncorporacion`): retirar `direccion-repetida-en-archivo` como motivo de ambigüedad y conservar el resto de reglas («S/N», número desconocido, estado del local desconocido);
+- el motivo `local-existente-en-direccion`: con el nuevo criterio, que ya exista un local en el portal tampoco implica que sea el mismo. **Queda por decidir** si estas filas crean locales nuevos (con el existente como candidato a conciliar) o siguen pendientes de conciliación;
+- la huella de la traza, la firma del plan y el deshacer: un cambio de criterio cambia el plan, así que hay que comprobar la reimportación de archivos ya incorporados con el criterio anterior;
+- pruebas de C1c y C1d (`c1c.test.ts`, `c1d.test.ts`, `panel.test.ts`, asistente y dashboard) y las cifras documentadas.
+
+**Impacto medido hoy** (datos ficticios):
+
+| Archivo | Filas con `direccion-repetida-en-archivo` | Otras ambiguas |
+|---|---:|---|
+| Escenario ficticio de C1d (`medina-2025-ficticio`) | 4 | 6 «S/N», 4 «local existente en la dirección», 2 «estado desconocido» |
+| `CENSO_MEDINA_2025_FICTICIO.xlsx` (fuera del repositorio) | 0 | 6 «S/N» |
+
+En el escenario, las cifras documentadas (842 inequívocas, 16 ambiguas, 32 sin vínculo) cambiarán. También cambiarán las de C1d-A y C1d-B que dependen de ellas: locales, establecimientos sin local y correspondencias pendientes.
+
+**Relación con la decisión 5 de la Cátedra (direcciones repetidas).** Esta instrucción fija el criterio para el mismo portal. Lo que quede abierto de la decisión 5, como el caso del local ya existente en la dirección, sigue pendiente.
+
+### 12.2 Otros pendientes
+
 - **C1d:** pantalla del plan y de las decisiones (exclusiones, correspondencias, reglas, diccionario y equivalencias), aplicación y deshacer desde la interfaz.
 - **Cátedra:**
   - decisiones 1, 2 y 3;

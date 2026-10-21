@@ -130,6 +130,8 @@ Cada decisión registra **persona** (la del contexto), **fecha** y **motivo o re
 | Motivos | S/N 6 · local existente 4 · número desconocido 4 · estado desconocido 2 · dirección repetida 4 · calle sin correspondencia 28 |
 | Entidades nuevas | 890 registros · 842 locales · 620 negocios · 860 observaciones · 841 ocupaciones · 0 clasificaciones 2026 |
 
+> **Corrección pendiente C1c-1** (ver `C1C-INCORPORACION.md`, sección 12.1): las 4 filas con «dirección repetida» son locales físicos distintos del mismo portal, no una ambigüedad. Cuando se corrija, cambiarán las cifras de locales, ambiguas y correspondencias de esta tabla.
+
 Con las decisiones de la prueba de interfaz (autorizar «3,5 m», crear un local para una fila S/N y excluir la fila de totales) se crean 843 locales y se incorporan 890 registros, uno de ellos con la exclusión. La campaña 2026 no cambia y el deshacer deja la base como estaba.
 
 El **Excel ficticio de Medina 2025** que facilitasteis, comprobado fuera del repositorio con `npm run interpretar` y `npm run simular-incorporacion`, conserva los resultados de C1b y C1c:
