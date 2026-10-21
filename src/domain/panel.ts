@@ -67,6 +67,11 @@ export interface DatosCampana {
    * campaña no tienen registro de origen y no deben descontarse.
    */
   registrosSinEstablecimiento: number;
+  /** Registros censales (no excluidos) con al menos una incidencia de interpretación, y total de incidencias. */
+  registrosConIncidencias: number;
+  incidencias: number;
+  /** Registros excluidos por una persona (se conservan, pero no cuentan). */
+  registrosExcluidos: number;
   /** Locales de la campaña de referencia aún sin visitar (no cuentan como observados). */
   pendientesVisita: number;
   correspondencias: { confirmada: number; probable: number; dudosa: number; sinVinculo: number };
@@ -187,6 +192,9 @@ export function datosCampana(db: BaseDatos, campanaId: Id): DatosCampana {
     campana, municipio, unidades, historica,
     registrosCensales: registros.filter((r) => !r.exclusion).length,
     registrosSinEstablecimiento: registros.filter((r) => !r.exclusion && !conEstablecimiento.has(r.id)).length,
+    registrosConIncidencias: registros.filter((r) => !r.exclusion && r.interpretacion?.incidencias.length).length,
+    incidencias: registros.reduce((a, r) => a + (r.exclusion ? 0 : r.interpretacion?.incidencias.length ?? 0), 0),
+    registrosExcluidos: registros.filter((r) => r.exclusion).length,
     pendientesVisita: filas.filter((f) => f.situacion === 'pendiente-visita').length,
     correspondencias: corr,
     callesAmbito: new Set([...campana.ambitoCalleIds, ...conRegistros]).size,
@@ -354,4 +362,99 @@ export function compararGrupos(us: UnidadPanel[], grupo: (u: UnidadPanel) => str
     m.set(g, [...(m.get(g) ?? []), v]);
   }
   return [...m].map(([g, xs]) => ({ grupo: g, n: xs.length, media: xs.length >= min ? xs.reduce((a, b) => a + b, 0) / xs.length : null, suficiente: xs.length >= min })).sort((a, b) => b.n - a.n);
+}
+
+// ───────────── Rankings, concentración y cruces (rediseño del dashboard) ─────────────
+
+export type CriterioCalle = 'ocupados' | 'vacios' | Sector;
+export const SIN_CLASIFICAR = 'Sin clasificar';
+
+export interface FilaRanking {
+  calleId: Id;
+  calle: string;
+  /** Establecimientos observados en la calle (con los filtros aplicados). */
+  observados: number;
+  ocupados: number;
+  vacios: number;
+  /** Valor del criterio: ocupados, vacíos o establecimientos del sector. */
+  n: number;
+  /** Proporción del criterio sobre los observados de la calle; null si la calle no alcanza el umbral. */
+  prop: number | null;
+  /** Composición de los observados de la calle: cada sector, sin clasificar y vacíos. */
+  composicion: Record<Sector | typeof SIN_CLASIFICAR | 'Vacíos', number>;
+}
+
+/**
+ * Ranking de calles por un criterio. Ocupados y vacíos: solo calles con al menos `umbral`
+ * observados (con menos, un porcentaje no es fiable). Sectores: recuento absoluto de todas las
+ * calles con presencia; su proporción solo se da si la calle alcanza el umbral.
+ */
+export function rankingCalles(us: UnidadPanel[], criterio: CriterioCalle, umbral = UMBRAL_CALLE, limite = 10) {
+  const m = new Map<Id, FilaRanking>();
+  for (const u of us) {
+    const f = m.get(u.calleId) ?? {
+      calleId: u.calleId, calle: u.calle, observados: 0, ocupados: 0, vacios: 0, n: 0, prop: null,
+      composicion: { Comercio: 0, Servicios: 0, 'Hostelería y Restauración': 0, [SIN_CLASIFICAR]: 0, 'Vacíos': 0 },
+    };
+    f.observados++;
+    if (u.vacio) {
+      f.vacios++;
+      f.composicion['Vacíos']++;
+    } else {
+      f.ocupados++;
+      f.composicion[u.sector ?? SIN_CLASIFICAR]++;
+    }
+    m.set(u.calleId, f);
+  }
+  const valor = (f: FilaRanking) => (criterio === 'ocupados' ? f.ocupados : criterio === 'vacios' ? f.vacios : f.composicion[criterio]);
+  const porSector = criterio !== 'ocupados' && criterio !== 'vacios';
+  const todas = [...m.values()].map((f) => ({ ...f, n: valor(f), prop: f.observados >= umbral ? valor(f) / f.observados : null }));
+  const aptas = porSector ? todas.filter((f) => f.n > 0) : todas.filter((f) => f.observados >= umbral);
+  aptas.sort((a, b) => b.n - a.n || (b.prop ?? 0) - (a.prop ?? 0) || a.calle.localeCompare(b.calle, 'es'));
+  return { filas: aptas.slice(0, limite), consideradas: aptas.length, total: todas.length, umbral, porSector };
+}
+
+/** Concentración: qué parte del total reúnen las `k` primeras partes, y cuántas partes hay con valor. */
+export function concentracion(partes: Parte[], k = 5) {
+  const total = partes.reduce((a, p) => a + p.n, 0);
+  const orden = [...partes].sort((a, b) => b.n - a.n);
+  const top = orden.slice(0, k).reduce((a, p) => a + p.n, 0);
+  return { k: Math.min(k, orden.filter((p) => p.n > 0).length), top, total, prop: total ? top / total : null, conValor: orden.filter((p) => p.n > 0).length };
+}
+
+/**
+ * Perfil por grupo (sector, franquicia, CP…) entre los OCUPADOS: tamaño, franquicia y adopción de
+ * cada canal, siempre como proporción con su denominador (Sí entre Sí/No).
+ */
+export function perfilGrupos(us: UnidadPanel[], grupo: (u: UnidadPanel) => string | undefined, variables: VariableDigital[] = VARIABLES_PRESENCIA.map((x) => x.v)) {
+  const m = new Map<string, UnidadPanel[]>();
+  for (const u of us) {
+    if (u.vacio) continue;
+    const g = grupo(u);
+    if (!g) continue;
+    m.set(g, [...(m.get(g) ?? []), u]);
+  }
+  return [...m].map(([g, xs]) => ({
+    grupo: g,
+    n: xs.length,
+    franquicia: { n: xs.filter((u) => u.franquicia === 'si').length, den: xs.filter((u) => u.franquicia === 'si' || u.franquicia === 'no').length } as Proporcion,
+    adopcion: Object.fromEntries(variables.map((v) => [v, adopcion(xs, v)])) as Record<VariableDigital, Proporcion>,
+  })).sort((a, b) => b.n - a.n || a.grupo.localeCompare(b.grupo, 'es'));
+}
+
+/** Calles (con al menos `umbral` observados) agrupadas por su tasa de vacío. */
+export function bandasVacancia(us: UnidadPanel[], umbral = UMBRAL_CALLE) {
+  const r = rankingCalles(us, 'vacios', umbral, Infinity);
+  const tasas = r.filas.map((f) => f.vacios / f.observados);
+  const bandas = [
+    { clave: '0', etiqueta: 'Sin vacíos', desde: 0, hasta: 0 },
+    { clave: '1', etiqueta: 'Hasta 20 %', desde: 0, hasta: 0.2 },
+    { clave: '2', etiqueta: '20–40 %', desde: 0.2, hasta: 0.4 },
+    { clave: '3', etiqueta: '40–60 %', desde: 0.4, hasta: 0.6 },
+    { clave: '4', etiqueta: 'Más del 60 %', desde: 0.6, hasta: 1 },
+  ];
+  return {
+    partes: bandas.map((b, i) => ({ clave: b.clave, etiqueta: b.etiqueta, n: tasas.filter((t) => (i === 0 ? t === 0 : t > b.desde && t <= b.hasta)).length })),
+    consideradas: r.consideradas, total: r.total, conVacios: tasas.filter((t) => t > 0).length,
+  };
 }

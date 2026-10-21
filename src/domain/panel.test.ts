@@ -5,7 +5,7 @@ import { callejeroSimulado, MEDINA } from '../data/callejero';
 import { MUNICIPIO_DEMO, prepararMunicipioDemo } from '../data/escenarioIncorporacion';
 import { aplicarEscenario, prepararEscenario } from './incorporacionDemo';
 import {
-  adopcion, ambitos, compararGrupos, datosCampana, distribucion, filtrar, indicePresencia, matrizCalor, MIN_CELDA, respuestas, resumen, topCalles, UMBRAL_CALLE, type UnidadPanel,
+  adopcion, ambitos, bandasVacancia, compararGrupos, concentracion, datosCampana, perfilGrupos, rankingCalles, distribucion, filtrar, indicePresencia, matrizCalor, MIN_CELDA, respuestas, resumen, topCalles, UMBRAL_CALLE, type UnidadPanel,
 } from './panel';
 import { filasOficina } from './oficina';
 import { indiceObservaciones, indiceOcupaciones } from './consultas';
@@ -38,6 +38,11 @@ describe('C1d-B · Datos del dashboard calculados sobre el modelo', () => {
     const r = resumen(d.unidades);
     expect(d.registrosCensales).toBe(890);
     expect(d.registrosSinEstablecimiento).toBe(30);
+    // Incidencias de interpretación conservadas en los registros (no excluidos)
+    expect(d.incidencias).toBe(298);
+    expect(d.registrosConIncidencias).toBeGreaterThan(0);
+    expect(d.registrosConIncidencias).toBeLessThanOrEqual(d.incidencias);
+    expect(d.registrosExcluidos).toBe(0);
     expect(r).toMatchObject({ establecimientos: 860, locales: 842, negocios: 620, ocupados: 620, vacios: 240, sinLocal: 18 });
     expect(d.correspondencias).toEqual({ confirmada: 0, probable: 842, dudosa: 16, sinVinculo: 32 });
     expect(d.historica).toBe(true);
@@ -128,5 +133,41 @@ describe('C1d-B · Agregaciones', () => {
     expect(filtrar(us, { cp: '__sin__' })).toHaveLength(4);
     expect(filtrar(us, { sector: 'Servicios' })).toHaveLength(1);
     expect(filtrar(us, { calleId: 'z' })).toHaveLength(1);
+  });
+
+  it('ranking de calles: umbral en ocupados y vacíos, recuento absoluto por sector y composición de la calle', () => {
+    const us = [
+      ...Array.from({ length: 6 }, (_, i) => u({ calleId: 'a', calle: 'A', vacio: i > 3, sector: i < 2 ? 'Comercio' : i < 4 ? 'Servicios' : undefined })),
+      ...Array.from({ length: 3 }, () => u({ calleId: 'b', calle: 'B', sector: 'Comercio' })),
+    ];
+    const oc = rankingCalles(us, 'ocupados');
+    expect(oc.filas.map((f) => f.calle)).toEqual(['A']);
+    expect(oc).toMatchObject({ consideradas: 1, total: 2, porSector: false });
+    expect(oc.filas[0].composicion).toEqual({ Comercio: 2, Servicios: 2, 'Hostelería y Restauración': 0, 'Sin clasificar': 0, 'Vacíos': 2 });
+    const com = rankingCalles(us, 'Comercio');
+    // Por sector: todas las calles con presencia; la proporción solo si la calle alcanza el umbral
+    expect(com.filas.map((f) => [f.calle, f.n, f.prop])).toEqual([['B', 3, null], ['A', 2, 2 / 6]]);
+    expect(rankingCalles(us, 'Hostelería y Restauración').filas).toEqual([]);
+    expect(rankingCalles(us, 'vacios').filas[0]).toMatchObject({ calle: 'A', n: 2, prop: 2 / 6 });
+  });
+
+  it('concentración, perfil por grupo (Sí entre Sí/No) y calles por tasa de vacío', () => {
+    expect(concentracion([{ clave: 'a', etiqueta: 'a', n: 6 }, { clave: 'b', etiqueta: 'b', n: 3 }, { clave: 'c', etiqueta: 'c', n: 1 }, { clave: 'd', etiqueta: 'd', n: 0 }], 2))
+      .toEqual({ k: 2, top: 9, total: 10, prop: 0.9, conValor: 3 });
+    expect(concentracion([]).prop).toBeNull();
+    const us = [u({ sector: 'Comercio', franquicia: 'si', d: { web: 'si' } }), u({ sector: 'Comercio', franquicia: 'pendiente', d: { web: 'pendiente' } }), u({ sector: 'Servicios', franquicia: 'no', d: { web: 'no' } }), u({ vacio: true, sector: 'Comercio' })];
+    const p = perfilGrupos(us, (x) => x.sector);
+    expect(p.map((g) => [g.grupo, g.n, g.franquicia, g.adopcion.web])).toEqual([
+      ['Comercio', 2, { n: 1, den: 1 }, { n: 1, den: 1 }],
+      ['Servicios', 1, { n: 0, den: 1 }, { n: 0, den: 1 }],
+    ]);
+    const calles = [
+      ...Array.from({ length: 5 }, () => u({ calleId: 'a', calle: 'A' })),
+      ...Array.from({ length: 5 }, (_, i) => u({ calleId: 'b', calle: 'B', vacio: i < 3 })),
+      ...Array.from({ length: 2 }, () => u({ calleId: 'c', calle: 'C', vacio: true })),
+    ];
+    const b = bandasVacancia(calles);
+    expect(b).toMatchObject({ consideradas: 2, total: 3, conVacios: 1 });
+    expect(b.partes.map((x) => x.n)).toEqual([1, 0, 0, 1, 0]);
   });
 });

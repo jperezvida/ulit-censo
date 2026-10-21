@@ -19,6 +19,8 @@ beforeAll(async () => {
 }, 120000);
 
 const montar = () => render(<MemoryRouter><VisualizacionPage /></MemoryRouter>);
+/** Contador de la barra de filtros («N de M establecimientos observados»). */
+const contador = () => within(screen.getByRole('group', { name: 'Filtros' })).getByText(/de \d+ establecimientos observados/).textContent ?? '';
 
 describe('C1d-B · Dashboard', () => {
   it('ámbito, año y emblema neutro; tipos de ámbito sin datos deshabilitados', () => {
@@ -41,14 +43,14 @@ describe('C1d-B · Dashboard', () => {
     expect(kpis).toHaveTextContent('Locales físicos identificados842');
     expect(kpis).toHaveTextContent(/Correspondencias pendientes890.*842 probables · 16 dudosas · 32 sin vínculo/);
     expect(screen.getByLabelText('Calles con más locales ocupados')).toBeInTheDocument();
-    expect(screen.getByText(/\* Umbral: solo calles con al menos 5 establecimientos observados/)).toBeInTheDocument();
+    expect(screen.getByText(/% solo en calles con al menos 5 observados/)).toBeInTheDocument();
     // Filtro vinculado: pulsar un sector filtra todo
-    fireEvent.click(within(screen.getByLabelText('Distribución por sector')).getByTitle(/^Servicios:/));
+    fireEvent.click(within(screen.getByLabelText('Distribución por sector')).getByRole('row', { name: /^Servicios 203/ }));
     expect((screen.getByLabelText('Filtro de sector') as HTMLSelectElement).value).toBe('Servicios');
-    expect(screen.getByText(/de 860 establecimientos observados/).textContent).toMatch(/^\d+ de 860/);
+    expect(contador()).toMatch(/^\d+ de 860/);
     fireEvent.change(screen.getByLabelText('Filtro de sector'), { target: { value: '' } });
     fireEvent.change(screen.getByLabelText('Filtro de franquicia'), { target: { value: 'si' } });
-    expect(screen.getByText(/de 860 establecimientos observados/).textContent).toMatch(/^58 de 860/);
+    expect(contador()).toMatch(/^58 de 860/);
   });
 
   it('pestañas de vacíos, digitalización (estado importado, sin coordenadas inventadas) y comparar con avisos de cobertura', () => {
@@ -103,14 +105,37 @@ describe('C1d-B · Dashboard', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Locales vacíos' }));
     expect(screen.getByLabelText('Filtros no aplicados')).toHaveTextContent(/no se aplica el filtro de sector «Comercio» ni el de franquicia «No»/);
     expect(screen.getByText('Locales vacíos', { selector: '.vz-kpi-etq' }).parentElement).toHaveTextContent(/Locales vacíos240/);
-    expect(screen.getByText(/de 860 establecimientos observados/).textContent).toMatch(/^860 de 860/);
+    expect(contador()).toMatch(/^860 de 860/);
     // Los filtros siguen activos en las demás pestañas
     fireEvent.click(screen.getByRole('tab', { name: 'Resumen' }));
-    expect(screen.getByText(/de 860 establecimientos observados/).textContent).not.toMatch(/^860 de/);
+    expect(contador()).not.toMatch(/^860 de/);
     fireEvent.click(screen.getByRole('tab', { name: 'Locales vacíos' }));
     fireEvent.click(screen.getByRole('button', { name: 'Quitar estos filtros' }));
     expect(screen.queryByLabelText('Filtros no aplicados')).toBeNull();
     expect((screen.getByLabelText('Filtro de sector') as HTMLSelectElement).value).toBe('');
     expect((screen.getByLabelText('Filtro de franquicia') as HTMLSelectElement).value).toBe('');
+  });
+
+  it('rediseño: ranking con criterio, pestaña sectorial con comparación, filtro de calle y trazabilidad de calidad', () => {
+    montar();
+    fireEvent.change(screen.getByLabelText('Ámbito'), { target: { value: MUNICIPIO_DEMO.id } });
+    // Resumen: ranking de calles con conmutador de criterio
+    fireEvent.click(within(screen.getByRole('group', { name: 'Criterio del ranking' })).getByRole('button', { name: 'Vacíos' }));
+    expect(screen.getByRole('table', { name: 'Calles con más locales vacíos' })).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'Perfil de los sectores' })).toHaveTextContent(/Comercio292/);
+    // Comercio: indicadores con su denominador y comparación con los otros sectores
+    fireEvent.click(screen.getByRole('tab', { name: 'Comercio' }));
+    expect(screen.getByLabelText('Indicadores de Comercio')).toHaveTextContent(/Peso en ocupados47,1 %292 de 620 ocupados/);
+    expect(screen.getByRole('table', { name: 'Comparación con los otros sectores' })).toHaveTextContent(/Establecimientos292203125/);
+    // Filtro de calle desde el selector y «Limpiar filtros»
+    const calle = screen.getByLabelText('Filtro de calle') as HTMLSelectElement;
+    fireEvent.change(calle, { target: { value: calle.options[1].value } });
+    expect(contador()).not.toMatch(/^292 de/);
+    fireEvent.click(screen.getByRole('button', { name: /Limpiar filtros/ }));
+    expect(calle.value).toBe('');
+    // Cobertura y calidad: del registro al establecimiento, sin restas
+    fireEvent.click(screen.getByRole('tab', { name: 'Cobertura y calidad' }));
+    expect(screen.getByLabelText('Indicadores de cobertura y calidad')).toHaveTextContent(/Sin establecimiento30/);
+    expect(screen.getByLabelText('Trazabilidad: del registro al establecimiento')).toHaveTextContent(/890Filas importadas.*860Con establecimiento observado.*18Sin local identificado/);
   });
 });

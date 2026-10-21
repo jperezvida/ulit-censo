@@ -5,23 +5,23 @@
 > - No se han empezado C2 ni C3.
 > - La incorporación (C1d-A) se documenta en `C1D-A-INCORPORACION.md`.
 
-## 1. Dónde está
+## 1. Dónde está y cómo se organiza (rediseño)
 
-Nuevo espacio **Visualización** en la barra superior (ruta `#/visualizacion`).
+Espacio **Visualización** en la barra superior (ruta `#/visualizacion`). El rediseño reorganiza la página como un cuadro de mando sobre una **retícula de 12 columnas**, con tarjetas KPI homogéneas y bloques de altura igualada por fila.
 
-- **Cabecera:**
-  - **identificador del ámbito** (sección 6);
-  - nombre y tipo de ámbito, con la etiqueta «escenario ficticio» si procede;
-  - selectores **Tipo de ámbito** y **Ámbito**.
-- **Pestañas globales de año:** una por campaña del ámbito, con su estado (histórico, en curso o campaña cerrada).
-- **Filtros globales:** se aplican a todas las pestañas.
-  - **Franquicia:** todos · Sí · No · pendiente o sin dato.
-  - **Sector:** fijo en las pestañas de sector.
-  - **Código postal:** solo si los datos lo traen.
-  - **Calle:** se activa pulsando una calle en las tablas o barras.
-
-  El contador indica «N de M establecimientos observados».
-- **Pestañas:** Resumen · Comercio · Servicios · Hostelería y restauración · Locales vacíos · Digitalización 1 · Digitalización 2 · Cobertura y calidad · Comparar.
+- **Cabecera** (banda oscura):
+  - **identificador del ámbito** (sección 6), nombre y etiqueta «escenario ficticio» si procede;
+  - selectores **Tipo de ámbito** y **Ámbito**;
+  - **años** como botones (uno por campaña, con su estado: histórico, en curso o campaña cerrada).
+- **Barra de filtros globales**, integrada bajo la cabecera:
+  - **Franquicia:** todos · Sí · No · pendiente o sin dato;
+  - **Sector:** fijo en las pestañas de sector;
+  - **Código postal:** solo si los datos lo traen;
+  - **Calle:** selector con todas las calles (también se activa pulsando una calle en rankings y tablas);
+  - **Limpiar filtros** y el contador «N de M establecimientos observados» con su barra.
+- **Pestañas con icono:** Resumen · Comercio · Servicios · Hostelería y restauración · Locales vacíos · Digitalización 1 · Digitalización 2 · Cobertura y calidad · Comparar.
+- **Código:** `VisualizacionPage.tsx` (cabecera, filtros y pestañas), `resumen.tsx`, `sectores.tsx`, `vacios.tsx`, `digital.tsx`, `calidad.tsx` (Cobertura y Comparar), `comun.tsx` (contexto y ranking de calles) y `graficos.tsx` (componentes).
+- **Color:** los tres sectores usan un orden fijo de tonos validado para daltonismo; «sin clasificar» y «vacíos» van en grises; los mapas de calor usan una sola tonalidad de claro a oscuro; las respuestas (Sí, No, Sin información, Pendiente) tienen su propia paleta validada y «No aplicable» en gris.
 
 ## 2. Qué se cuenta (no son cantidades equivalentes)
 
@@ -67,13 +67,13 @@ Los establecimientos de Oficina coinciden con `filasOficina` (prueba), así que 
 
 | Pestaña | Contenido |
 |---|---|
-| **Resumen** | Indicadores con denominador:<br>• registros, establecimientos, locales, negocios y vacíos;<br>• ocupación;<br>• franquicias Sí entre Sí/No, con las pendientes;<br>• correspondencias pendientes.<br>Gráficos y tablas:<br>• distribución por sector (pulsar una barra filtra) y fuente de la clasificación;<br>• **calles con más locales ocupados\***;<br>• datos destacados calculados (calle con más ocupados, sector mayoritario, adopción de web, fachada media);<br>• periodo de observación;<br>• ocupados frente a vacíos. |
-| **Comercio / Servicios / Hostelería** | • establecimientos del sector y su peso entre los ocupados;<br>• franquicias;<br>• adopción de web, Google y venta online;<br>• subdivisiones: grupo de comercio y subgrupo, o subgrupo y actividad;<br>• calles con más establecimientos del sector (recuento absoluto);<br>• fuente de la clasificación. |
-| **Locales vacíos** | Los filtros de **sector y franquicia no se aplican** en esta pestaña, porque un local vacío no tiene ni sector ni franquicia y filtrar por ellos daría siempre cero vacíos. Un aviso lo explica y ofrece «Quitar estos filtros»; en las demás pestañas siguen activos.<br>• número y proporción;<br>• fachada media, mediana y rango, con cuántos tienen medida;<br>• histograma de fachada;<br>• **calles con más vacíos\***;<br>• vacíos por CP, con el CP con más vacíos y el de mayor proporción, solo con al menos 5 observados. |
-| **Digitalización 1** (presencia y adopción) | • estado de la revisión digital;<br>• por canal (web, Google, venta online, Instagram, Facebook, Twitter / X): barra apilada de las cinco respuestas y adopción;<br>• **mapa de calor calle × canal**;<br>• **mapa por calle**. |
-| **Digitalización 2** (intensidad) | • reseñas de Google (mediana, P25–P75, máximo, histograma);<br>• respuesta a reseñas entre quienes tienen Google;<br>• seguidores por red (mediana y cuartiles);<br>• **índice de presencia digital (0–6)**;<br>• comparación por sector y por franquicia, solo con grupos suficientes. |
-| **Cobertura y calidad** | • calles con registros frente al ámbito;<br>• pendientes de visita;<br>• sin local identificado;<br>• registros sin establecimiento observado (cálculo directo, nunca negativo);<br>• correspondencias por confianza;<br>• fuentes de clasificación y de franquicia. |
-| **Comparar** | Dos campañas cualesquiera, en paralelo y con los mismos filtros. La campaña secundaria se revalida al cambiar la principal: nunca es la misma y, si la elegida pasa a ser la principal o deja de existir, se elige otra y se avisa. Avisos automáticos:<br>• ámbitos geográficos distintos;<br>• cobertura distinta;<br>• histórico frente a campaña;<br>• fuentes de clasificación distintas;<br>• campaña incompleta.<br>Siempre indica que **las diferencias no son aperturas ni cierres confirmados**. |
+| **Resumen** | • **Bloque principal:** establecimientos observados, ocupados frente a vacíos, tasa de ocupación y registros censales.<br>• **KPI:** locales físicos, negocios, vacíos, franquicias (Sí entre Sí/No), correspondencias pendientes y cobertura del ámbito.<br>• **Distribución por grandes grupos** (anillo + tabla): Comercio, Servicios, Hostelería, Sin clasificar y Vacíos; pulsar un sector filtra. Debajo, la fuente de la clasificación.<br>• **Calles más relevantes:** ranking con conmutador (ocupados, comercio, servicios, hostelería, vacíos) y barra con la composición de cada calle.<br>• **Datos destacados** calculados.<br>• **Perfil de los sectores:** establecimientos, peso, franquicia, web, Google y venta online.<br>• **Vista territorial:** mapa de ocupación por calle si hay geometría; si no, reparto de las calles por tasa de vacío.<br>• **Cómo leer estas cifras:** cada denominador. |
+| **Comercio / Servicios / Hostelería** | • KPI: establecimientos, peso en ocupados, peso en observados, franquicias, web y Google.<br>• Subgrupos y actividades más frecuentes.<br>• Calles con más establecimientos del sector (recuento absoluto; «% de la calle» solo con 5 observados).<br>• **Concentración y lectura:** % del sector en sus 5 calles principales y hallazgos frente a los demás sectores.<br>• **Comparación con los otros sectores** (tabla con el sector resaltado).<br>• Franquicia y fuente de la clasificación.<br>• Por código postal, si hay CP. |
+| **Locales vacíos** | Los filtros de **sector y franquicia no se aplican** (un local vacío no tiene ninguno de los dos); un aviso lo explica y ofrece «Quitar estos filtros».<br>• KPI: vacíos, tasa de vacío, fachada media, calles con vacíos, concentración y CP con más vacíos (o calle con mayor tasa).<br>• Calles con más vacíos\*.<br>• Histograma de fachada.<br>• Calles según su tasa de vacío.<br>• Vacíos por CP (con la relación vacíos/total por calle) o, sin CP, la relación vacíos/total en las calles con más locales.<br>• Mapa de tasa de vacío por calle si hay geometría. |
+| **Digitalización 1** (presencia) | • Adopción de cada canal (web, Google, venta online, Instagram, Facebook, X) con denominador y pendientes.<br>• Estado de la revisión digital y completitud de las respuestas.<br>• Respuestas por canal (barras apiladas).<br>• **Tablas de calor** de adopción por sector, por franquicia y por CP.<br>• Mapa de calor por calle y mapa por calle (si hay geometría). |
+| **Digitalización 2** (intensidad) | • KPI: Google Business, mediana de reseñas, respuesta a reseñas, seguidores de Instagram, índice de presencia y su cobertura.<br>• Histograma de reseñas; respuesta a reseñas (también por sector).<br>• Seguidores por red con **diagrama de caja** (P25–P75, mediana).<br>• Índice de presencia (0–6).<br>• Comparativas por sector y por franquicia (medianas e índice solo con 10 casos).<br>• **Lectura ejecutiva** calculada. |
+| **Cobertura y calidad** | • KPI: registros censales, observados, sin establecimiento, con incidencias, pendientes de visita y calles con registros.<br>• **Trazabilidad:** filas importadas → excluidas → con establecimiento → observados → con local → sin local.<br>• Correspondencias registro–local, con su definición.<br>• **Estado del dato:** clasificación, franquicia, revisión digital y localización. |
+| **Comparar** | Dos campañas cualesquiera (años o ámbitos), con los mismos filtros. La campaña secundaria se revalida al cambiar la principal: nunca es la misma y, si la elegida pasa a ser la principal o deja de existir, se elige otra y se avisa.<br>• Avisos automáticos (ámbitos distintos, cobertura, histórico frente a campaña, fuentes de clasificación, campaña incompleta).<br>• KPI emparejados con la diferencia aritmética.<br>• Peso de cada sector y adopción digital en barras emparejadas.<br>• Tabla completa.<br>Siempre indica que **las diferencias no son aperturas ni cierres confirmados**. |
 
 ## 5. Criterios estadísticos
 
@@ -112,8 +112,8 @@ Los establecimientos de Oficina coinciden con `filasOficina` (prueba), así que 
 
 - **Indicadores:**
   - se definen en listas (`VARIABLES_PRESENCIA`, `RESPUESTAS`, `SECTORES`);
-  - se calculan con funciones puras en `src/domain/panel.ts`: `datosCampana`, `filtrar`, `resumen`, `distribucion`, `topCalles`, `respuestas`, `adopcion`, `matrizCalor`, `estadisticos`, `histograma`, `indicePresencia`, `compararGrupos`.
-- **Gráficos genéricos** (`graficos.tsx`): `BarrasH`, `Apilada`, `Histograma`, `MatrizCalor`, `MapaCalles`, `Kpi` y `SinDatos`. Todos tienen estado «sin datos» y muestran números absolutos.
+  - se calculan con funciones puras en `src/domain/panel.ts`: `datosCampana`, `filtrar`, `resumen`, `distribucion`, `topCalles`, `rankingCalles`, `concentracion`, `perfilGrupos`, `bandasVacancia`, `respuestas`, `adopcion`, `matrizCalor`, `estadisticos`, `histograma`, `indicePresencia`, `compararGrupos`.
+- **Gráficos genéricos** (`graficos.tsx`): `Kpi`, `Bloque`, `Conmutador`, `BarrasH`, `Apilada`, `Anillo`, `Ranking`, `BarrasPareadas`, `Histograma`, `Caja`, `TablaCalor`, `MatrizCalor`, `MapaCalles`, `Hallazgos` y `SinDatos`. Todos tienen estado «sin datos» y muestran números absolutos y denominadores.
 - **Añadir un canal digital o un sector** solo requiere añadirlo a la lista correspondiente.
 
 ## 9. Cómo probarlo en Codespaces
@@ -125,7 +125,7 @@ Los establecimientos de Oficina coinciden con `filasOficina` (prueba), así que 
    - incorpóralo con el asistente de C1d-A (Datos → Incorporación controlada → … → Incorporar al modelo);
    - vuelve a Visualización y elige el ámbito **«Medina del Campo (escenario ficticio)»**.
 5. **Prueba lo siguiente:**
-   - en **Resumen**, pulsa una barra de sector, que filtra todo, y una calle de la tabla, que añade el filtro de calle; se quita con la ✕;
+   - en **Resumen**, pulsa un sector en la tabla del anillo, que filtra todo; cambia el criterio de «Calles más relevantes» y pulsa una calle, que añade el filtro de calle; «Limpiar filtros» lo quita todo;
    - **Franquicia: Sí** cambia el contador, por ejemplo «58 de 860» en el escenario;
    - **Locales vacíos:** CP 47400 y 47001, que solo existen en el escenario; con un filtro de sector o franquicia activo aparece el aviso de que no se aplican;
    - **Digitalización 1:** estado «Borrador o importada»; en el escenario no hay mapa por calle porque no tiene geometría; en las campañas de Medina sí;
@@ -135,8 +135,8 @@ Los establecimientos de Oficina coinciden con `filasOficina` (prueba), así que 
 
 | Archivo | Pruebas | Qué cubre |
 |---|---:|---|
-| `src/domain/panel.test.ts` | 9 | Medidas distintas; registros sin establecimiento con observaciones manuales en la misma campaña (sin resta ni negativos); clasificación histórica sin convertir; CP solo del origen; coincidencia con Oficina; sin contaminación; umbral de calles; denominadores y adopción; mapa de calor con mínimo; índice de presencia y grupos insuficientes; filtros |
-| `src/workspaces/visualizacion/visualizacion.test.tsx` | 6 | Ámbito, año y emblema neutro; tipos sin datos deshabilitados; CP deshabilitado sin datos; aviso del histórico e indicadores; filtros vinculados; vacíos con CP; estado digital importado; sin geometría inventada; mapa por calle con geometría; comparar con avisos; cambio del año principal con Comparar abierta; vacíos con filtros de sector y franquicia |
+| `src/domain/panel.test.ts` | 11 | Medidas distintas; incidencias conservadas; ranking de calles (umbral, recuento por sector, composición); concentración; perfil por grupo con Sí entre Sí/No; calles por tasa de vacío; registros sin establecimiento con observaciones manuales en la misma campaña (sin resta ni negativos); clasificación histórica sin convertir; CP solo del origen; coincidencia con Oficina; sin contaminación; umbral de calles; denominadores y adopción; mapa de calor con mínimo; índice de presencia y grupos insuficientes; filtros |
+| `src/workspaces/visualizacion/visualizacion.test.tsx` | 7 | Ámbito, año y emblema neutro; tipos sin datos deshabilitados; CP deshabilitado sin datos; aviso del histórico e indicadores; filtros vinculados; vacíos con CP; estado digital importado; sin geometría inventada; mapa por calle con geometría; comparar con avisos; cambio del año principal con Comparar abierta; vacíos con filtros de sector y franquicia; rediseño (criterio del ranking, perfil de sectores, KPI y comparación sectorial, filtro de calle y «Limpiar filtros», trazabilidad de calidad) |
 
 ## 11. Limitaciones conocidas
 
