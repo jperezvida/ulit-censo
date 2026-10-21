@@ -42,10 +42,17 @@ describe('C1d-B · Dashboard', () => {
     expect(aviso).toHaveTextContent(/Datos de demostración/);
     // Cinco indicadores principales en una tira
     const kpis = screen.getByRole('group', { name: 'Indicadores principales' });
-    expect(kpis).toHaveTextContent('Establecimientos observados860846 locales físicos · 14 sin local');
-    expect(kpis).toHaveTextContent(/Tasa de ocupación72,1 %620 ocupados de 860/);
-    expect(kpis).toHaveTextContent(/Locales vacíos240.*Negocios620.*Franquicias \(Sí\)9,4 %58 de 619 con respuesta Sí\/No/);
+    expect(kpis).toHaveTextContent('Establecimientos860846 locales · 14 sin local');
+    expect(kpis).toHaveTextContent(/Tasa de ocupación72,1 %620 de 860/);
+    expect(kpis).toHaveTextContent(/Locales vacíos240.*Negocios620.*Franquicias \(Sí\)9,4 %58 de 619 Sí\/No/);
     expect(kpis.children).toHaveLength(5);
+    // Composición: la leyenda es un control de filtro por sector (y se desactiva al repetir)
+    const comp = screen.getByRole('region', { name: 'Composición de los establecimientos observados' });
+    const btnCom = within(comp).getByRole('button', { name: /^Comercio/ });
+    fireEvent.click(btnCom);
+    expect((screen.getByLabelText('Filtro de sector') as HTMLSelectElement).value).toBe('Comercio');
+    fireEvent.click(within(screen.getByRole('region', { name: 'Composición de los establecimientos observados' })).getByRole('button', { name: /^Comercio/ }));
+    expect((screen.getByLabelText('Filtro de sector') as HTMLSelectElement).value).toBe('');
     // Registros censales y correspondencias se explican en «Cómo leer estas cifras» y en Cobertura
     expect(screen.getByLabelText('Cómo leer estas cifras')).toHaveTextContent(/Registros censales890 filas importadas; 30 sin establecimiento observado/);
     // Filtro vinculado: pulsar un sector filtra todo

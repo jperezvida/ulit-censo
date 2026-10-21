@@ -5,7 +5,7 @@ import {
   adopcion, concentracion, distribucion, filtrar, origenDatos, pct, perfilGrupos, rankingCalles, resumen, SECTORES, UMBRAL_CALLE, type CriterioCalle, type Sector, type UnidadPanel,
 } from '../../domain/panel';
 import type { Id } from '../../domain/types';
-import { Apilada, Bloque, COLOR, Conmutador, fmtPct, Hallazgos, SinDatos } from './graficos';
+import { Bloque, COLOR, Conmutador, fmtPct, Hallazgos, SinDatos } from './graficos';
 import { textosOrigen, type Contexto } from './comun';
 import { CAPAS, MapaTerritorial, MatrizTerritorial, TONO_CAPA, type CapaMapa } from './mapa';
 
@@ -23,11 +23,10 @@ function RankingMini({ unidades, criterio, titulo, color, sobre, fijada, onSobre
   const r = rankingCalles(unidades, criterio, UMBRAL_CALLE, 5);
   const max = Math.max(1, ...r.filas.map((f) => f.n));
   return (
-    <section className="vz-rank" aria-label={`Calles con más ${titulo.toLowerCase()}`}>
+    <section className="vz-rank" aria-label={`Calles con más ${titulo.toLowerCase()}`} title={r.porSector ? `${fmt(r.consideradas)} calles con presencia` : `${fmt(r.consideradas)} calles con al menos ${UMBRAL_CALLE} observados`}>
       <header>
         <i style={{ background: color }} aria-hidden />
         <h3>{titulo}</h3>
-        <span title={r.porSector ? 'Calles con al menos un establecimiento del grupo' : `Calles con al menos ${UMBRAL_CALLE} observados`}>{r.porSector ? `${fmt(r.consideradas)} calles` : `${fmt(r.consideradas)} evaluables`}</span>
       </header>
       {r.filas.length ? (
         <ol onPointerLeave={() => onSobre(null)}>
@@ -88,40 +87,13 @@ export function Resumen({ db, datos, unidades, filtros, setFiltros }: Contexto) 
   const vinculo = { sobre, fijada, onSobre: setSobre, onFijar: setFijada };
   return (
     <>
-      <div className="vz-tira c-12" role="group" aria-label="Indicadores principales">
-        <div className="vz-tira-kpi">
-          <span>Establecimientos observados</span>
-          <b>{fmt(r.establecimientos)}</b>
-          <small title={datos.registrosCensales > 0 ? `${fmt(datos.registrosCensales)} registros censales importados` : undefined}>{fmt(r.locales)} locales físicos{r.sinLocal ? ` · ${fmt(r.sinLocal)} sin local` : ''}</small>
-        </div>
-        <div className="vz-tira-kpi">
-          <span>Tasa de ocupación</span>
-          <b>{fmtPct(ocupPct)}</b>
-          <small>{fmt(r.ocupados)} ocupados de {fmt(r.establecimientos)}</small>
-          <i className="vz-tira-medidor" aria-hidden><i style={{ width: `${(ocupPct ?? 0) * 100}%` }} /></i>
-        </div>
-        <div className="vz-tira-kpi">
-          <span>Locales vacíos</span>
-          <b>{fmt(r.vacios)}</b>
-          <small>{fmtPct(pct({ n: r.vacios, den: r.establecimientos }))} de los observados</small>
-        </div>
-        <div className="vz-tira-kpi">
-          <span>Negocios</span>
-          <b>{fmt(r.negocios)}</b>
-          <small>distintos, en locales ocupados</small>
-        </div>
-        <div className="vz-tira-kpi">
-          <span>Franquicias (Sí)</span>
-          <b>{fmtPct(pct(r.franquicias))}</b>
-          <small title={r.franquiciasPendientes ? `${fmt(r.franquiciasPendientes)} sin respuesta Sí/No` : undefined}>{fmt(r.franquicias.n)} de {fmt(r.franquicias.den)} con respuesta Sí/No</small>
-        </div>
-      </div>
-
-      <section className="vz-bloque c-7 vz-bloque-mapa" aria-label={conGeo ? 'Mapa territorial' : 'Matriz territorial'}>
+      <div className="c-12 vz-res">
+      {/* Columna izquierda: el mapa territorial a toda la altura (o la matriz si no hay geometría) */}
+      <section className="vz-bloque vz-bloque-mapa" aria-label={conGeo ? 'Mapa territorial' : 'Matriz territorial'}>
         <header className="vz-bloque-cab">
           <div className="vz-bloque-tit">
             <h2>{conGeo ? 'Mapa territorial' : 'Matriz territorial: calles × sector'}</h2>
-            {!conGeo && <p>Sin geometría de calles fiable: calles × grupos, vinculada a los rankings.</p>}
+            {!conGeo && <p>Sin geometría de calles fiable: no se dibuja un mapa.</p>}
           </div>
           {conGeo && <div className="vz-bloque-acc"><Conmutador etiqueta="Capa del mapa" valor={capa} opciones={CAPAS} onCambio={setCapa} /></div>}
         </header>
@@ -131,14 +103,58 @@ export function Resumen({ db, datos, unidades, filtros, setFiltros }: Contexto) 
           : <MatrizTerritorial unidades={territorio} {...vinculo} />}
       </section>
 
-      <section className="c-5 vz-rankings" aria-label="Rankings de calles">
-        <h2 className="vh">Rankings de calles</h2>
-        {RANKINGS.map((x) => <RankingMini key={x.criterio} unidades={territorio} criterio={x.criterio} titulo={x.titulo} color={x.color} {...vinculo} />)}
-        <p className="vz-rankings-nota">Top 5 por número de establecimientos. «%»: peso en la calle, solo con al menos {UMBRAL_CALLE} observados (los vacíos, solo en esas calles).</p>
+      {/* Columna derecha: cifras clave, composición y los cuatro rankings en paralelo */}
+      <div className="vz-res-der">
+      <div className="vz-tira" role="group" aria-label="Indicadores principales">
+        <div className="vz-tira-kpi">
+          <span title="Establecimientos observados">Establecimientos</span>
+          <b>{fmt(r.establecimientos)}</b>
+          <small title={datos.registrosCensales > 0 ? `${fmt(datos.registrosCensales)} registros censales importados` : undefined}>{fmt(r.locales)} locales{r.sinLocal ? ` · ${fmt(r.sinLocal)} sin local` : ''}</small>
+        </div>
+        <div className="vz-tira-kpi">
+          <span>Tasa de ocupación</span>
+          <b>{fmtPct(ocupPct)}</b>
+          <small title={`${fmt(r.ocupados)} ocupados de ${fmt(r.establecimientos)} observados`}>{fmt(r.ocupados)} de {fmt(r.establecimientos)}</small>
+          <i className="vz-tira-medidor" aria-hidden><i style={{ width: `${(ocupPct ?? 0) * 100}%` }} /></i>
+        </div>
+        <div className="vz-tira-kpi">
+          <span>Locales vacíos</span>
+          <b>{fmt(r.vacios)}</b>
+          <small>{fmtPct(pct({ n: r.vacios, den: r.establecimientos }))} del total</small>
+        </div>
+        <div className="vz-tira-kpi">
+          <span>Negocios</span>
+          <b>{fmt(r.negocios)}</b>
+          <small title="Negocios distintos en locales ocupados">en locales ocupados</small>
+        </div>
+        <div className="vz-tira-kpi">
+          <span>Franquicias (Sí)</span>
+          <b>{fmtPct(pct(r.franquicias))}</b>
+          <small title={r.franquiciasPendientes ? `${fmt(r.franquiciasPendientes)} sin respuesta Sí/No` : undefined}>{fmt(r.franquicias.n)} de {fmt(r.franquicias.den)} Sí/No</small>
+        </div>
+      </div>
+
+      <section className="vz-composicion" aria-label="Composición de los establecimientos observados">
+        <header><h2>Composición de los {fmt(r.establecimientos)} establecimientos observados</h2><span>pulse un grupo para filtrar</span></header>
+        <div className="vz-comp-barra" aria-hidden>{grupos.filter((g) => g.n).map((g) => <span key={g.k} style={{ flexGrow: g.n, background: g.color }} title={`${g.t}: ${fmt(g.n)} (${fmtPct(g.n / Math.max(1, r.establecimientos), 1)})`} />)}</div>
+        <ul className="vz-comp-leyenda">
+          {grupos.map((g) => {
+            const esSector = SECTORES.includes(g.k as Sector);
+            const contenido = <><i style={{ background: g.color }} /><span>{g.t === 'Hostelería y Restauración' ? 'Hostelería y restauración' : g.t}</span><b className="num">{fmt(g.n)}</b><small className="num">{fmtPct(r.establecimientos ? g.n / r.establecimientos : null, 1)}</small></>;
+            return <li key={g.k}>{esSector ? <button className={filtros.sector === g.k ? 'on' : ''} aria-pressed={filtros.sector === g.k} onClick={() => setFiltros({ ...filtros, sector: filtros.sector === g.k ? undefined : (g.k as Sector) })}>{contenido}</button> : <span className="vz-comp-item">{contenido}</span>}</li>;
+          })}
+        </ul>
       </section>
 
-      <Bloque span={7} titulo="Distribución sectorial" etiqueta="Distribución por sector" sub={`Todos los grupos sobre los ${fmt(r.establecimientos)} establecimientos observados. Pulse un sector para filtrar.`} nota={clasif ? `Clasificación: ${clasif.v}.` : undefined}>
-        <Apilada sinLeyenda etiqueta="Distribución sectorial" segmentos={grupos.map((g) => ({ t: g.t, n: g.n, color: g.color }))} />
+      <section className="vz-rankings" aria-label="Rankings de calles">
+        <h2 className="vh">Rankings de calles</h2>
+        {RANKINGS.map((x) => <RankingMini key={x.criterio} unidades={territorio} criterio={x.criterio} titulo={x.titulo} color={x.color} {...vinculo} />)}
+        <p className="vz-rankings-nota">Top 5 por número de establecimientos · «%»: peso en la calle, solo con al menos {UMBRAL_CALLE} observados · calles con presencia: {RANKINGS.map((x) => `${x.titulo.split(' ')[0].toLowerCase()} ${fmt(rankingCalles(territorio, x.criterio, UMBRAL_CALLE, 0).consideradas)}`).join(' · ')}{' '}(vacíos: calles evaluables).</p>
+      </section>
+      </div>
+      </div>
+
+      <Bloque span={7} titulo="Perfil de cada grupo" etiqueta="Distribución por sector" sub="Peso, franquicia y presencia digital de cada grupo (Sí entre las respuestas Sí/No). Pulse un sector para filtrar." nota={clasif ? `Clasificación: ${clasif.v}.` : undefined}>
         <table className="vz-tabla vz-tabla-dist" aria-label="Distribución sectorial (tabla)">
           <thead><tr><th>Grupo</th><th className="num">Establecimientos</th><th className="num">% observados</th><th className="num">% ocupados</th><th className="num">Franquicia</th><th className="num">Web</th><th className="num">Google</th></tr></thead>
           <tbody>

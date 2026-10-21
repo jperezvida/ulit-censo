@@ -189,3 +189,18 @@ No se suben al repositorio porque son imágenes de trabajo. Se entregan aparte e
 ## 9. Relacionado
 
 - **Corrección pendiente C1c-1** (varios locales en el mismo portal): `C1C-INCORPORACION.md`, sección 12.1. Cambiará las cifras de locales, establecimientos sin local y correspondencias que muestra este cuadro de mando.
+
+## 7. Contraste con la captura real del cuadro anterior (Power BI)
+
+Se revisó la captura real del cuadro anterior. Esa captura muestra: mapa con puntos a la izquierda, dos indicadores, un gráfico circular, cuatro rankings en fila y una banda de CP vacía. Se conserva lo que funcionaba (mapa protagonista, cuatro rankings visibles a la vez, todo en una pantalla) y se corrige lo que no:
+
+| Cuadro anterior | Resumen actual |
+|---|---|
+| Puntos sobre el mapa sin indicar su precisión | Puntos solo con coordenadas verificadas; si no, agregado por calle con escala de cuantiles y leyenda |
+| Mapa de un solo color | Cinco capas (ocupación, tres sectores, vacíos) con rampa secuencial validada |
+| Dos indicadores sin denominador | Cinco indicadores, cada uno con su denominador («474 de 579», «60 de 421 Sí/No») |
+| Gráfico circular de sectores | Barra única de composición con cifra y %, que además filtra |
+| Nombres de calle truncados en los rankings | Nombre completo, cifra absoluta y peso en la calle |
+| Rankings, mapa y filtros independientes | Selección vinculada mapa ↔ rankings y «Filtrar por esta calle» |
+| Banda de CP sin datos ocupando espacio | Filtro CP compacto y deshabilitado cuando no hay datos |
+| Sin aviso de origen | Aviso calculado del origen (histórico, demostración, fuentes de clasificación) |

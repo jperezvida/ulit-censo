@@ -5,6 +5,7 @@ import type { BaseDatos } from '../../domain/db';
 import { claseDe, cortesCuantiles, rankingCalles, SECTORES, UMBRAL_CALLE, type FilaRanking, type Sector, type UnidadPanel } from '../../domain/panel';
 import type { Calle, Id, LngLat } from '../../domain/types';
 import { COLOR, fmtPct } from './graficos';
+import { LienzoGL, webglDisponible, type CalleMapa, type PuntoMapa } from './mapaGL';
 import { SECTOR_CORTO } from './comun';
 
 /**
@@ -86,7 +87,7 @@ function Leyenda({ capa, cortes, colores, modo }: { capa: CapaMapa; cortes: numb
   }
   return (
     <div className="vz-mapa-leyenda" aria-label={`Escala: ${etiquetaCapa(capa)}`}>
-      <b>{etiquetaCapa(capa)}<small>% de la calle</small></b>
+      <b>{etiquetaCapa(capa)} <small>· % de la calle</small></b>
       {cortes.map((c, i) => <span key={i}><i style={{ background: colores[i] }} />{i === 0 ? `≤ ${fmtPct(c, 0)}` : `${fmtPct(cortes[i - 1], 0)}–${fmtPct(c, 0)}`}</span>)}
       <span><i style={{ background: '#e6eaf0' }} />&lt; {UMBRAL_CALLE} observados</span>
     </div>
@@ -98,6 +99,8 @@ export function MapaTerritorial({ db, municipioId, unidades, capa, sobre, fijada
   onSobre: (id: Id | null) => void; onFijar: (id: Id | null) => void; onFiltrar: (id: Id) => void;
 }) {
   const [tip, setTip] = useState<{ x: number; y: number; id: Id } | null>(null);
+  // Mapa base cartográfico (MapLibre) si hay WebGL; si no (o en pruebas), el mismo mapa en SVG.
+  const [gl] = useState(webglDisponible);
   const base = useMemo(() => Object.values(db.calles).filter((c) => c.municipioId === municipioId && c.segmentos.some((s) => s.coords.length > 1)), [db.calles, municipioId]);
   const filas = useMemo(() => callesDelAmbito(unidades), [unidades]);
   const porCalle = useMemo(() => new Map(filas.map((f) => [f.calleId, f])), [filas]);
@@ -147,52 +150,67 @@ export function MapaTerritorial({ db, municipioId, unidades, capa, sobre, fijada
     onSobre(id);
   };
   const salir = () => { setTip(null); onSobre(null); };
+  const callesGL = useMemo<CalleMapa[]>(
+    () => base.map((c) => { const f = porCalle.get(c.id); return { id: c.id, nombre: c.nombre, segmentos: c.segmentos.map((s) => s.coords), color: modo === 'puntos' ? '#9aa6b8' : color(f), ancho: f ? 2 + 5 * Math.sqrt(f.observados / maxObs) : 1.2, conDatos: !!f }; }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [base, porCalle, capa, modo, maxObs, cortes.join(',')],
+  );
+  const puntosGL = useMemo<PuntoMapa[]>(() => puntos.map((u) => {
+    const cat = u.vacio ? 'vacios' : (u.sector ?? 'Sin clasificar');
+    return { id: u.clave, calleId: u.calleId, coord: u.coord!, color: cat === 'vacios' ? TONO_CAPA.vacios : COLOR[cat], opacidad: capa === 'ocupacion' || cat === capa ? 1 : 0.22 };
+  }), [puntos, capa]);
+  const centroMun = db.municipios[municipioId]?.centro ?? base[0]?.segmentos[0]?.coords[0];
   const tipFila = tip ? porCalle.get(tip.id) : undefined;
   const fij = fijada ? porCalle.get(fijada) : undefined;
 
   if (!base.length) return null;
+  const etiqueta = modo === 'puntos' ? 'Mapa de establecimientos (coordenadas verificadas)' : `Mapa por calle: ${etiquetaCapa(capa)}`;
   return (
     <div className="vz-mapa2">
       <div className="vz-mapa2-lienzo">
+        {gl && centroMun ? (
+          <div className="vz-mapa2-gl" role="img" aria-label={etiqueta}>
+            <LienzoGL centro={centroMun} calles={callesGL} puntos={puntosGL} sobre={sobre} fijada={fijada} onSobre={onSobre} onFijar={onFijar} onTip={setTip} />
+          </div>
+        ) : (
         <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label={modo === 'puntos' ? 'Mapa de establecimientos (coordenadas verificadas)' : `Mapa por calle: ${etiquetaCapa(capa)}`} onPointerLeave={salir}>
-          {/* Calles del callejero sin datos: contexto */}
-          {base.filter((c) => !porCalle.has(c.id)).map((c) => c.segmentos.map((s) => <polyline key={s.id} points={linea(s.coords)} className="vz-calle-fondo" />))}
-          {modo === 'calles' && base.filter((c) => porCalle.has(c.id)).map((c) => {
-            const f = porCalle.get(c.id)!;
-            const activa = c.id === sobre || c.id === fijada;
-            return (
-              <g key={c.id} className={`vz-calle ${activa ? 'activa' : ''}`} onPointerMove={(e) => mover(e, c.id)} onClick={() => onFijar(fijada === c.id ? null : c.id)}>
-                {activa && c.segmentos.map((s) => <polyline key={`h${s.id}`} points={linea(s.coords)} className="vz-calle-halo" strokeWidth={ancho(f) + 6 * fz} />)}
-                {c.segmentos.map((s) => <polyline key={s.id} points={linea(s.coords)} stroke={color(f)} strokeWidth={ancho(f)} strokeLinecap="round" fill="none" />)}
-                {c.segmentos.map((s) => <polyline key={`t${s.id}`} points={linea(s.coords)} className="vz-calle-hit" strokeWidth={14 * fz} />)}
-              </g>
-            );
-          })}
-          {modo === 'puntos' && base.filter((c) => porCalle.has(c.id)).map((c) => c.segmentos.map((s) => <polyline key={s.id} points={linea(s.coords)} className={`vz-calle-base ${c.id === sobre || c.id === fijada ? 'activa' : ''}`} />))}
-          {modo === 'puntos' && puntos.map((u) => {
-            const [x, y] = xy(u.coord!);
-            const cat = u.vacio ? 'vacios' : (u.sector ?? 'Sin clasificar');
-            const enCapa = capa === 'ocupacion' || cat === capa;
-            return (
-              <circle key={u.clave} cx={x} cy={y} r={(enCapa ? 4.5 : 3) * fz} strokeWidth={1.5 * fz} className="vz-punto" fill={cat === 'vacios' ? TONO_CAPA.vacios : COLOR[cat]} opacity={enCapa ? 1 : 0.22}
-                onPointerMove={(e) => mover(e, u.calleId)} onClick={() => onFijar(fijada === u.calleId ? null : u.calleId)} />
-            );
-          })}
-          {etiquetas.map(({ id, x, y }) => (
-            <text key={`e${id}`} x={x} y={y - 7 * fz} className={`vz-mapa-etq ${id === sobre || id === fijada ? 'activa' : ''}`} style={{ fontSize: 11.5 * fz, strokeWidth: 3.5 * fz }} textAnchor="middle">{db.calles[id].nombre}</text>
-          ))}
-        </svg>
+            {/* Calles del callejero sin datos: contexto */}
+            {base.filter((c) => !porCalle.has(c.id)).map((c) => c.segmentos.map((s) => <polyline key={s.id} points={linea(s.coords)} className="vz-calle-fondo" />))}
+            {modo === 'calles' && base.filter((c) => porCalle.has(c.id)).map((c) => {
+              const f = porCalle.get(c.id)!;
+              const activa = c.id === sobre || c.id === fijada;
+              return (
+                <g key={c.id} className={`vz-calle ${activa ? 'activa' : ''}`} onPointerMove={(e) => mover(e, c.id)} onClick={() => onFijar(fijada === c.id ? null : c.id)}>
+                  {activa && c.segmentos.map((s) => <polyline key={`h${s.id}`} points={linea(s.coords)} className="vz-calle-halo" strokeWidth={ancho(f) + 6 * fz} />)}
+                  {c.segmentos.map((s) => <polyline key={s.id} points={linea(s.coords)} stroke={color(f)} strokeWidth={ancho(f)} strokeLinecap="round" fill="none" />)}
+                  {c.segmentos.map((s) => <polyline key={`t${s.id}`} points={linea(s.coords)} className="vz-calle-hit" strokeWidth={14 * fz} />)}
+                </g>
+              );
+            })}
+            {modo === 'puntos' && base.filter((c) => porCalle.has(c.id)).map((c) => c.segmentos.map((s) => <polyline key={s.id} points={linea(s.coords)} className={`vz-calle-base ${c.id === sobre || c.id === fijada ? 'activa' : ''}`} />))}
+            {modo === 'puntos' && puntos.map((u) => {
+              const [x, y] = xy(u.coord!);
+              const cat = u.vacio ? 'vacios' : (u.sector ?? 'Sin clasificar');
+              const enCapa = capa === 'ocupacion' || cat === capa;
+              return (
+                <circle key={u.clave} cx={x} cy={y} r={(enCapa ? 4.5 : 3) * fz} strokeWidth={1.5 * fz} className="vz-punto" fill={cat === 'vacios' ? TONO_CAPA.vacios : COLOR[cat]} opacity={enCapa ? 1 : 0.22}
+                  onPointerMove={(e) => mover(e, u.calleId)} onClick={() => onFijar(fijada === u.calleId ? null : u.calleId)} />
+              );
+            })}
+            {etiquetas.map(({ id, x, y }) => (
+              <text key={`e${id}`} x={x} y={y - 7 * fz} className={`vz-mapa-etq ${id === sobre || id === fijada ? 'activa' : ''}`} style={{ fontSize: 11.5 * fz, strokeWidth: 3.5 * fz }} textAnchor="middle">{db.calles[id].nombre}</text>
+            ))}
+          </svg>
+        )}
         {tip && tipFila && (
-          <div className="vz-tip" style={{ left: Math.min(tip.x + 14, 560), top: Math.max(tip.y - 10, 4) }} role="tooltip">
+          <div className="vz-tip" style={{ left: tip.x + 14, top: Math.max(tip.y - 10, 4) }} role="tooltip">
             <b>{tipFila.calle}</b>
             <span><strong className="num">{tipFila.observados >= UMBRAL_CALLE ? fmtPct(valorCapa(tipFila, capa), 0) : '—'}</strong> {etiquetaCapa(capa).toLowerCase()}</span>
             <span className="muted">{fmt(tipFila.observados)} observados · {fmt(tipFila.ocupados)} ocupados · {fmt(tipFila.vacios)} vacíos</span>
           </div>
         )}
-      </div>
-      <aside className="vz-mapa2-lado">
-        <Leyenda capa={capa} cortes={cortes} colores={colores} modo={modo} />
-        {fij ? (
+        <div className="vz-mapa2-leyenda"><Leyenda capa={capa} cortes={cortes} colores={colores} modo={modo} /></div>
+        {fij && (
           <div className="vz-fijada" aria-label="Calle seleccionada">
             <div className="fila"><b className="esp">{fij.calle}</b><button className="vz-quitar" aria-label="Quitar la selección" onClick={() => onFijar(null)}><X size={14} /></button></div>
             <span className="muted">{fmt(fij.observados)} observados · ocupación {fmtPct(fij.ocupados / fij.observados, 0)}</span>
@@ -202,13 +220,13 @@ export function MapaTerritorial({ db, municipioId, unidades, capa, sobre, fijada
             </span>
             <button className="btn s" onClick={() => onFiltrar(fij.calleId)}>Filtrar por esta calle</button>
           </div>
-        ) : <p className="vz-mapa-ayuda">Pulse una calle del mapa o de un ranking para ver su composición.</p>}
-        <p className="vz-mapa-nota">
+        )}
+      </div>
+      <p className="vz-mapa-nota">
         {modo === 'puntos'
-          ? `${fmt(puntos.length)} establecimientos con coordenadas verificadas, en su posición. Los demás no se dibujan: no se inventan posiciones.`
-          : `Agregado por calle: color = % de la calle (cuantiles de las ${fmt(aptas.length)} calles con al menos ${UMBRAL_CALLE} observados); grosor = establecimientos. Sin coordenadas verificadas no se dibujan puntos.`}
-        </p>
-      </aside>
+          ? `${fmt(puntos.length)} establecimientos con coordenadas verificadas, en su posición; los demás no se dibujan (no se inventan posiciones).`
+          : `Color: % de la calle (cuantiles de las ${fmt(aptas.length)} calles con al menos ${UMBRAL_CALLE} observados) · grosor: establecimientos · sin coordenadas verificadas no se dibujan puntos.`}
+      </p>
     </div>
   );
 }
