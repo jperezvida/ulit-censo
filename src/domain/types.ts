@@ -313,7 +313,10 @@ export interface Importacion {
 export type ColeccionIncorporada = 'campanas' | 'registros' | 'locales' | 'negocios' | 'observaciones' | 'ocupaciones' | 'vinculos' | 'franquicias' | 'digital' | 'clasificaciones';
 
 export interface TrazaIncorporacion {
-  version: 1;
+  /** 1: huellas FNV-1a de 32 bits (primeras incorporaciones de C1c). 2: huellas SHA-256. */
+  version: 1 | 2;
+  /** Algoritmo de las huellas de integridad (ausente en la versión 1 = FNV-1a de 32 bits). */
+  algoritmoHuellas?: 'sha256';
   /** SHA-256 del archivo (también en `huella`). Los bytes del archivo NO se guardan. */
   sha256: string;
   perfil: { id: string; version: number };

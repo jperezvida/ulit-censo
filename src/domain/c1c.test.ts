@@ -16,6 +16,9 @@ import { ID_CATALOGO_2026 } from './catalogo2026';
 import type { BaseDatos } from './db';
 import type { ColeccionIncorporada } from './types';
 import { useStore } from '../store/store';
+import { createHash } from 'node:crypto';
+import { sha256Texto } from './sha256';
+import { huella } from '../data/rng';
 
 /** Todo es FICTICIO: libros generados en memoria y un callejero de «VÍA FICTICIA nnn». */
 const DEST: DestinoIncorporacion = { municipioId: 'mun-medina', anio: 2025 };
@@ -124,7 +127,7 @@ describe('C1c · Incorporación del histórico', () => {
     // `datos` (texto, compatibilidad) sigue existiendo con las cabeceras originales
     expect(regs[0].datos['Fecha censo']).toMatch(/^2025-\d{2}-\d{2}$/);
     expect(Object.keys(regs[0].datos)).toContain('Gr Comercio');
-    expect(regs[0].huellaFila).toMatch(/^[0-9a-f]{8}$/);
+    expect(regs[0].huellaFila).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it('ocupados y vacíos: negocio literal, ocupación 2025 con fecha real, nada revisado ni verificado', async () => {
@@ -457,4 +460,71 @@ describe('C1c · Rendimiento y persistencia con 10.000 registros', () => {
     expect(Object.keys(u.registros).length).toBe(Object.keys(db.registros).length);
     expect(t2 - t1).toBeLessThan(10000);
   }, 180000);
+});
+
+describe('C1d · Refuerzos de C1c: huellas SHA-256 versionadas e identificadores por municipio', () => {
+  it('SHA-256 síncrono: vectores oficiales y coincidencia con node:crypto (multibloque y UTF-8)', () => {
+    expect(sha256Texto('')).toBe('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855');
+    expect(sha256Texto('abc')).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+    expect(sha256Texto('abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq')).toBe('248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1');
+    for (const t of ['VÍA FICTICIA 001 · «ñ» € 🙂', 'x'.repeat(55), 'x'.repeat(56), 'x'.repeat(64), JSON.stringify(demo.calles).slice(0, 200000)]) {
+      expect(sha256Texto(t)).toBe(createHash('sha256').update(t, 'utf8').digest('hex'));
+    }
+  });
+
+  it('las incorporaciones nuevas usan huellas SHA-256 (traza versión 2) en entidades, filas y firma del plan', async () => {
+    const p = await preparar(base);
+    const r = aplicar(base, p);
+    const c1 = r.db.importaciones[r.importacionId].c1!;
+    expect(c1).toMatchObject({ version: 2, algoritmoHuellas: 'sha256' });
+    const huellas = Object.values(c1.creadas).flatMap((x) => Object.values(x!));
+    expect(huellas.length).toBeGreaterThan(100);
+    expect(huellas.every((h) => /^[0-9a-f]{64}$/.test(h))).toBe(true);
+    const neg = Object.keys(c1.creadas.negocios!)[0];
+    expect(c1.creadas.negocios![neg]).toBe(sha256Texto(JSON.stringify(r.db.negocios[neg])));
+    expect(Object.values(r.db.registros).find((x) => x.importacionId === r.importacionId)!.huellaFila).toMatch(/^[0-9a-f]{64}$/);
+    expect(p.plan.firma).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('una traza antigua (versión 1, huellas de 32 bits) se sigue comprobando y deshaciendo sin migraciones', async () => {
+    const p = await preparar(base);
+    const r = aplicar(base, p);
+    const imp = r.db.importaciones[r.importacionId];
+    const legado = Object.fromEntries(Object.entries(imp.c1!.creadas).map(([col, ids]) => [col, Object.fromEntries(Object.keys(ids!).map((id) => [id, huella(JSON.stringify((r.db as unknown as Record<string, Record<string, unknown>>)[col][id]))]))]));
+    const { algoritmoHuellas: _a, ...resto } = imp.c1!;
+    const v1: BaseDatos = { ...r.db, importaciones: { ...r.db.importaciones, [imp.id]: { ...imp, c1: { ...resto, version: 1, creadas: legado } } } };
+    expect(deshacerIncorporacion(v1, imp.id, 'p-elena').importaciones[imp.id].estado).toBe('descartada');
+    const negId = Object.keys(legado.negocios)[0];
+    const cambiado: BaseDatos = { ...v1, negocios: { ...v1.negocios, [negId]: { ...v1.negocios[negId], nombre: 'Otro' } } };
+    expect(() => deshacerIncorporacion(cambiado, imp.id, 'p-elena')).toThrow(/cambio\(s\) posterior/);
+    // Y la reimportación de un archivo incorporado con la versión 1 sigue reconociéndose como idéntica
+    const regs = Object.fromEntries(Object.entries(v1.registros).map(([k, x]) => [k, x.importacionId === imp.id ? { ...x, huellaFila: huella(JSON.stringify(Object.keys(x.original!).sort().map((c) => [c, x.original![c]]))) } : x]));
+    const p2 = await preparar({ ...v1, registros: regs }, {}, {}, DEST, p.bytes);
+    expect(p2.plan.bloqueos.map((b) => b.codigo)).toEqual(['reimportacion-identica']);
+    expect(p2.plan.reimportacion?.filasIguales).toBe(60);
+  });
+
+  it('el mismo archivo en dos municipios del mismo año: identificadores distintos y ningún registro sobrescrito', async () => {
+    const D_MED: DestinoIncorporacion = { municipioId: 'mun-medina', anio: 2022 };
+    const D_VLL: DestinoIncorporacion = { municipioId: 'mun-valladolid', anio: 2022 };
+    const db0 = conCallesFicticias(base, 'mun-valladolid', viasFicticias(1, 6));
+    const bytes = await libroFicticio({ filas: 60, anomalias: true });
+    const pM = await preparar(db0, {}, {}, D_MED, bytes);
+    const rM = aplicar(db0, pM, {}, {}, D_MED);
+    const regsM = Object.values(rM.db.registros).filter((x) => x.importacionId === rM.importacionId);
+    const pV = await preparar(rM.db, {}, {}, D_VLL, bytes);
+    expect(pV.plan.aplicable).toBe(true);
+    expect(pV.plan.reimportacion).toBeUndefined();
+    const rV = aplicar(rM.db, pV, {}, {}, D_VLL);
+    expect(rM.importacionId).toMatch(/^imp-c1-mun-medina-2022-/);
+    expect(rV.importacionId).toMatch(/^imp-c1-mun-valladolid-2022-/);
+    expect(rV.campanaId).not.toBe(rM.campanaId);
+    for (const reg of regsM) expect(rV.db.registros[reg.id]).toBe(reg);
+    expect(Object.values(rV.db.registros).filter((x) => x.importacionId === rV.importacionId)).toHaveLength(60);
+    // Cada ámbito sigue reconociendo solo su propia reimportación y se deshace por separado
+    const otraVez = await preparar(rV.db, {}, {}, D_MED, bytes);
+    expect(otraVez.plan.reimportacion?.importacionId).toBe(rM.importacionId);
+    const u = deshacerIncorporacion(rV.db, rV.importacionId, 'p-elena');
+    for (const reg of regsM) expect(u.registros[reg.id]).toBe(reg);
+  });
 });

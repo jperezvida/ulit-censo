@@ -3,6 +3,7 @@ import { ErrorDominio, kNC, siguienteOrden } from './db';
 import { direccionVigente, anioDe } from './consultas';
 import { claveCalle, normalizar } from './text';
 import { huella } from '../data/rng';
+import { sha256Texto } from './sha256';
 import { TAXONOMIA_POR_ID, catalogoDeNodo } from './taxonomy';
 import { CONFIG_TERRITORIAL } from './territorio';
 import { REGLAS } from './xlsx/reglasInterpretacion';
@@ -131,7 +132,14 @@ export interface PlanIncorporacion {
 }
 
 const esValida = (c?: { estado: string }) => c?.estado === 'valido' || c?.estado === 'transformado';
-const huellaFila = (celdas: Record<string, unknown>) => huella(JSON.stringify(Object.keys(celdas).sort().map((k) => [k, celdas[k]])));
+/**
+ * Huellas de INTEGRIDAD. Versión 2 (actual): SHA-256. Versión 1 (incorporaciones anteriores):
+ * FNV-1a de 32 bits, que se sigue sabiendo comprobar para no romper datos existentes.
+ */
+export type AlgoritmoHuella = 'sha256' | 'fnv1a-32';
+const resumir = (texto: string, alg: AlgoritmoHuella) => (alg === 'sha256' ? sha256Texto(texto) : huella(texto));
+export const algoritmoDe = (traza: Pick<TrazaIncorporacion, 'version' | 'algoritmoHuellas'>): AlgoritmoHuella => traza.algoritmoHuellas ?? (traza.version === 1 ? 'fnv1a-32' : 'sha256');
+const huellaFila = (celdas: Record<string, unknown>, alg: AlgoritmoHuella = 'sha256') => resumir(JSON.stringify(Object.keys(celdas).sort().map((k) => [k, celdas[k]])), alg);
 
 function validarDecisiones(db: BaseDatos, d: DecisionesIncorporacion, filas: Set<number>, municipioId: Id, anio: number): string[] {
   const errores: string[] = [];
@@ -185,8 +193,9 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   const bloqueos: Bloqueo[] = [];
   const campanaId = destino.campanaId ?? `camp-hist-${destino.municipioId}-${destino.anio}-${sha.slice(0, 10)}`;
   // Una incorporación deshecha conserva su traza: la siguiente usa otro identificador.
-  // El año forma parte del identificador: el mismo archivo puede incorporarse a años distintos.
-  const raizImp = `imp-c1-${destino.anio}-${sha.slice(0, 16)}`;
+  // Municipio y año forman parte del identificador: el mismo archivo puede incorporarse a ámbitos
+  // históricos distintos sin colisionar ni sobrescribir registros.
+  const raizImp = `imp-c1-${destino.municipioId}-${destino.anio}-${sha.slice(0, 16)}`;
   let importacionId = destino.importacionId ?? raizImp;
   for (let n = 2; !destino.importacionId && db.importaciones[importacionId]?.estado === 'descartada'; n++) importacionId = `${raizImp}-${n}`;
 
@@ -222,7 +231,9 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   const previa = identica ?? mismoAmbito;
   if (previa) {
     const anteriores = new Map(Object.values(db.registros).filter((r) => r.importacionId === previa.id).map((r) => [r.fila, r.huellaFila]));
-    const actualesF = new Map(capa.filas.map((f) => [f.fila, huellaFila(f.celdas)]));
+    // Se compara con el MISMO algoritmo con que se guardó la incorporación previa.
+    const alg = algoritmoDe(previa.c1!);
+    const actualesF = new Map(capa.filas.map((f) => [f.fila, huellaFila(f.celdas, alg)]));
     reimportacion = {
       importacionId: previa.id, campanaId: previa.campanaId,
       filasIguales: [...actualesF].filter(([f, h]) => anteriores.get(f) === h).length,
@@ -346,7 +357,7 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
     },
     pendientes, reimportacion, filas,
   };
-  return { ...plan, firma: huella(JSON.stringify(plan)) };
+  return { ...plan, firma: sha256Texto(JSON.stringify(plan)) };
 }
 
 // ───────────── Presencia digital y franquicia (solo valores válidos, origen «importado») ─────────────
@@ -562,7 +573,7 @@ export function aplicarIncorporacion(
 
   // 4. Traza: huella de cada entidad creada (permite detectar cambios posteriores al deshacer).
   const traza: TrazaIncorporacion = {
-    version: 1, sha256: plan.archivo.sha256, perfil: plan.perfil, hoja: plan.hoja, anio: destino.anio,
+    version: 2, algoritmoHuellas: 'sha256', sha256: plan.archivo.sha256, perfil: plan.perfil, hoja: plan.hoja, anio: destino.anio,
     columnas: capa.columnas.map((c) => ({ clave: c.clave, letra: c.letra, cabecera: c.cabecera, tipo: c.tipo })), porId: opciones.porId,
     decisiones: decisiones as Record<string, unknown>, firmaPlan: plan.firma,
     creadas: Object.fromEntries(COLECCIONES.map((col) => [col, Object.fromEntries(creadas[col].map((id) => [id, huellaEntidad(db, col, id)]))])),
@@ -579,7 +590,7 @@ export function aplicarIncorporacion(
   return { db, importacionId, campanaId, creadas: Object.fromEntries(COLECCIONES.map((c) => [c, creadas[c].length])) as Record<ColeccionIncorporada, number> };
 }
 
-const huellaEntidad = (db: BaseDatos, col: ColeccionIncorporada, id: Id) => huella(JSON.stringify((db[col] as Record<string, unknown>)[id]));
+const huellaEntidad = (db: BaseDatos, col: ColeccionIncorporada, id: Id, alg: AlgoritmoHuella = 'sha256') => resumir(JSON.stringify((db[col] as Record<string, unknown>)[id]), alg);
 
 /** Integridad referencial de las entidades creadas (y de lo que referencian). */
 export function comprobarIntegridad(db: BaseDatos, creadas: Partial<Record<ColeccionIncorporada, Id[]>>, importacionId: Id): string[] {
@@ -641,12 +652,13 @@ export function deshacerIncorporacion(db0: BaseDatos, importacionId: Id, porId: 
   if (imp.estado !== 'confirmada') throw new ErrorDominio('regla', 'Esta incorporación ya se deshizo.');
   if (!db0.personas[porId]) throw new ErrorDominio('regla', 'Deshacer debe hacerlo una persona registrada.');
   const creadas = imp.c1.creadas;
+  const alg = algoritmoDe(imp.c1);
   const conflictos: string[] = [];
   const ids = new Map<ColeccionIncorporada, Set<Id>>(COLECCIONES.map((c) => [c, new Set(Object.keys(creadas[c] ?? {}))]));
   for (const col of COLECCIONES) {
     for (const [id, h] of Object.entries(creadas[col] ?? {})) {
       if ((db0[col] as Record<string, unknown>)[id] === undefined) conflictos.push(`${col} «${id}» ya no existe`);
-      else if (huellaEntidad(db0, col, id) !== h) conflictos.push(`${col} «${id}» se ha modificado después de la incorporación`);
+      else if (huellaEntidad(db0, col, id, alg) !== h) conflictos.push(`${col} «${id}» se ha modificado después de la incorporación`);
     }
   }
   const nuestro = (col: ColeccionIncorporada, id: Id) => ids.get(col)!.has(id);
