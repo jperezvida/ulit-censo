@@ -185,8 +185,10 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   const bloqueos: Bloqueo[] = [];
   const campanaId = destino.campanaId ?? `camp-hist-${destino.municipioId}-${destino.anio}-${sha.slice(0, 10)}`;
   // Una incorporación deshecha conserva su traza: la siguiente usa otro identificador.
-  let importacionId = destino.importacionId ?? `imp-c1-${sha.slice(0, 16)}`;
-  for (let n = 2; !destino.importacionId && db.importaciones[importacionId]?.estado === 'descartada'; n++) importacionId = `imp-c1-${sha.slice(0, 16)}-${n}`;
+  // El año forma parte del identificador: el mismo archivo puede incorporarse a años distintos.
+  const raizImp = `imp-c1-${destino.anio}-${sha.slice(0, 16)}`;
+  let importacionId = destino.importacionId ?? raizImp;
+  for (let n = 2; !destino.importacionId && db.importaciones[importacionId]?.estado === 'descartada'; n++) importacionId = `${raizImp}-${n}`;
 
   if (!mun) bloqueos.push({ codigo: 'destino-invalido', mensaje: `El municipio «${destino.municipioId}» no existe.`, detalles: [] });
   if (!sha) bloqueos.push({ codigo: 'destino-invalido', mensaje: 'Falta la huella SHA-256 del archivo.', detalles: [] });
@@ -207,11 +209,16 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   const errores = validarDecisiones(db, decisiones, filasSet, destino.municipioId, destino.anio);
   if (errores.length) bloqueos.push({ codigo: 'decision-invalida', mensaje: `${errores.length} decisión(es) no válida(s): no se aplica nada.`, detalles: errores });
 
-  // Reimportación: misma huella (idéntica) o mismo municipio, año y perfil con otra huella (distinto).
+  // Reimportación. ÁMBITO = municipio + año de destino (+ campaña, si se indica) + perfil.
+  // IDÉNTICA = mismo ámbito, mismo SHA-256 y misma VERSIÓN del perfil: no se duplica nada.
+  // Mismo ámbito con otro archivo u otra versión del perfil: exige una nueva conciliación.
+  // El mismo archivo en OTRO año no es la misma incorporación (solo se avisa).
   let reimportacion: PlanIncorporacion['reimportacion'];
   const previas = Object.values(db.importaciones).filter((i) => i.c1 && i.estado === 'confirmada' && i.municipioId === destino.municipioId);
-  const identica = previas.find((i) => i.c1!.sha256 === sha && i.c1!.perfil.id === capa.perfil.id);
-  const mismoAmbito = previas.find((i) => i.c1!.anio === destino.anio && i.c1!.perfil.id === capa.perfil.id);
+  const enAmbito = previas.filter((i) => i.c1!.anio === destino.anio && i.c1!.perfil.id === capa.perfil.id && (!destino.campanaId || i.campanaId === destino.campanaId));
+  const identica = enAmbito.find((i) => i.c1!.sha256 === sha && i.c1!.perfil.version === capa.perfil.version);
+  const mismoAmbito = enAmbito.find((i) => i !== identica);
+  const enOtroAnio = previas.filter((i) => i.c1!.sha256 === sha && i.c1!.anio !== destino.anio);
   const previa = identica ?? mismoAmbito;
   if (previa) {
     const anteriores = new Map(Object.values(db.registros).filter((r) => r.importacionId === previa.id).map((r) => [r.fila, r.huellaFila]));
@@ -230,8 +237,8 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
       const r = reimportacion;
       bloqueos.push({
         codigo: 'archivo-distinto',
-        mensaje: `Ya hay una incorporación de ${destino.anio} con el mismo perfil y otro archivo (importación «${previa.id}»). Hace falta una nueva conciliación: no se sobrescribe el histórico.`,
-        detalles: [`${r.filasIguales} fila(s) iguales`, `${r.filasCambiadas.length} cambiada(s)`, `${r.filasNuevas.length} nueva(s)`, `${r.filasDesaparecidas.length} desaparecida(s)`],
+        mensaje: `Ya hay una incorporación de ${destino.anio} con el mismo perfil y otro archivo u otra versión del perfil (importación «${previa.id}»). Hace falta una nueva conciliación: no se sobrescribe el histórico.`,
+        detalles: [...(previa.c1!.sha256 === sha ? [`Mismo archivo, perfil v${previa.c1!.perfil.version} → v${capa.perfil.version}`] : []), `${r.filasIguales} fila(s) iguales`, `${r.filasCambiadas.length} cambiada(s)`, `${r.filasNuevas.length} nueva(s)`, `${r.filasDesaparecidas.length} desaparecida(s)`],
       });
     }
   }
@@ -312,6 +319,7 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   const tipos = cuenta(resultado.incidencias.map((i) => i.tipo as string));
   const candidatas = capa.candidatasExcluir.map((c) => ({ fila: c.fila, decidida: excluidas.has(c.fila) }));
   const pendientes = [
+    ...enOtroAnio.map((i) => `El mismo archivo ya se incorporó como histórico de ${i.c1!.anio} (importación «${i.id}»): comprobar que ${destino.anio} es el año correcto`),
     ...Object.values(REGLAS).filter((r) => r.clase === 'propuesta' && !(op.reglasAutorizadas ?? []).includes(r.id) && resultado.filas.some((f) => Object.values(f.celdas).some((c) => c.regla === r.id && c.estado === 'pendiente')))
       .map((r) => `Regla no autorizada: ${r.id} (${r.descripcion})`),
     ...(candidatas.some((c) => !c.decidida) ? [`${candidatas.filter((c) => !c.decidida).length} posible(s) fila(s) de totales sin decidir: se incorporan como registros, sin excluir`] : []),
@@ -624,7 +632,8 @@ export function comprobarIntegridad(db: BaseDatos, creadas: Partial<Record<Colec
  * Retira EXACTAMENTE lo que creó una incorporación. Se bloquea, explicando el motivo, si alguna
  * entidad creada ha cambiado o desaparecido, o si otra entidad posterior la referencia (una
  * observación nueva en un local importado, una clasificación hecha en oficina…): nunca borra ni
- * sobrescribe trabajo posterior. La importación se conserva marcada como deshecha (traza).
+ * sobrescribe trabajo posterior. La importación se conserva marcada como deshecha (traza). El
+ * contador global `secuencia` no retrocede (véase abajo).
  */
 export function deshacerIncorporacion(db0: BaseDatos, importacionId: Id, porId: Id, ahora = new Date().toISOString()): BaseDatos {
   const imp = db0.importaciones[importacionId];
@@ -659,6 +668,10 @@ export function deshacerIncorporacion(db0: BaseDatos, importacionId: Id, porId: 
   if (conflictos.length) {
     throw new ErrorDominio('bloqueado', `No se puede deshacer la incorporación: hay ${conflictos.length} cambio(s) posterior(es) sobre los datos importados. Hay que revisarlos antes; no se ha modificado nada.`, conflictos.slice(0, 30));
   }
+  // `db.secuencia` NO retrocede: deshacer restaura las colecciones afectadas, pero el contador global
+  // de orden sigue creciendo. Así ningún número de orden se reutiliza (otra copia, la pila de deshacer
+  // o la cola de sincronización pueden conservar los ya emitidos) y lo registrado después siempre
+  // ordena detrás. El hueco que queda es inocuo: el orden solo desempata cuando la fecha no decide.
   const db: BaseDatos = { ...db0 };
   for (const col of COLECCIONES) {
     const copia = { ...(db0[col] as Record<string, unknown>) };

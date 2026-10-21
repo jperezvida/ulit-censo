@@ -296,6 +296,44 @@ describe('C1c · Reimportación', () => {
   });
 });
 
+describe('C1c · Identidad de una incorporación (municipio, año, SHA-256 y perfil con versión)', () => {
+  it('el mismo archivo en dos años históricos distintos no se trata como la misma incorporación', async () => {
+    const D24: DestinoIncorporacion = { municipioId: 'mun-medina', anio: 2024 };
+    const p25 = await preparar(base);
+    const r25 = aplicar(base, p25);
+    const p24 = await preparar(r25.db, {}, {}, D24, p25.bytes);
+    expect(p24.plan.aplicable).toBe(true);
+    expect(p24.plan.bloqueos).toEqual([]);
+    expect(p24.plan.reimportacion).toBeUndefined();
+    expect(p24.plan.pendientes.join('\n')).toMatch(new RegExp(`ya se incorporó como histórico de 2025 \\(importación «${r25.importacionId}»\\)`));
+    const r24 = aplicar(r25.db, p24, {}, {}, D24);
+    expect(r24.sinCambios).toBeUndefined();
+    expect(r24.importacionId).not.toBe(r25.importacionId);
+    expect(r24.campanaId).not.toBe(r25.campanaId);
+    expect(r24.db.campanas[r24.campanaId].anio).toBe(2024);
+    expect(r24.creadas.registros).toBe(60);
+    // Cada año reconoce SOLO su propia incorporación como idéntica
+    for (const [d, r] of [[D24, r24], [DEST, r25]] as const) {
+      const again = await preparar(r24.db, {}, {}, d, p25.bytes);
+      expect(again.plan.bloqueos.map((b) => b.codigo)).toEqual(['reimportacion-identica']);
+      expect(again.plan.reimportacion?.importacionId).toBe(r.importacionId);
+      expect(aplicar(r24.db, again, {}, {}, d).sinCambios).toBe(true);
+    }
+  });
+
+  it('el mismo archivo con otra versión del perfil en el mismo ámbito exige conciliación', async () => {
+    const p = await preparar(base);
+    const r = aplicar(base, p);
+    const imp = r.db.importaciones[r.importacionId];
+    const conV0: BaseDatos = { ...r.db, importaciones: { ...r.db.importaciones, [imp.id]: { ...imp, c1: { ...imp.c1!, perfil: { ...imp.c1!.perfil, version: 0 } } } } };
+    const p2 = await preparar(conV0, {}, {}, DEST, p.bytes);
+    // Además de exigir conciliación, la campaña e importación de ese archivo y año ya existen
+    expect(p2.plan.bloqueos.map((b) => b.codigo)).toEqual(['archivo-distinto', 'destino-invalido', 'destino-invalido']);
+    expect(p2.plan.bloqueos[0].detalles[0]).toBe('Mismo archivo, perfil v0 → v1');
+    expect(() => aplicar(conV0, p2)).toThrow(/nueva conciliación/);
+  });
+});
+
 describe('C1c · Atomicidad, integridad y deshacer', () => {
   it('un fallo a mitad no deja cambios parciales (ni en la base ni en el almacén de la aplicación)', async () => {
     const p = await preparar(base);
@@ -339,6 +377,23 @@ describe('C1c · Atomicidad, integridad y deshacer', () => {
     const p2 = await preparar(u, {}, {}, DEST, p.bytes);
     expect(p2.plan.aplicable).toBe(true);
     expect(p2.plan.destino.importacionId).toBe(`${r.importacionId}-2`);
+  });
+
+  it('deshacer restaura las colecciones pero no retrocede la secuencia global de orden', async () => {
+    const p = await preparar(base);
+    const r = aplicar(base, p);
+    const s0 = base.secuencia;
+    const s1 = r.db.secuencia;
+    expect(s1).toBe(s0 + p.plan.nuevas.observaciones + p.plan.nuevas.ocupaciones);
+    const u = deshacerIncorporacion(r.db, r.importacionId, 'p-elena', AHORA);
+    expect(u.secuencia).toBe(s1);
+    // Lo registrado después del deshacer ordena siempre detrás de lo ya emitido: ningún número se reutiliza
+    const p2 = await preparar(u, {}, {}, DEST, p.bytes);
+    const r2 = aplicar(u, p2);
+    const ordenes = [...Object.values(r2.db.observaciones), ...Object.values(r2.db.ocupaciones)].filter((x) => x.id.includes(r2.importacionId)).map((x) => x.orden!);
+    expect(Math.min(...ordenes)).toBe(s1 + 1);
+    const usados = new Set([...Object.values(r.db.observaciones), ...Object.values(r.db.ocupaciones)].filter((x) => x.id.includes(r.importacionId)).map((x) => x.orden));
+    expect(ordenes.some((o) => usados.has(o))).toBe(false);
   });
 
   it('protege los cambios posteriores: deshacer se bloquea y lo explica, sin tocar nada', async () => {

@@ -153,13 +153,27 @@ Al deshacer:
 - la `Importacion` se conserva como `descartada`, con quién y cuándo la deshizo;
 - se puede volver a incorporar el archivo, con otro identificador de importación.
 
-El contador global de orden (`secuencia`) no retrocede, para no reutilizar números.
+**La secuencia global no retrocede.** Deshacer restaura las colecciones afectadas, pero **no** devuelve `db.secuencia` (el contador global de orden de observaciones y ocupaciones) a su valor anterior. Es la opción más segura por tres motivos:
+- **Ningún número de orden se reutiliza.** Los números ya emitidos pueden seguir existiendo fuera de la base: en la pila de deshacer de la aplicación, en otra copia o en la cola de sincronización. Reutilizarlos haría ambiguo el desempate.
+- **Lo que se registre después ordena siempre detrás.** Esto vale tanto para un trabajo posterior como para una nueva incorporación del mismo archivo.
+- **El hueco que queda es inocuo.** El orden solo desempata cuando la fecha real no decide, y nunca sustituye a la cronología.
+
+Una prueba lo comprueba en tres pasos:
+1. Tras deshacer, la secuencia conserva su valor.
+2. La siguiente incorporación empieza en el número siguiente.
+3. No reutiliza ningún número ya emitido.
 
 ## 8. Reimportación
 
-Una incorporación previa se reconoce por SHA-256, municipio, perfil y año (la campaña de destino), y por las referencias de fila (`huellaFila`).
-- **Mismo archivo:** resultado controlado (`sinCambios: true`, la base no cambia) y el plan informa de la importación existente. No duplica nada.
-- **Otro archivo** con el mismo municipio, año y perfil: bloqueo `archivo-distinto`, «exige una nueva conciliación». El plan detalla las filas iguales, cambiadas, nuevas y desaparecidas. No sobrescribe el histórico.
+**Ámbito** de una incorporación: municipio, año de destino (y campaña, si se indica expresamente) y perfil. **Identidad**: ámbito, SHA-256 del archivo y **versión** del perfil. Las referencias de fila (`huellaFila`) detallan las diferencias.
+
+| Caso | Resultado |
+|---|---|
+| Mismo ámbito, mismo SHA-256 y misma versión del perfil | **Reimportación idéntica**: resultado controlado (`sinCambios: true`, la base no cambia) y el plan informa de la importación existente. No duplica nada |
+| Mismo ámbito con **otro archivo** o con **otra versión del perfil** | Bloqueo `archivo-distinto`, «exige una nueva conciliación», con filas iguales, cambiadas, nuevas y desaparecidas. No sobrescribe el histórico |
+| **Mismo archivo en otro año** histórico | **No** es la misma incorporación: se puede aplicar, con otra campaña y otro identificador de importación. El plan lo avisa entre los pendientes para comprobar que el año es correcto |
+
+El identificador de la importación incluye el año (`imp-c1-<año>-<sha>`), de modo que dos años no colisionan.
 
 ## 9. Simulación con el Excel ficticio de Medina 2025
 
@@ -219,7 +233,7 @@ Si los censos reales fueran mucho mayores, convendría:
 
 Queda como propuesta; no se ha aplicado.
 
-## 11. Pruebas (`src/domain/c1c.test.ts`, 22)
+## 11. Pruebas (`src/domain/c1c.test.ts`, 25)
 
 - **Plan:**
   - no modifica la base;
@@ -249,12 +263,15 @@ Queda como propuesta; no se ha aplicado.
 - **Posibles totales:** se incorporan por defecto; una exclusión firmada conserva el registro con la marca.
 - **Reimportación:**
   - la idéntica es controlada;
-  - la de un archivo modificado se bloquea, con la fila cambiada identificada.
+  - la de un archivo modificado se bloquea, con la fila cambiada identificada;
+  - el mismo archivo en dos años históricos son dos incorporaciones distintas, y cada año reconoce solo la suya como idéntica;
+  - el mismo archivo con otra versión del perfil exige conciliación.
 - **Atomicidad:** un fallo a mitad no deja cambios (tampoco en el almacén); un plan obsoleto se rechaza.
 - **Integridad referencial** de todo lo creado y completitud de la traza.
 - **Deshacer:**
   - completo, comparando por JSON, y repetible después;
-  - bloqueado ante un negocio renombrado, una observación posterior, una clasificación manual o un registro borrado.
+  - bloqueado ante un negocio renombrado, una observación posterior, una clasificación manual o un registro borrado;
+  - la secuencia global no retrocede ni se reutiliza.
 - **Perfiles:** el de 28 columnas también funciona.
 - **Volumen:** 10.000 filas, incluido el guardado en IndexedDB y el deshacer.
 
