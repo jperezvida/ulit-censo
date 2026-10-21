@@ -36,7 +36,10 @@ describe('C1d-B · Dashboard', () => {
   it('histórico importado: aviso de referencia, cifras separadas y filtros vinculados', () => {
     montar();
     fireEvent.change(screen.getByLabelText('Ámbito'), { target: { value: MUNICIPIO_DEMO.id } });
-    expect(screen.getByText(/Es una referencia: nada está revisado ni verificado para 2026/)).toBeInTheDocument();
+    const aviso = screen.getByLabelText('Origen de los datos');
+    expect(aviso).toHaveTextContent(/Histórico importado · 2025/);
+    expect(aviso).toHaveTextContent(/620 con el texto original de 2025 \(sin convertir al catálogo 2026\)/);
+    expect(aviso).toHaveTextContent(/Datos de demostración/);
     const kpis = screen.getByLabelText('Indicadores principales');
     expect(kpis).toHaveTextContent('Registros censales890');
     expect(kpis).toHaveTextContent('Establecimientos observados860');
@@ -67,7 +70,10 @@ describe('C1d-B · Dashboard', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Comparar' }));
     fireEvent.change(screen.getByLabelText('Campaña con la que comparar'), { target: { value: 'camp-medina-2025' } });
     expect(screen.getAllByRole('note').some((n) => /Las diferencias no son aperturas ni cierres confirmados/.test(n.textContent ?? ''))).toBe(true);
-    expect(screen.getByText(/Son ámbitos geográficos distintos/)).toBeInTheDocument();
+    // Ámbitos distintos: comparación descriptiva, sin diferencias aritméticas
+    expect(screen.getByLabelText('Ámbitos territoriales distintos')).toHaveTextContent(/no se calculan diferencias/);
+    expect(within(screen.getByRole('table', { name: 'Comparación' })).queryByRole('columnheader', { name: 'Diferencia' })).toBeNull();
+    expect(screen.queryByText(/diferencia de cifras:/)).toBeNull();
   });
 
   it('una campaña con geometría muestra el mapa por calle', () => {
@@ -137,5 +143,22 @@ describe('C1d-B · Dashboard', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Cobertura y calidad' }));
     expect(screen.getByLabelText('Indicadores de cobertura y calidad')).toHaveTextContent(/Sin establecimiento30/);
     expect(screen.getByLabelText('Trazabilidad: del registro al establecimiento')).toHaveTextContent(/890Filas importadas.*860Con establecimiento observado.*14Sin local identificado/);
+  });
+
+  it('avisos de origen calculados: un histórico con clasificaciones confirmadas no se presenta como «sin convertir»', () => {
+    montar();
+    // Medina 2025 (demostración): campaña de tipo histórico importado, con clasificaciones confirmadas en el modelo
+    fireEvent.click(screen.getByRole('tab', { name: '2025 Censo 2025 histórico' }));
+    const aviso = screen.getByLabelText('Origen de los datos');
+    expect(aviso).toHaveTextContent(/Histórico importado · 2025/);
+    expect(aviso).toHaveTextContent(/474 confirmadas en el modelo/);
+    expect(aviso).not.toHaveTextContent(/sin convertir/);
+    expect(aviso).toHaveTextContent(/se refieren a la campaña de 2025, no son comprobaciones de 2026/);
+    expect(aviso).toHaveTextContent(/Datos de demostración: los estados «confirmada» y «verificada» son ficticios/);
+    // Mismo municipio: la comparación sí calcula diferencias
+    fireEvent.click(screen.getByRole('tab', { name: 'Comparar' }));
+    fireEvent.change(screen.getByLabelText('Campaña con la que comparar'), { target: { value: 'camp-medina-2026' } });
+    expect(screen.queryByLabelText('Ámbitos territoriales distintos')).toBeNull();
+    expect(within(screen.getByRole('table', { name: 'Comparación' })).getByRole('columnheader', { name: 'Diferencia' })).toBeInTheDocument();
   });
 });

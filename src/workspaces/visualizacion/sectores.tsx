@@ -83,7 +83,7 @@ export function SectorTab({ sector, datos, unidades, filtros, setFiltros, hayCp 
           <tbody>{filasComp.map((f) => <tr key={f.t}><td>{f.t}</td>{SECTORES.map((s) => <td key={s} className="num" style={s === sector ? { fontWeight: 700, background: 'var(--azul-suave)' } : undefined}>{f.v(perfil.find((g) => g.grupo === s))}</td>)}</tr>)}</tbody>
         </table>
       </Bloque>
-      <Bloque span={5} titulo="Franquicia y fuente de la clasificación" nota={sector && datos.historica ? 'Las clasificaciones históricas son el texto original: no se han convertido al catálogo 2026.' : undefined}>
+      <Bloque span={5} titulo="Franquicia y fuente de la clasificación" nota={us.some((u) => u.fuenteClasificacion === 'historica') ? 'Las clasificaciones con texto histórico son el texto original: no se han convertido al catálogo 2026.' : undefined}>
         <h4 className="vz-sub">Franquicia</h4>
         <Apilada compacta etiqueta="Franquicia" segmentos={RESPUESTAS.filter((r) => r.r !== 'na').map((r) => ({ t: r.t, n: us.filter((u) => (u.franquicia ?? 'pendiente') === r.r).length, color: COLOR_RESP[r.r] }))} />
         <h4 className="vz-sub">Fuente de la clasificación</h4>

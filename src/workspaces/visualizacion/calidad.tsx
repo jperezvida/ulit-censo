@@ -100,18 +100,20 @@ export function Comparar({ db, datos, filtros }: Contexto) {
   });
   const [a, b] = filas;
   const avisos = [
-    a.d.municipio.id !== b.d.municipio.id && 'Son ámbitos geográficos distintos: las cifras no son comparables como evolución.',
     a.d.callesConRegistros !== b.d.callesConRegistros && `Cobertura distinta: ${fmt(a.d.callesConRegistros)} frente a ${fmt(b.d.callesConRegistros)} calles con registros.`,
     a.d.historica !== b.d.historica && 'Una campaña es un histórico importado (referencia) y la otra no.',
     a.fuente !== b.fuente && 'Las clasificaciones proceden de fuentes distintas (p. ej., texto histórico frente a catálogo 2026).',
     (a.d.pendientesVisita || b.d.pendientesVisita) && 'Hay locales pendientes de visita: una campaña en curso no está completa.',
   ].filter(Boolean) as string[];
   const nombre = (x: typeof a) => `${x.d.municipio.nombre} · ${x.d.campana.nombre}`;
+  // Ámbitos territoriales distintos: la comparación es solo DESCRIPTIVA (cifras lado a lado). No se
+  // calculan diferencias aritméticas, que se leerían como cambios de un mismo territorio.
+  const ambitosDistintos = a.d.municipio.id !== b.d.municipio.id;
   const dif = (x: number, y: number) => (x === y ? 'igual' : `${x > y ? '+' : '−'}${fmt(Math.abs(x - y))}`);
   const difPct = (x: number | null, y: number | null) => (x === null || y === null ? '—' : `${x >= y ? '+' : '−'}${fmtPct(Math.abs(x - y)).replace(' %', '')} p.p.`);
-  const fila = (t: string, f: (x: (typeof filas)[number]) => string, d?: string) => <tr key={t}><td>{t}</td><td className="num">{f(a)}</td><td className="num">{f(b)}</td><td className="num dif">{d ?? ''}</td></tr>;
+  const fila = (t: string, f: (x: (typeof filas)[number]) => string, d?: string) => <tr key={t}><td>{t}</td><td className="num">{f(a)}</td><td className="num">{f(b)}</td>{!ambitosDistintos && <td className="num dif">{d ?? ''}</td>}</tr>;
   const kpi = (t: string, va: string, vb: string, d: string) => (
-    <Kpi etq={t} valor={<span className="vz-ab"><b className="num">{va}</b><span>frente a {vb}</span></span>} sub={`diferencia de cifras: ${d}`} />
+    <Kpi etq={t} valor={<span className="vz-ab"><b className="num">{va}</b><span>frente a {vb}</span></span>} sub={ambitosDistintos ? 'ámbitos distintos: sin diferencia calculada' : `diferencia de cifras: ${d}`} />
   );
   const ocupA = pct(a.r.ocupacion);
   const ocupB = pct(b.r.ocupacion);
@@ -128,6 +130,11 @@ export function Comparar({ db, datos, filtros }: Contexto) {
             </select>
           </label>
         </div>
+        {ambitosDistintos && (
+          <div className="t-info error vz-aviso" role="alert" aria-label="Ámbitos territoriales distintos">
+            <AlertTriangle size={14} /> <span><b>Ámbitos territoriales distintos</b> ({a.d.municipio.nombre} frente a {b.d.municipio.nombre}). La comparación es solo descriptiva: las cifras se muestran lado a lado, pero <b>no se calculan diferencias</b>, porque no miden cambios de un mismo territorio. Las proporciones (%) son lo más comparable, con sus denominadores.</span>
+          </div>
+        )}
         {avisoSeleccion && (
           <div className="t-info aviso vz-aviso" role="status" aria-label="Selección de comparación cambiada">
             <AlertTriangle size={14} /> <span>{avisoSeleccion} Se compara con «{otro.municipio.nombre} · {otro.campana.nombre}»; elige otra campaña si lo prefieres.</span>
@@ -152,9 +159,9 @@ export function Comparar({ db, datos, filtros }: Contexto) {
           filas={VARIABLES_PRESENCIA.map((x) => ({ clave: x.v, etiqueta: x.t, a: valorProp(adopcion(b.us, x.v)), b: valorProp(adopcion(a.us, x.v)) }))} />
       </Bloque>
 
-      <Bloque span={12} titulo="Tabla de comparación" sub="Cifras de cada campaña con sus denominadores. La diferencia es aritmética: no indica aperturas ni cierres.">
+      <Bloque span={12} titulo="Tabla de comparación" sub={ambitosDistintos ? "Cifras de cada ámbito con sus denominadores, lado a lado (sin diferencias: ámbitos distintos)." : "Cifras de cada campaña con sus denominadores. La diferencia es aritmética: no indica aperturas ni cierres."}>
         <table className="vz-tabla" aria-label="Comparación">
-          <thead><tr><th>Indicador</th><th className="num">{nombre(a)}</th><th className="num">{nombre(b)}</th><th className="num">Diferencia</th></tr></thead>
+          <thead><tr><th>Indicador</th><th className="num">{nombre(a)}</th><th className="num">{nombre(b)}</th>{!ambitosDistintos && <th className="num">Diferencia</th>}</tr></thead>
           <tbody>
             {fila('Calles con registros', (x) => fmt(x.d.callesConRegistros), dif(a.d.callesConRegistros, b.d.callesConRegistros))}
             {fila('Establecimientos observados', (x) => fmt(x.r.establecimientos), dif(a.r.establecimientos, b.r.establecimientos))}

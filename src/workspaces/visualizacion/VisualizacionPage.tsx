@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { BarChart3, Briefcase, DoorOpen, FilterX, GitCompareArrows, LayoutDashboard, ShieldCheck, ShoppingBag, UtensilsCrossed, Wifi } from 'lucide-react';
 import { useStore } from '../../store/store';
 import { fmt } from '../../components/ui';
-import { ambitos, datosCampana, distribucion, filtrar, SECTORES, TIPO_AMBITO_TXT, type FiltrosPanel, type Sector } from '../../domain/panel';
+import { ambitos, datosCampana, distribucion, filtrar, origenDatos, SECTORES, TIPO_AMBITO_TXT, type FiltrosPanel, type Sector } from '../../domain/panel';
 import type { Id, TipoAmbito } from '../../domain/types';
 import { Emblema } from './graficos';
 import { Resumen } from './resumen';
@@ -10,7 +10,7 @@ import { SectorTab } from './sectores';
 import { Vacios } from './vacios';
 import { Digital1, Digital2 } from './digital';
 import { Cobertura, Comparar } from './calidad';
-import type { Contexto } from './comun';
+import { AvisoOrigen, type Contexto } from './comun';
 import '../../styles/visualizacion.css';
 
 export type Pestana = 'resumen' | 'comercio' | 'servicios' | 'hosteleria' | 'vacios' | 'digital1' | 'digital2' | 'cobertura' | 'comparar';
@@ -46,6 +46,7 @@ export default function VisualizacionPage() {
   const [filtros, setFiltros] = useState<FiltrosPanel>({});
 
   const datos = useMemo(() => (campana ? datosCampana(db, campana.id) : null), [db, campana]);
+  const origen = useMemo(() => (datos ? origenDatos(datos) : null), [datos]);
   const cps = useMemo(() => (datos ? distribucion(datos.unidades, (u) => u.cp, '__sin__') : []), [datos]);
   const calles = useMemo(() => {
     const m = new Map<Id, { nombre: string; n: number }>();
@@ -65,7 +66,7 @@ export default function VisualizacionPage() {
     setFiltros({});
   };
 
-  if (!ambito || !campana || !datos) return <div className="pagina"><div className="vacio-estado tarjeta">No hay campañas con datos que visualizar.</div></div>;
+  if (!ambito || !campana || !datos || !origen) return <div className="pagina"><div className="vacio-estado tarjeta">No hay campañas con datos que visualizar.</div></div>;
   const hayCp = cps.some((c) => c.clave !== '__sin__');
   const hayFiltros = !!(filtros.cp || filtros.calleId || filtros.franquicia || filtros.sector);
   const ctx: Contexto = { db, datos, unidades, filtros, setFiltros, hayCp };
@@ -140,13 +141,7 @@ export default function VisualizacionPage() {
         </div>
       </div>
 
-      {datos.historica && (
-        <div className="vz-avisos">
-          <div className="t-info aviso vz-aviso" role="note">
-            <b>Histórico importado ({campana.anio}).</b> <span>Es una referencia: nada está revisado ni verificado para 2026. La clasificación es el texto original de {campana.anio} (sin convertir al catálogo 2026) y la franquicia y la presencia digital tienen origen «importado».</span>
-          </div>
-        </div>
-      )}
+      <AvisoOrigen origen={origen} />
 
       <nav className="vz-pestanas" role="tablist" aria-label="Cuadros de mando">
         {PESTANAS.map((p) => (

@@ -287,3 +287,19 @@
   .vz-contador { margin-left: 0; align-items: flex-start; }
 }
 .vz-avisos-lista { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; }
+
+/* Aviso de origen de los datos (calculado) */
+.vz-origen { margin-top: 12px; border: 1px solid var(--linea); background: var(--superficie); border-radius: 10px; font-size: 12.5px; }
+.vz-origen.historico { border-color: #f4d39a; background: #fffaf0; }
+.vz-origen summary { display: flex; gap: 10px; align-items: baseline; padding: 8px 12px; cursor: pointer; list-style: none; flex-wrap: wrap; }
+.vz-origen summary::-webkit-details-marker { display: none; }
+.vz-origen summary b { white-space: nowrap; color: var(--tinta); }
+.vz-origen summary span { color: var(--tinta-2); }
+.vz-origen .vz-origen-mas { margin-left: auto; color: var(--azul); font-weight: 600; white-space: nowrap; }
+.vz-origen[open] .vz-origen-mas::after { content: ' ▴'; }
+.vz-origen:not([open]) .vz-origen-mas::after { content: ' ▾'; }
+.vz-origen dl { margin: 0; padding: 0 12px 8px; display: grid; gap: 4px; }
+.vz-origen dl div { display: grid; grid-template-columns: 140px 1fr; gap: 10px; }
+.vz-origen dt { font-weight: 600; color: var(--tinta); }
+.vz-origen dd { margin: 0; color: var(--tinta-2); }
+.vz-origen ul { margin: 0; padding: 0 12px 10px 30px; color: var(--tinta-2); }

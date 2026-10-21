@@ -155,6 +155,11 @@ export interface LocalFisico {
   municipioId: Id;
   direcciones: Direccion[]; // la última es la vigente; conserva cambios de numeración
   coord?: LngLat;
+  /**
+   * Verificación de `coord` (opcional, sin migración). Solo con ella se dibuja el local como punto en
+   * los mapas del cuadro de mando: las coordenadas interpoladas sobre la calle o simuladas no cuentan.
+   */
+  coordVerificada?: { fuente: 'gps-campo' | 'catastro' | 'comprobacion-manual'; fecha: string; porId?: Id };
   estado: 'activo' | 'posible-desaparicion' | 'desaparecido' | 'dividido' | 'fusionado';
   relaciones?: { tipo: 'dividido-en' | 'fusionado-en' | 'procede-de'; localIds: Id[] }[];
   procedencia: Procedencia;

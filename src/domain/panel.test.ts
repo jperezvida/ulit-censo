@@ -5,7 +5,7 @@ import { callejeroSimulado, MEDINA } from '../data/callejero';
 import { MUNICIPIO_DEMO, prepararMunicipioDemo } from '../data/escenarioIncorporacion';
 import { aplicarEscenario, prepararEscenario } from './incorporacionDemo';
 import {
-  adopcion, ambitos, bandasVacancia, compararGrupos, concentracion, datosCampana, perfilGrupos, rankingCalles, distribucion, filtrar, indicePresencia, matrizCalor, MIN_CELDA, respuestas, resumen, topCalles, UMBRAL_CALLE, type UnidadPanel,
+  adopcion, ambitos, bandasVacancia, compararGrupos, concentracion, datosCampana, origenDatos, perfilGrupos, rankingCalles, distribucion, filtrar, indicePresencia, matrizCalor, MIN_CELDA, respuestas, resumen, topCalles, UMBRAL_CALLE, type UnidadPanel,
 } from './panel';
 import { filasOficina } from './oficina';
 import { indiceObservaciones, indiceOcupaciones } from './consultas';
@@ -87,6 +87,33 @@ describe('C1d-B · Datos del dashboard calculados sobre el modelo', () => {
     expect(d.registrosSinEstablecimiento).toBe(base.registrosSinEstablecimiento);
     // Una campaña sin importaciones no tiene registros sin establecimiento.
     expect(datosCampana(conHistorico, 'camp-medina-2026').registrosSinEstablecimiento).toBe(0);
+  });
+});
+
+describe('Bloque 1 · Origen real de los datos y coordenadas verificadas', () => {
+  it('distingue el tipo de campaña del origen de clasificación, franquicia y revisión digital', () => {
+    const esc = origenDatos(datosCampana(conHistorico, campanaHist));
+    expect(esc).toMatchObject({ historica: true, demostracion: true, ocupados: 620 });
+    expect(esc.clasificacion).toEqual({ confirmada: 0, propuesta: 0, historica: 620, 'sin-clasificar': 0 });
+    expect(esc.franquicia.importado).toBe(619);
+    // Medina 2025 (demostración): de tipo histórico, pero con clasificaciones confirmadas en el modelo
+    const m25 = origenDatos(datosCampana(conHistorico, 'camp-medina-2025'));
+    expect(m25.historica).toBe(true);
+    expect(m25.clasificacion.confirmada).toBeGreaterThan(0);
+    expect(m25.clasificacion.historica).toBe(0);
+    expect(m25.demostracion).toBe(true);
+    expect(origenDatos(datosCampana(conHistorico, 'camp-medina-2026')).historica).toBe(false);
+  });
+
+  it('solo los locales con coordenadas verificadas tienen posición: nunca se usan las simuladas o interpoladas', () => {
+    const d0 = datosCampana(demo, 'camp-medina-2026');
+    expect(d0.unidades.every((x) => x.coord === undefined)).toBe(true);
+    const conCoord = d0.unidades.find((x) => x.localId && demo.locales[x.localId].coord)!;
+    const l = demo.locales[conCoord.localId!];
+    const verificada: BaseDatos = { ...demo, locales: { ...demo.locales, [l.id]: { ...l, coordVerificada: { fuente: 'gps-campo', fecha: '2026-09-10' } } } };
+    const d1 = datosCampana(verificada, 'camp-medina-2026');
+    expect(d1.unidades.filter((x) => x.coord).map((x) => x.localId)).toEqual([l.id]);
+    expect(d1.unidades.find((x) => x.localId === l.id)!.coord).toEqual(l.coord);
   });
 });
 

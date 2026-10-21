@@ -5,7 +5,7 @@ import { indiceObservaciones, indiceOcupaciones } from './consultas';
 import { normalizar } from './text';
 import { VARIANTES_NOMBRE } from './catalogo2026';
 import { rutaActividad } from './taxonomy';
-import type { Campana, Id, Municipio, Respuesta, TipoAmbito, VariableDigital } from './types';
+import type { Campana, Id, LngLat, Municipio, Procedencia, Respuesta, TipoAmbito, VariableDigital } from './types';
 
 /**
  * C1d-B · Datos del DASHBOARD. Todo se calcula sobre el modelo de ULIT Censo: ninguna cifra se
@@ -51,6 +51,13 @@ export interface UnidadPanel {
   metros?: number;
   fecha?: string;
   sinLocal: boolean;
+  /** Procedencia del local (o del negocio si no hay local): simulado, importado, manual u OSM. */
+  procedencia?: Procedencia;
+  /**
+   * Posición del establecimiento SOLO si el local tiene coordenadas verificadas (`coordVerificada`).
+   * Las coordenadas interpoladas o simuladas nunca se usan para dibujar puntos.
+   */
+  coord?: LngLat;
 }
 
 export interface DatosCampana {
@@ -158,7 +165,9 @@ export function datosCampana(db: BaseDatos, campanaId: Id): DatosCampana {
     const fr = neg ? db.franquicias[kNC(neg, campanaId)] : undefined;
     const dig = neg ? db.digital[kNC(neg, campanaId)] : undefined;
     return {
-      ...base, cp: cpOriginal(reg?.original?.cp), sector, nivel2, nivel3, fuenteClasificacion,
+      ...base, cp: cpOriginal(reg?.original?.cp),
+      procedencia: (base.localId ? db.locales[base.localId]?.procedencia : undefined) ?? (neg ? db.negocios[neg]?.procedencia : undefined) ?? (reg ? 'importado' : undefined),
+      coord: base.localId && db.locales[base.localId]?.coordVerificada ? db.locales[base.localId]?.coord : undefined, sector, nivel2, nivel3, fuenteClasificacion,
       franquicia: base.vacio ? undefined : fr?.respuesta ?? 'pendiente', franquiciaOrigen: fr?.origen,
       digital: dig ? Object.fromEntries(Object.entries(dig.datos).map(([k, d]) => [k, { respuesta: d!.respuesta, valor: d!.valor }])) : {},
       digitalEstado: base.vacio ? 'no-aplica' : dig ? dig.estado : 'sin-datos',
@@ -458,3 +467,35 @@ export function bandasVacancia(us: UnidadPanel[], umbral = UMBRAL_CALLE) {
     consideradas: r.consideradas, total: r.total, conVacios: tasas.filter((t) => t > 0).length,
   };
 }
+
+// ───────────── Origen real de los datos (avisos) ─────────────
+
+/**
+ * Origen real de los datos de una campaña, para redactar los avisos: el TIPO de campaña (histórico
+ * importado o campaña) es distinto del ORIGEN de sus clasificaciones, franquicias y revisiones
+ * digitales. Un histórico puede tener clasificaciones confirmadas en el modelo; y en una demostración,
+ * «confirmada» o «verificada» son estados ficticios, no comprobaciones reales de 2026.
+ */
+export function origenDatos(d: DatosCampana) {
+  const ocup = d.unidades.filter((u) => !u.vacio);
+  const clasificacion = { confirmada: 0, propuesta: 0, historica: 0, 'sin-clasificar': 0 } as Record<FuenteClasificacion, number>;
+  const franquicia = { manual: 0, heredado: 0, importado: 0, ninguno: 0 };
+  const digital = { verificada: 0, borrador: 0, 'sin-datos': 0 };
+  for (const u of ocup) {
+    clasificacion[u.fuenteClasificacion]++;
+    franquicia[u.franquiciaOrigen ?? 'ninguno']++;
+    if (u.digitalEstado !== 'no-aplica') digital[u.digitalEstado]++;
+  }
+  return {
+    historica: d.historica,
+    anio: d.campana.anio,
+    /** Datos de demostración: escenario ficticio o locales/negocios simulados. */
+    demostracion: !!d.municipio.escenarioDemo || d.unidades.some((u) => u.procedencia === 'simulado'),
+    ocupados: ocup.length,
+    clasificacion,
+    franquicia,
+    digital,
+  };
+}
+export type OrigenDatos = ReturnType<typeof origenDatos>;
+

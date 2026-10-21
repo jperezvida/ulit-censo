@@ -1,6 +1,6 @@
 import { fmt } from '../../components/ui';
 import type { BaseDatos } from '../../domain/db';
-import { rankingCalles, SECTORES, UMBRAL_CALLE, type CriterioCalle, type DatosCampana, type FiltrosPanel, type UnidadPanel } from '../../domain/panel';
+import { rankingCalles, SECTORES, UMBRAL_CALLE, type CriterioCalle, type DatosCampana, type FiltrosPanel, type OrigenDatos, type UnidadPanel } from '../../domain/panel';
 import { Apilada, COLOR, fmtPct, Ranking, SinDatos } from './graficos';
 
 /** Lo que recibe cada pestaña del cuadro de mando. */
@@ -58,5 +58,58 @@ export function RankingCalles({ unidades, criterio, filtros, setFiltros, limite 
         </span>
       </div>
     </>
+  );
+}
+
+const n = (x: number) => fmt(x);
+
+/**
+ * Texto del aviso de origen, calculado con los datos reales de la campaña (no un texto fijo): separa el
+ * tipo de campaña del origen de la clasificación, la franquicia y la revisión digital.
+ */
+export function textosOrigen(o: OrigenDatos) {
+  const c = o.clasificacion;
+  const clas = [
+    c.historica && `${n(c.historica)} con el texto original de ${o.anio} (sin convertir al catálogo 2026)`,
+    c.confirmada && `${n(c.confirmada)} confirmadas en el modelo`,
+    c.propuesta && `${n(c.propuesta)} propuestas sin confirmar`,
+    c['sin-clasificar'] && `${n(c['sin-clasificar'])} sin clasificar`,
+  ].filter(Boolean) as string[];
+  const f = o.franquicia;
+  const fran = [f.manual && `${n(f.manual)} comprobadas`, f.heredado && `${n(f.heredado)} heredadas (borrador)`, f.importado && `${n(f.importado)} importadas`, f.ninguno && `${n(f.ninguno)} sin dato`].filter(Boolean) as string[];
+  const g = o.digital;
+  const dig = [g.verificada && `${n(g.verificada)} verificadas en el modelo`, g.borrador && `${n(g.borrador)} en borrador o importadas`, g['sin-datos'] && `${n(g['sin-datos'])} sin datos`].filter(Boolean) as string[];
+  const advertencias = [
+    o.historica && 'Es una referencia histórica: no es la campaña 2026 ni la sustituye.',
+    o.historica && (c.confirmada || g.verificada) && `«Confirmada» y «verificada» se refieren a la campaña de ${o.anio}, no son comprobaciones de 2026.`,
+    o.demostracion && 'Datos de demostración: los estados «confirmada» y «verificada» son ficticios, no comprobaciones reales de campo.',
+  ].filter(Boolean) as string[];
+  return {
+    titulo: o.historica ? `Histórico importado · ${o.anio}` : `Campaña ${o.anio}`,
+    partes: [
+      clas.length && { t: 'Clasificación', v: clas.join(' · ') },
+      fran.length && { t: 'Franquicia', v: fran.join(' · ') },
+      dig.length && { t: 'Presencia digital', v: dig.join(' · ') },
+    ].filter(Boolean) as { t: string; v: string }[],
+    advertencias,
+  };
+}
+
+/** Aviso de origen de los datos: una línea, con el detalle desplegable. */
+export function AvisoOrigen({ origen }: { origen: OrigenDatos }) {
+  const t = textosOrigen(origen);
+  if (!origen.historica && !origen.demostracion) return null;
+  return (
+    <details className={`vz-origen ${origen.historica ? 'historico' : ''}`} role="note" aria-label="Origen de los datos">
+      <summary>
+        <b>{t.titulo}</b>
+        <span>{t.advertencias[0]}</span>
+        <span className="vz-origen-mas">Origen de los datos</span>
+      </summary>
+      <dl>
+        {t.partes.map((p) => <div key={p.t}><dt>{p.t}</dt><dd>{p.v}</dd></div>)}
+      </dl>
+      {t.advertencias.length > 1 && <ul>{t.advertencias.slice(1).map((a) => <li key={a}>{a}</li>)}</ul>}
+    </details>
   );
 }

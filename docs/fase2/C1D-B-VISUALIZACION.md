@@ -60,7 +60,12 @@ Los establecimientos de Oficina coinciden con `filasOficina` (prueba), así que 
   - siempre se muestra el **denominador**, los ocupados;
   - la revisión digital separa «Verificada», «Borrador o importada» y «Sin datos»: un dato importado **no** es una comprobación de 2026;
   - el origen de la franquicia se distingue entre comprobada, heredada e importada.
-- **Histórico importado:** un aviso fijo recuerda que es una **referencia, no verificada para 2026**.
+- **Origen de los datos (aviso calculado, `origenDatos`):** el aviso no es un texto fijo. Separa el **tipo de campaña** (histórico importado o campaña) del **origen real** de los datos:
+  - clasificación: texto histórico sin convertir, confirmada en el modelo, propuesta sin confirmar o sin clasificar, con sus recuentos;
+  - franquicia: comprobada, heredada, importada o sin dato;
+  - presencia digital: verificada en el modelo, borrador o importada, sin datos.
+
+  En un histórico, «confirmada» o «verificada» se refieren a esa campaña y no son comprobaciones de 2026. En datos de demostración (escenario ficticio o locales simulados), esos estados son ficticios. Nunca se afirma que una clasificación está sin convertir o sin confirmar si el modelo dice lo contrario.
 - **Código postal:** solo si consta en el **origen** (registro importado). No se deduce de la calle ni del municipio. Con el demo de Medina, que no tiene CP, el filtro aparece deshabilitado.
 
 ## 4. Pestañas
@@ -73,7 +78,7 @@ Los establecimientos de Oficina coinciden con `filasOficina` (prueba), así que 
 | **Digitalización 1** (presencia) | • Adopción de cada canal (web, Google, venta online, Instagram, Facebook, X) con denominador y pendientes.<br>• Estado de la revisión digital y completitud de las respuestas.<br>• Respuestas por canal (barras apiladas).<br>• **Tablas de calor** de adopción por sector, por franquicia y por CP.<br>• Mapa de calor por calle y mapa por calle (si hay geometría). |
 | **Digitalización 2** (intensidad) | • KPI: Google Business, mediana de reseñas, respuesta a reseñas, seguidores de Instagram, índice de presencia y su cobertura.<br>• Histograma de reseñas; respuesta a reseñas (también por sector).<br>• Seguidores por red con **diagrama de caja** (P25–P75, mediana).<br>• Índice de presencia (0–6).<br>• Comparativas por sector y por franquicia (medianas e índice solo con 10 casos).<br>• **Lectura ejecutiva** calculada. |
 | **Cobertura y calidad** | • KPI: registros censales, observados, sin establecimiento, con incidencias, pendientes de visita y calles con registros.<br>• **Trazabilidad:** filas importadas → excluidas → con establecimiento → observados → con local → sin local.<br>• Correspondencias registro–local, con su definición.<br>• **Estado del dato:** clasificación, franquicia, revisión digital y localización. |
-| **Comparar** | Dos campañas cualesquiera (años o ámbitos), con los mismos filtros. La campaña secundaria se revalida al cambiar la principal: nunca es la misma y, si la elegida pasa a ser la principal o deja de existir, se elige otra y se avisa.<br>• Avisos automáticos (ámbitos distintos, cobertura, histórico frente a campaña, fuentes de clasificación, campaña incompleta).<br>• KPI emparejados con la diferencia aritmética.<br>• Peso de cada sector y adopción digital en barras emparejadas.<br>• Tabla completa.<br>Siempre indica que **las diferencias no son aperturas ni cierres confirmados**. |
+| **Comparar** | Dos campañas cualesquiera (años o ámbitos), con los mismos filtros. La campaña secundaria se revalida al cambiar la principal: nunca es la misma y, si la elegida pasa a ser la principal o deja de existir, se elige otra y se avisa.<br>• Avisos automáticos (cobertura, histórico frente a campaña, fuentes de clasificación, campaña incompleta).<br>• **Ámbitos territoriales distintos:** la comparación es solo descriptiva. Las cifras se muestran lado a lado con sus denominadores, con un aviso, y **no se calculan diferencias** (ni en los KPI ni en la tabla).<br>• Con el mismo ámbito, KPI emparejados con la diferencia aritmética.<br>• Peso de cada sector y adopción digital en barras emparejadas.<br>• Tabla completa.<br>Siempre indica que **las diferencias no son aperturas ni cierres confirmados**. |
 
 ## 5. Criterios estadísticos
 
