@@ -7,6 +7,7 @@ import CampanasPage from './workspaces/campaigns/CampanasPage';
 import TerritorioPage from './workspaces/territory/TerritorioPage';
 import OficinaPage from './workspaces/office/OficinaPage';
 import DatosPage from './workspaces/imports/DatosPage';
+import IncorporacionPage from './workspaces/imports/incorporacion/IncorporacionPage';
 import AnalisisPage from './workspaces/analysis/AnalisisPage';
 import HojaCampo from './workspaces/print/HojaCampo';
 import CampoApp from './workspaces/field/CampoApp';
@@ -61,6 +62,7 @@ export default function App() {
             <Route path="/territorio" element={<TerritorioPage />} />
             <Route path="/oficina/*" element={<OficinaPage />} />
             <Route path="/datos" element={<DatosPage />} />
+            <Route path="/datos/incorporar" element={<IncorporacionPage />} />
             <Route path="/analisis" element={<AnalisisPage />} />
             <Route path="*" element={<Navigate to="/campanas" replace />} />
           </Route>

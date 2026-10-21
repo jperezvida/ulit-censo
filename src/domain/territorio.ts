@@ -44,6 +44,16 @@ export const CONFIG_TERRITORIAL: Record<string, ConfigTerritorial> = {
     resultado: 'excel-unico-municipal',
     nota: 'Distrito y Zona vacíos por regla municipal (no es un defecto). Se censan ambas aceras; seguimiento por itinerarios y un único Excel municipal.',
   },
+  // Escenario FICTICIO de C1d: mismas reglas territoriales que Medina, en un municipio aislado.
+  'mun-demo-medina': {
+    municipioId: 'mun-demo-medina', municipio: 'Medina del Campo (escenario ficticio)', version: 1,
+    distrito: { uso: 'no-se-usa', obligatorio: false },
+    zona: { uso: 'no-se-usa', obligatorio: false },
+    cp: { uso: 'fijo', obligatorio: true, valorFijo: '47400' },
+    aceras: 'ambas',
+    resultado: 'excel-unico-municipal',
+    nota: 'Escenario ficticio de demostración con las reglas de Medina del Campo (Distrito y Zona no se usan; CP 47400). No contiene datos reales.',
+  },
   'mun-valladolid': {
     municipioId: 'mun-valladolid', municipio: 'Valladolid', version: 1,
     distrito: { uso: 'tabla-verificada', obligatorio: true },

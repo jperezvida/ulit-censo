@@ -79,6 +79,13 @@ interface Estado {
    * aviso de éxito; con `sinAvisoError` el error lo presenta quien llama (p. ej. la tabla).
    */
   aplicar: (fn: (db: BaseDatos) => BaseDatos, etiqueta: string, opciones?: { silencioso?: boolean; sinAvisoError?: boolean }) => boolean;
+  /**
+   * Operación con deshacer PROPIO y trazado (incorporación de un censo, su deshacer o el reinicio del
+   * escenario ficticio): se aplica, se guarda de inmediato comprobando el resultado y vacía el
+   * historial de Ctrl+Z, para que un Ctrl+Z no la revierta sin sus comprobaciones.
+   * Devuelve si se aplicó y si se guardó; el error se devuelve a quien llama (no se muestra aviso).
+   */
+  aplicarConGuardado: (fn: (db: BaseDatos) => BaseDatos, etiqueta: string) => Promise<{ aplicado: boolean; guardado: boolean; error?: string }>;
   deshacer: () => void;
   rehacer: () => void;
   setPrefsOficina: (personaId: Id, p: Partial<PrefsOficina>) => void;
@@ -158,6 +165,30 @@ export const useStore = create<Estado>((set, get) => ({
     } catch (e) {
       if (!opciones?.sinAvisoError) get().avisar(e instanceof Error ? e.message : String(e), 'error');
       return false;
+    }
+  },
+
+  aplicarConGuardado: async (fn, etiqueta) => {
+    const { db } = get();
+    if (!db) return { aplicado: false, guardado: false, error: 'Los datos todavía no están cargados.' };
+    let nueva: BaseDatos;
+    try {
+      nueva = fn(db);
+    } catch (e) {
+      return { aplicado: false, guardado: false, error: e instanceof Error ? e.message : String(e) };
+    }
+    if (nueva === db) return { aplicado: false, guardado: true };
+    clearTimeout(temporizador);
+    set({ db: nueva, pilaDeshacer: [], pilaRehacer: [], guardado: { estado: 'pendiente' } });
+    try {
+      await idbSet(CLAVE_DB, nueva);
+      // Si mientras tanto hubo otra operación, su propio guardado diferido prevalece.
+      if (get().db === nueva) set({ guardado: { estado: 'guardado', momento: Date.now() } });
+      get().avisar(etiqueta, 'ok');
+      return { aplicado: true, guardado: true };
+    } catch (e) {
+      set({ guardado: { estado: 'error', momento: Date.now() } });
+      return { aplicado: true, guardado: false, error: `No se ha podido guardar en el almacenamiento del navegador (${e instanceof Error ? e.message : String(e)}). Los datos siguen en memoria: no cierres la pestaña y vuelve a intentarlo.` };
     }
   },
 

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, FileCheck2, FileScan, FileSearch, FileSpreadsheet, FileUp, FlaskConical, GitMerge, Map as MapIcon, Upload } from 'lucide-react';
+import { ArrowRight, FileCheck2, FileScan, FileSearch, FileSpreadsheet, FileUp, FlaskConical, GitMerge, Map as MapIcon, Undo2, Upload, Workflow } from 'lucide-react';
+import { DeshacerIncorporacion } from './incorporacion/DeshacerIncorporacion';
 import { InspectorExcel } from './InspectorExcel';
 import { AnalisisPrevio } from './AnalisisPrevio';
 import { useContexto } from '../../store/contexto';
@@ -33,6 +34,7 @@ const CLASE_TXT: Record<ClaseDiff, { t: string; c: string }> = {
 
 export default function DatosPage() {
   const { db, municipio, campana } = useContexto();
+  const nav = useNavigate();
   const [sel, setSel] = useState<string | null>(null);
   const [asistente, setAsistente] = useState(false);
   const [inspector, setInspector] = useState(false);
@@ -50,6 +52,7 @@ export default function DatosPage() {
         </div>
         <button className="btn" onClick={() => setInspector(true)}><FileSearch size={16} /> Inspeccionar estructura de Excel</button>
         <button className="btn primario" onClick={() => setAnalisis(true)} title="Lector XLSX de C1a: solo lectura, para los Excel de la Cátedra"><FileScan size={16} /> Análisis previo de importación</button>
+        <button className="btn" onClick={() => nav('/datos/incorporar')} title="Asistente de incorporación controlada (C1d): solo escenarios ficticios generados por la aplicación"><Workflow size={16} /> Incorporación controlada <span className="tag naranja">demostración</span></button>
         <button className="btn fantasma" onClick={() => setAsistente(true)} title="Importador CSV antiguo con problemas conocidos de interpretación: solo para los ejemplos ficticios">
           <FlaskConical size={16} /> Importador CSV provisional <span className="tag naranja">demostración</span>
         </button>
@@ -85,6 +88,7 @@ export default function DatosPage() {
 
 function DetalleImportacion({ imp }: { imp: Importacion }) {
   const { db } = useContexto();
+  const [deshacer, setDeshacer] = useState(false);
   const registros = useMemo(() => Object.values(db.registros).filter((r) => r.importacionId === imp.id).sort((a, b) => a.fila - b.fila), [db.registros, imp.id]);
   const vincPorReg = useMemo(() => {
     const m = new Map<string, string>();
@@ -101,6 +105,18 @@ function DetalleImportacion({ imp }: { imp: Importacion }) {
         <span className="chip ok">{imp.estado}</span>
       </div>
       {imp.nota && <p className="muted" style={{ fontSize: 13, margin: '6px 0 0' }}>{imp.nota}</p>}
+      {imp.c1 && (
+        <div className="dat-c1" aria-label="Traza de la incorporación">
+          <span className="chip">Perfil {imp.c1.perfil.id} v{imp.c1.perfil.version}</span>
+          <span className="chip">Año {imp.c1.anio}</span>
+          <span className="chip">Por {db.personas[imp.c1.porId]?.nombre ?? imp.c1.porId}</span>
+          <span className="chip">Huellas {imp.c1.algoritmoHuellas ?? 'FNV-1a 32 bits'}</span>
+          {imp.c1.deshecha ? <span className="chip aviso">Deshecha por {db.personas[imp.c1.deshecha.porId]?.nombre ?? imp.c1.deshecha.porId} · {fmtFecha(imp.c1.deshecha.fecha)}</span> : (
+            <button className="btn s peligro" onClick={() => setDeshacer(true)}><Undo2 size={14} /> Deshacer la incorporación…</button>
+          )}
+        </div>
+      )}
+      {deshacer && <DeshacerIncorporacion importacionId={imp.id} onCerrar={() => setDeshacer(false)} />}
       <div className="dat-cifras">
         <div><b className="num">{fmt(imp.filas)}</b><span>filas del archivo</span></div>
         <div><b className="num">{fmt(registros.length)}</b><span>registros de origen conservados</span></div>

@@ -22,7 +22,16 @@ export interface Municipio {
   /** Fuente del callejero cargado para este municipio. */
   fuenteCallejero: 'osm' | 'simulado' | 'sin-geometria';
   nota?: string;
+  /**
+   * Tipo de ámbito de estudio (ausente = municipio). Barrios, ejes comerciales, zonas de estudio y
+   * mercados municipales son ámbitos distintos y no se mezclan en las comparaciones.
+   */
+  ambito?: TipoAmbito;
+  /** Escenario FICTICIO de demostración al que pertenece (aislado: se puede reiniciar). */
+  escenarioDemo?: string;
 }
+
+export type TipoAmbito = 'municipio' | 'barrio' | 'eje-comercial' | 'zona-estudio' | 'mercado';
 
 /** Segmento cartográfico (p. ej. una "way" de OSM). Una calle suele tener varios. */
 export interface Segmento {

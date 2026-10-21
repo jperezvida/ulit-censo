@@ -209,3 +209,11 @@
 .ap-ajuste td {
   white-space: normal;
 }
+/* C1d: traza de una incorporación controlada */
+.dat-c1 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+}
