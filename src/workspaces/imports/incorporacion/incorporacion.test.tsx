@@ -109,7 +109,7 @@ describe('C1d-A · Asistente de incorporación con el escenario ficticio de Medi
     fireEvent.click(screen.getByRole('button', { name: /Siguiente: Confirmación/ }));
     await esperar(() => expect(useAsistente.getState().cargando).toBeNull());
     const crear = await esperar(() => screen.getByLabelText('Entidades que se crearán'));
-    expect(within(crear).getByText('Locales físicos nuevos').nextSibling).toHaveTextContent('843');
+    expect(within(crear).getByText('Locales físicos nuevos').nextSibling).toHaveTextContent('847');
     expect(screen.getByLabelText('Cambios en datos existentes')).toHaveTextContent('Ninguna entidad existente se modifica');
     const boton = screen.getByRole('button', { name: /Incorporar al modelo/ });
     expect(boton).toBeDisabled();
@@ -120,7 +120,7 @@ describe('C1d-A · Asistente de incorporación con el escenario ficticio de Medi
     // ── Etapa 5: resultado
     const res = await esperar(() => screen.getByLabelText('Resultado'));
     expect(res).toHaveTextContent('Registros incorporados890');
-    expect(res).toHaveTextContent('Locales creados843');
+    expect(res).toHaveTextContent('Locales creados847');
     expect(res).toHaveTextContent('Guardado en el almacenamiento de este navegador');
     const imp = useAsistente.getState().aplicado!.importacionId;
     const db1 = useStore.getState().db!;

@@ -327,14 +327,15 @@ describe('C1b · Clasificación histórica', () => {
 });
 
 describe('C1b · Direcciones repetidas y duplicados', () => {
-  it('conserva todas las filas, no fusiona y deja la correspondencia física pendiente', () => {
+  it('conserva todas las filas, no fusiona y las trata como locales distintos del mismo portal (C1c-1)', () => {
     const res = interpretarCapa(capa([OCUPADO, { ...OCUPADO, nombre: 'SERVICIO FICTICIO DISTINTO' }, { ...OCUPADO, numero: 7 }]), op());
     expect(res.filas).toHaveLength(3);
     expect(res.filas.map((f) => f.grupoDireccion)).toEqual([1, 1, undefined]);
     const rep = res.incidencias.filter((i) => i.tipo === 'direccion-repetida');
     expect(rep.map((i) => i.fila)).toEqual([2, 3]);
-    expect(rep[0]).toMatchObject({ gravedad: 'info', decision: 'revision' });
-    expect(rep[0].propuesta).toMatch(/No demuestra que haya dos locales físicos/);
+    // C1c-1: cada fila es un local físico distinto del mismo portal (dato informativo, no ambigüedad)
+    expect(rep[0]).toMatchObject({ gravedad: 'info', decision: 'informativa' });
+    expect(rep[0].propuesta).toMatch(/cada una es un local físico distinto del mismo portal/);
   });
   it('una fila idéntica a otra es posible duplicado exacto, sin eliminar ninguna', () => {
     const res = interpretarCapa(capa([OCUPADO, OCUPADO]), op());

@@ -84,6 +84,10 @@ export type MotivoSinLocal =
   | 'calle-ambigua'
   | 'numero-desconocido'
   | 'sin-numero'
+  /**
+   * Ya NO se produce (corrección C1c-1): varias filas con la misma calle y número en una campaña son
+   * locales físicos distintos. Se conserva en el tipo para leer planes y trazas anteriores.
+   */
   | 'direccion-repetida-en-archivo'
   | 'local-existente-en-direccion'
   | 'estado-local-desconocido';
@@ -122,6 +126,11 @@ export interface PlanIncorporacion {
   registros: { previstos: number; excluidos: number; candidatasExcluir: { fila: number; decidida: boolean }[] };
   nuevas: Record<Exclude<ColeccionIncorporada, 'campanas'> | 'campanas', number>;
   correspondencias: Record<Correspondencia, number> & { porMotivo: Partial<Record<MotivoSinLocal, number>> };
+  /**
+   * C1c-1 · Portales con varios locales nuevos en el archivo (misma calle y número): es un DATO, no una
+   * incidencia. Cada fila crea su propio local; nunca se fusionan.
+   */
+  mismoPortal: { portales: number; locales: number };
   incidencias: { total: number; porGravedad: Record<string, number>; porTipo: Record<string, number> };
   decisiones: { reglasAutorizadas: string[]; diccionarioAprobado: string[]; exclusiones: number; correspondencias: number; equivalenciasClasificacion: number };
   pendientes: string[];
@@ -277,7 +286,7 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   const incPorFila = new Map<number, number>();
   for (const i of resultado.incidencias) incPorFila.set(i.fila, (incPorFila.get(i.fila) ?? 0) + 1);
 
-  // Primera pasada: calle y dirección de cada fila, para detectar direcciones repetidas en el archivo.
+  // Primera pasada: calle y dirección de cada fila.
   const previo = resultado.filas.map((fi) => {
     const dir = fi.celdas.direccion;
     const num = fi.celdas.numero;
@@ -287,8 +296,6 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
     const kDir = calleId && portal?.tipo === 'numero' ? `${calleId}|${portal.numero}|${(portal.sufijo ?? '').toUpperCase()}` : undefined;
     return { fi, claves, calleId, portal, kDir };
   });
-  const repetidas = new Map<string, number>();
-  for (const p of previo) if (p.kDir && !excluidas.has(p.fi.fila)) repetidas.set(p.kDir, (repetidas.get(p.kDir) ?? 0) + 1);
 
   const filas: PlanFila[] = previo.map(({ fi, claves, calleId, portal, kDir }) => {
     const base = { fila: fi.fila, local: fi.local, incidencias: incPorFila.get(fi.fila) ?? 0, calleId };
@@ -310,12 +317,19 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
     if (fi.local === 'desconocido') return sinLocal('ambigua', 'estado-local-desconocido', existentes.get(kDir!));
     const previos = existentes.get(kDir!);
     if (previos?.length) return sinLocal('ambigua', 'local-existente-en-direccion', previos);
-    if ((repetidas.get(kDir!) ?? 0) > 1) return sinLocal('ambigua', 'direccion-repetida-en-archivo');
+    // C1c-1: otra fila del archivo con la misma calle y número es OTRO local físico del mismo portal
+    // (bajos, locales interiores…): cada fila crea su propio local, sin fusionarlos ni marcar ambigüedad.
     return ocupacion(`loc-${importacionId}-${fi.fila}`, true);
   });
 
   const cuenta = <T extends string>(xs: T[]) => xs.reduce((a, x) => ((a[x] = (a[x] ?? 0) + 1), a), {} as Record<T, number>);
   const corr = cuenta(filas.map((f) => f.correspondencia));
+  const porPortal = new Map<string, number>();
+  filas.forEach((f, i) => {
+    const k = previo[i].kDir;
+    if (k && f.localNuevo) porPortal.set(k, (porPortal.get(k) ?? 0) + 1);
+  });
+  const multiples = [...porPortal.values()].filter((n) => n > 1);
   const negocios = filas.filter((f) => f.negocio);
   const equivalencias = new Map((decisiones.equivalenciasClasificacion ?? []).map((q) => [claveClasif(q.grupo, q.grupoComercio, q.subgrupo, q.actividad), q]));
   const filaPorNum = new Map(resultado.filas.map((f) => [f.fila, f]));
@@ -350,6 +364,7 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
       franquicias, digital: digitales, clasificaciones: conClasif,
     },
     correspondencias: { ...({ inequivoca: 0, decidida: 0, ambigua: 0, 'sin-vinculo': 0, excluida: 0 } as Record<Correspondencia, number>), ...corr, porMotivo: cuenta(filas.filter((f) => f.motivo).map((f) => f.motivo!)) },
+    mismoPortal: { portales: multiples.length, locales: multiples.reduce((a, n) => a + n, 0) },
     incidencias: { total: resultado.incidencias.length, porGravedad: gravedad, porTipo: tipos },
     decisiones: {
       reglasAutorizadas: op.reglasAutorizadas ?? [], diccionarioAprobado: op.diccionarioAprobado ?? [], exclusiones: excluidas.size,

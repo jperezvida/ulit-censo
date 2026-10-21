@@ -40,8 +40,8 @@ describe('C1d-B · Dashboard', () => {
     const kpis = screen.getByLabelText('Indicadores principales');
     expect(kpis).toHaveTextContent('Registros censales890');
     expect(kpis).toHaveTextContent('Establecimientos observados860');
-    expect(kpis).toHaveTextContent('Locales físicos identificados842');
-    expect(kpis).toHaveTextContent(/Correspondencias pendientes890.*842 probables · 16 dudosas · 32 sin vínculo/);
+    expect(kpis).toHaveTextContent('Locales físicos identificados846');
+    expect(kpis).toHaveTextContent(/Correspondencias pendientes890.*846 probables · 12 dudosas · 32 sin vínculo/);
     expect(screen.getByLabelText('Calles con más locales ocupados')).toBeInTheDocument();
     expect(screen.getByText(/% solo en calles con al menos 5 observados/)).toBeInTheDocument();
     // Filtro vinculado: pulsar un sector filtra todo
@@ -136,6 +136,6 @@ describe('C1d-B · Dashboard', () => {
     // Cobertura y calidad: del registro al establecimiento, sin restas
     fireEvent.click(screen.getByRole('tab', { name: 'Cobertura y calidad' }));
     expect(screen.getByLabelText('Indicadores de cobertura y calidad')).toHaveTextContent(/Sin establecimiento30/);
-    expect(screen.getByLabelText('Trazabilidad: del registro al establecimiento')).toHaveTextContent(/890Filas importadas.*860Con establecimiento observado.*18Sin local identificado/);
+    expect(screen.getByLabelText('Trazabilidad: del registro al establecimiento')).toHaveTextContent(/890Filas importadas.*860Con establecimiento observado.*14Sin local identificado/);
   });
 });

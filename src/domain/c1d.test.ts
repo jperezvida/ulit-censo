@@ -50,9 +50,11 @@ describe('C1d · Escenario ficticio aislado y reproducible', () => {
     expect(inf.incidencias.total).toBe(298);
     expect(inf.incidencias.porGravedad).toEqual({ error: 15, aviso: 145, info: 138 });
     expect(plan.registros.candidatasExcluir).toEqual([{ fila: 891, decidida: false }]);
-    expect(plan.correspondencias).toMatchObject({ inequivoca: 842, ambigua: 16, 'sin-vinculo': 32, decidida: 0, excluida: 0 });
-    expect(plan.correspondencias.porMotivo).toEqual({ 'sin-numero': 6, 'local-existente-en-direccion': 4, 'numero-desconocido': 4, 'estado-local-desconocido': 2, 'direccion-repetida-en-archivo': 4, 'calle-sin-correspondencia': 28 });
-    expect(plan.nuevas).toMatchObject({ registros: 890, locales: 842, negocios: 620, observaciones: 860, ocupaciones: 841, clasificaciones: 0 });
+    // C1c-1: las 4 filas de los 2 portales repetidos son locales distintos (antes: 842 inequívocas y 16 ambiguas)
+    expect(plan.correspondencias).toMatchObject({ inequivoca: 846, ambigua: 12, 'sin-vinculo': 32, decidida: 0, excluida: 0 });
+    expect(plan.correspondencias.porMotivo).toEqual({ 'sin-numero': 6, 'local-existente-en-direccion': 4, 'numero-desconocido': 4, 'estado-local-desconocido': 2, 'calle-sin-correspondencia': 28 });
+    expect(plan.mismoPortal).toEqual({ portales: 2, locales: 4 });
+    expect(plan.nuevas).toMatchObject({ registros: 890, locales: 846, negocios: 620, observaciones: 860, ocupaciones: 845, clasificaciones: 0 });
     // Las anomalías deliberadas aparecen donde se documentan
     const tipoEn = (fila: number) => resultado.incidencias.filter((i) => i.fila === fila).map((i) => i.tipo);
     expect(tipoEn(ANOMALIAS_ESCENARIO.web4)).toContain('binario-invalido');
@@ -109,7 +111,9 @@ describe('C1d · Revisión por grupos y decisiones', () => {
     expect(de((i) => i.grupo === 'fachada-con-unidad').estado).toBe('catedra');
     expect(de((i) => i.grupo === 'binario-invalido').estado).toBe('revisar');
     expect(de((i) => i.grupo === 'clasificacion-fuera-de-lista').estado).toBe('no-aplica');
-    expect(de((i) => i.grupo === 'correspondencia:direccion-repetida-en-archivo').estado).toBe('catedra');
+    // C1c-1: el mismo portal ya no es una correspondencia pendiente; la incidencia de C1b es informativa
+    expect(items.some((i) => i.grupo === 'correspondencia:direccion-repetida-en-archivo')).toBe(false);
+    expect(de((i) => i.grupo === 'direccion-repetida').estado).toBe('no-aplica');
     const sn = ANOMALIAS_ESCENARIO.sn[0];
     const dec: DecisionesIncorporacion = { correspondencias: [{ fila: sn, accion: 'local-nuevo', ...F, motivo: 'Comprobado' }], exclusiones: [{ fila: 891, ...F, motivo: 'Totales' }] };
     const items2 = itemsRevision(resultado, plan, dec);
@@ -169,7 +173,7 @@ describe('C1d · Deshacer desde la interfaz: vista previa y protección', () => 
     const r = await aplicarEscenario(base, ESC, 2025, resultado, {}, plan, 'p-elena');
     const v = previsualizarDeshacer(r.db, r.importacionId, 'p-elena');
     expect(v.permitido).toBe(true);
-    expect(v.eliminara).toMatchObject({ registros: 890, locales: 842, campanas: 1 });
+    expect(v.eliminara).toMatchObject({ registros: 890, locales: 846, campanas: 1 });
     expect(v.conservara.join()).toMatch(/marcado como «deshecha»/);
     expect(JSON.stringify(previsualizarDeshacer(r.db, r.importacionId, 'p-elena'))).toBe(JSON.stringify(v)); // ensayo sin efectos
     const neg = Object.keys(r.db.negocios).find((k) => k.includes(r.importacionId))!;

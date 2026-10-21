@@ -68,7 +68,7 @@ La calle solo se reconoce por **coincidencia exacta y única** del nombre normal
 | Nombre de calle que coincide con varias calles | sin vínculo | Ídem |
 | Número desconocido | sin vínculo | Registro, observación sin local y vínculo `sin-vinculo` |
 | «S/N» | ambigua | Registro, observación **sin local** y vínculo `dudosa` |
-| Misma calle y número en varias filas del archivo | ambigua | **No** se crean ni uno ni dos locales: observaciones y negocios sin local, vínculo `dudosa`. No se decide si son dos locales |
+| Misma calle y número en varias filas del archivo (misma campaña) | **inequívoca** (C1c-1) | **Un local físico distinto por fila** (bajos, locales interiores…): nunca se fusionan. El plan lo cuenta como dato (`mismoPortal`), no como incidencia |
 | Ya existe un local en esa dirección | ambigua | **No** se reutiliza automáticamente: vínculo `dudosa` con el local como candidato |
 | «Local Vacío» inválido o vacío | ambigua | Registro y vínculo `dudosa`, sin observación ni ocupación: no se deduce si está vacío |
 | Decisión humana firmada | decidida | `local-nuevo` o `local-existente`; vínculo `confirmada` con `revisadoPorId` |
@@ -257,7 +257,7 @@ Queda como propuesta; no se ha aplicado.
   - con una regla firmada sí llegan, y queda trazada;
   - una equivalencia aprobada crea la clasificación importada sin confirmar.
 - **Correspondencias:**
-  - una dirección repetida no crea locales; una decisión humana puede separarlos;
+  - varias filas en el mismo portal crean un local distinto cada una (C1c-1); si ya existe un local de otra campaña en ese portal, siguen pendientes de conciliación con el local como candidato;
   - un local existente se propone como candidato, sin reutilizarlo; con decisión se vincula, salvo conflicto de año;
   - una calle sin correspondencia conserva solo el registro.
 - **Posibles totales:** se incorporan por defecto; una exclusión firmada conserva el registro con la marca.
@@ -279,43 +279,45 @@ Queda como propuesta; no se ha aplicado.
 
 ### 12.1 Corrección pendiente C1c-1: varios establecimientos en el mismo portal
 
-> **Estado:** documentada, **sin implementar**. Instrucción del responsable del proyecto (21-10-2026). Se abordará en una tarea propia, no en C1d ni en C2/C3.
+> **Estado: implementada** (bloque 1 de la revisión del cuadro de mando, 22-10-2026). Instrucción del responsable del proyecto (21-10-2026).
 
 **Criterio correcto.** Cuando varias filas del archivo tienen la misma calle y el mismo número de portal, representan **locales físicos distintos** (por ejemplo, varios bajos comerciales o locales interiores de un mismo portal). **No es una ambigüedad.**
 
-**Comportamiento actual (incorrecto).** La regla `direccion-repetida-en-archivo` (sección 3, fila «Misma calle y número en varias filas del archivo») las marca como `ambigua`. Ocurre lo siguiente:
+**Comportamiento anterior (corregido).** La regla `direccion-repetida-en-archivo` (sección 3, fila «Misma calle y número en varias filas del archivo») las marca como `ambigua`. Ocurre lo siguiente:
 - no se crea ningún local;
 - quedan observaciones y negocios sin local y un vínculo `dudosa`;
 - en el cuadro de mando cuentan como «sin local identificado» y como correspondencias dudosas.
 
-**Comportamiento esperado:**
+**Comportamiento actual:**
 - se crea **un local nuevo por fila**, con su observación, su ocupación (cerrada en la campaña histórica) y su vínculo `probable`, igual que una fila inequívoca;
 - los locales del mismo portal se distinguen por su fila de origen y, si el archivo los trae, por sufijo, letra o planta. Nunca se fusionan por compartir número;
 - el plan informa de cuántos portales tienen varios locales, como dato y no como incidencia.
 
-**Alcance que hay que revisar al implementarlo:**
-- `src/domain/incorporacion.ts` (`planificarIncorporacion`): retirar `direccion-repetida-en-archivo` como motivo de ambigüedad y conservar el resto de reglas («S/N», número desconocido, estado del local desconocido);
-- el motivo `local-existente-en-direccion`: con el nuevo criterio, que ya exista un local en el portal tampoco implica que sea el mismo. **Queda por decidir** si estas filas crean locales nuevos (con el existente como candidato a conciliar) o siguen pendientes de conciliación;
-- la huella de la traza, la firma del plan y el deshacer: un cambio de criterio cambia el plan, así que hay que comprobar la reimportación de archivos ya incorporados con el criterio anterior;
-- pruebas de C1c y C1d (`c1c.test.ts`, `c1d.test.ts`, `panel.test.ts`, asistente y dashboard) y las cifras documentadas.
+**Qué se ha cambiado:**
+- `src/domain/incorporacion.ts` (`planificarIncorporacion`): `direccion-repetida-en-archivo` ya no se produce (se conserva en el tipo para leer planes anteriores); el resto de reglas («S/N», número desconocido, estado del local desconocido) no cambia; nuevo dato `plan.mismoPortal` (portales con varios locales y número de locales);
+- el motivo `local-existente-en-direccion` **no cambia**: es conciliación entre campañas (otro año), no el mismo portal en la misma campaña. Las filas siguen `ambigua`, con el local existente como candidato. Si la Cátedra decide otra cosa, será una corrección aparte;
+- C1b: la incidencia `direccion-repetida` pasa a **informativa** («Varios establecimientos en el mismo portal»); el número de incidencias no cambia;
+- C1d-A: desaparecen el grupo de revisión y el pendiente de la Cátedra por direcciones repetidas; «Decisiones» informa del número de portales con varios locales;
+- la firma del plan incluye el nuevo dato, así que un plan calculado antes del cambio no se puede aplicar (se recalcula). La identidad de reimportación (municipio, año, perfil y SHA-256) no cambia: un archivo ya incorporado con el criterio anterior se detecta igual y, para aplicar el nuevo criterio, se deshace y se vuelve a incorporar;
+- pruebas actualizadas: `c1c.test.ts` (un local por fila en el mismo portal; datos faltantes y conciliación entre campañas siguen separados), `c1b.test.ts`, `c1d.test.ts`, `panel.test.ts`, asistente y cuadro de mando.
 
-**Impacto medido hoy** (datos ficticios):
+**Impacto medido** (datos ficticios, antes → después):
 
-| Archivo | Filas con `direccion-repetida-en-archivo` | Otras ambiguas |
-|---|---:|---|
-| Escenario ficticio de C1d (`medina-2025-ficticio`) | 4 | 6 «S/N», 4 «local existente en la dirección», 2 «estado desconocido» |
-| `CENSO_MEDINA_2025_FICTICIO.xlsx` (fuera del repositorio) | 0 | 6 «S/N» |
+| Archivo | Inequívocas | Ambiguas | Locales | Ocupaciones | Mismo portal |
+|---|---|---|---|---|---|
+| Escenario ficticio de C1d (`medina-2025-ficticio`) | 842 → **846** | 16 → **12** | 842 → **846** | 841 → **845** | 2 portales, 4 locales |
+| `CENSO_MEDINA_2025_FICTICIO.xlsx` (fuera del repositorio) | 852 (sin cambio) | 6 (sin cambio) | 852 | 852 | 0 |
 
-En el escenario, las cifras documentadas (842 inequívocas, 16 ambiguas, 32 sin vínculo) cambiarán. También cambiarán las de C1d-A y C1d-B que dependen de ellas: locales, establecimientos sin local y correspondencias pendientes.
+En el cuadro de mando del escenario: locales 846, establecimientos sin local 14 (antes 18), correspondencias 846 probables · 12 dudosas · 32 sin vínculo. Los registros sin establecimiento observado siguen siendo 30.
 
-**Relación con la decisión 5 de la Cátedra (direcciones repetidas).** Esta instrucción fija el criterio para el mismo portal. Lo que quede abierto de la decisión 5, como el caso del local ya existente en la dirección, sigue pendiente.
+**Relación con la decisión 5 de la Cátedra (direcciones repetidas).** Esta instrucción fija el criterio para el mismo portal dentro de una campaña. La relación con locales de otras campañas (local ya existente en la dirección) sigue pendiente de conciliación.
 
 ### 12.2 Otros pendientes
 
 - **C1d:** pantalla del plan y de las decisiones (exclusiones, correspondencias, reglas, diccionario y equivalencias), aplicación y deshacer desde la interfaz.
 - **Cátedra:**
   - decisiones 1, 2 y 3;
-  - decisión 5 (direcciones repetidas);
+  - decisión 5: criterio para el mismo portal fijado por C1c-1; queda la conciliación con locales de otras campañas;
   - decisión 6 (estado de revisión de los históricos; aquí todo queda pendiente).
 - **Conciliación entre campañas:** relacionar los locales importados con los de otras campañas. Hoy los vínculos de las filas inequívocas quedan `probable`.
 - **Valladolid:** sin correspondencia territorial verificada (Distrito, Zona y CP se conservan como dato original).

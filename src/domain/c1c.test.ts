@@ -64,9 +64,11 @@ describe('C1c · Plan previo (no modifica nada)', () => {
     expect(plan.destino).toMatchObject({ anio: 2025, nueva: true });
     expect(plan.registros.previstos).toBe(62);
     expect(plan.nuevas.registros).toBe(62);
-    // 12 filas en calles 007-008 (sin calle), 1 S/N, y las 4 filas de las 2 direcciones repetidas
-    expect(plan.correspondencias.porMotivo).toEqual({ 'calle-sin-correspondencia': 12, 'sin-numero': 1, 'direccion-repetida-en-archivo': 4 });
-    expect(plan.correspondencias.inequivoca).toBe(62 - 12 - 1 - 4);
+    // 12 filas en calles 007-008 (sin calle) y 1 S/N. Las 4 filas de los 2 portales repetidos son
+    // locales distintos (C1c-1): no son ambiguas y se cuentan como dato.
+    expect(plan.correspondencias.porMotivo).toEqual({ 'calle-sin-correspondencia': 12, 'sin-numero': 1 });
+    expect(plan.correspondencias.inequivoca).toBe(62 - 12 - 1);
+    expect(plan.mismoPortal).toEqual({ portales: 2, locales: 4 });
     expect(plan.nuevas.locales).toBe(plan.correspondencias.inequivoca);
     expect(plan.nuevas.clasificaciones).toBe(0);
     expect(plan.incidencias.total).toBeGreaterThan(0);
@@ -189,33 +191,40 @@ describe('C1c · Incorporación del histórico', () => {
 });
 
 describe('C1c · Correspondencias: direcciones repetidas, locales existentes y calles sin correspondencia', () => {
-  it('dos negocios en la misma dirección no se resuelven como dos locales: quedan sin local y pendientes', async () => {
+  it('C1c-1: varios establecimientos en el mismo portal son locales físicos distintos (uno por fila, sin fusionar)', async () => {
     const p = await preparar(base, { repetidas: 2 });
     const r = aplicar(base, p);
-    const amb = p.plan.filas.filter((f) => f.motivo === 'direccion-repetida-en-archivo');
-    expect(amb).toHaveLength(4);
-    for (const f of amb) {
-      expect(f.localId).toBeUndefined();
-      const v = r.db.vinculos[`vin-reg-${r.importacionId}-${f.fila}`];
-      expect(v).toMatchObject({ localId: null, confianza: 'dudosa' });
-      expect(r.db.observaciones[`obs-${r.importacionId}-${f.fila}`]).toMatchObject({ localId: null });
-      expect(r.db.locales[`loc-${r.importacionId}-${f.fila}`]).toBeUndefined();
+    expect(p.plan.filas.some((f) => f.motivo === 'direccion-repetida-en-archivo')).toBe(false);
+    // Agrupa los locales creados por dirección: dos portales con dos locales cada uno
+    const nuevos = Object.values(r.db.locales).filter((l) => l.id.startsWith(`loc-${r.importacionId}-`));
+    const porPortal = new Map<string, string[]>();
+    for (const l of nuevos) { const d = l.direcciones[0]; const k = `${d.calleId}|${d.numero}|${d.sufijo ?? ''}`; porPortal.set(k, [...(porPortal.get(k) ?? []), l.id]); }
+    const multiples = [...porPortal.values()].filter((ids) => ids.length > 1);
+    expect(multiples.map((ids) => ids.length)).toEqual([2, 2]);
+    for (const ids of multiples) {
+      expect(new Set(ids).size).toBe(2);
+      for (const id of ids) {
+        const fila = Number(id.split('-').pop());
+        expect(p.plan.filas.find((f) => f.fila === fila)).toMatchObject({ correspondencia: 'inequivoca', localNuevo: true, localId: id });
+        expect(r.db.vinculos[`vin-reg-${r.importacionId}-${fila}`]).toMatchObject({ localId: id, confianza: 'probable' });
+        expect(r.db.observaciones[`obs-${r.importacionId}-${fila}`]).toMatchObject({ localId: id });
+      }
     }
-    // Ambos negocios existen (identidad comercial), sin local ni ocupación
-    expect(amb.filter((f) => r.db.negocios[`neg-${r.importacionId}-${f.fila}`]).length).toBe(amb.filter((f) => f.negocio).length);
-    expect(amb.every((f) => !r.db.ocupaciones[`ocu-${r.importacionId}-${f.fila}`])).toBe(true);
+    expect(p.plan.mismoPortal).toEqual({ portales: 2, locales: 4 });
   });
 
-  it('una decisión humana firmada puede separarlos en dos locales (vínculo confirmado con revisor)', async () => {
-    const p0 = await preparar(base, { repetidas: 1 });
-    const filas = p0.plan.filas.filter((f) => f.motivo === 'direccion-repetida-en-archivo').map((f) => f.fila);
-    const dec: DecisionesIncorporacion = { correspondencias: filas.map((fila) => ({ fila, accion: 'local-nuevo' as const, porId: 'p-elena', fecha: '2026-10-20', motivo: 'Comprobado en campo: dos locales' })) };
-    const p = await preparar(base, { repetidas: 1 }, dec);
-    const r = aplicar(base, p, dec);
-    for (const fila of filas) {
-      expect(r.db.locales[`loc-${r.importacionId}-${fila}`]).toBeDefined();
-      expect(r.db.vinculos[`vin-reg-${r.importacionId}-${fila}`]).toMatchObject({ confianza: 'confirmada', revisadoPorId: 'p-elena' });
-    }
+  it('C1c-1 mantiene separados los datos faltantes y la conciliación con otras campañas', async () => {
+    // Un local de otra campaña ya existe en uno de los portales repetidos: no se reutiliza ni se fusiona;
+    // las dos filas quedan pendientes de conciliación entre campañas, con el local como candidato.
+    const calle = Object.values(base.calles).find((c) => c.nombre === 'VÍA FICTICIA 001')!;
+    const conLocal: BaseDatos = { ...base, locales: { ...base.locales, 'loc-previo': { id: 'loc-previo', municipioId: 'mun-medina', direcciones: [{ calleId: calle.id, numero: 1 }], estado: 'activo', procedencia: 'simulado' } } };
+    const p = await preparar(conLocal, { repetidas: 2 });
+    const exist = p.plan.filas.filter((f) => f.motivo === 'local-existente-en-direccion');
+    expect(exist).toHaveLength(2);
+    expect(exist.every((f) => f.correspondencia === 'ambigua' && !f.localNuevo && f.candidatos?.includes('loc-previo'))).toBe(true);
+    expect(p.plan.mismoPortal).toEqual({ portales: 1, locales: 2 });
+    // Los datos faltantes siguen siendo ambiguos o sin vínculo (S/N, calle sin correspondencia)
+    expect(p.plan.correspondencias.porMotivo).toMatchObject({ 'sin-numero': 1, 'calle-sin-correspondencia': 12, 'local-existente-en-direccion': 2 });
   });
 
   it('un local ya existente en la dirección no se reutiliza automáticamente: se propone como candidato', async () => {

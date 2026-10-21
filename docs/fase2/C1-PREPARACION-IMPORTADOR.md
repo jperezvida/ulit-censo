@@ -6,6 +6,7 @@
 > 1. Los originales de Medina 2025, Valladolid 2024 y Medina 2026 usan etiquetas OOXML **sin prefijo**. El prefijo `x:` procede del libro ficticio de pruebas. El lector de C1a usa ExcelJS y solo adapta, de forma acotada y probada, el XML válido con prefijo. Véase [`C1A-COMPATIBILIDAD.md`](C1A-COMPATIBILIDAD.md).
 > 2. Las cifras de clasificaciones del libro ficticio son de una **simulación**: no se extrapolan al censo real.
 > 3. Una dirección repetida con negocios distintos **no demuestra** que existan dos locales físicos. Se conservan todas las filas y la correspondencia física queda pendiente de conciliación cuando no sea inequívoca (sección 8 corregida).
+>    **Actualizado por C1c-1 (21-10-2026):** dentro de una misma campaña, varias filas con la misma calle y número son locales físicos distintos del mismo portal. Solo la relación con locales de otras campañas queda pendiente de conciliación.
 > 4. La conservación de los archivos originales queda sin implementar hasta aprobar una propuesta (sección 10 de `C1A-COMPATIBILIDAD.md`).
 >
 > **Fuentes:**

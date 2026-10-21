@@ -96,7 +96,7 @@ Ninguna corrige un valor; solo generan incidencias:
 | Reseñas > 0 o «Responde» = Sí con Google en No | `resenas-sin-google`, `responde-sin-google` |
 | Nº redes distinto del calculado | `redes-discrepa` |
 | Nº redes incalculable | `redes-no-calculable` |
-| Misma calle y número | `direccion-repetida` (info). Se conservan todas las filas; no se fusiona nada; la correspondencia física queda para C1c/C1d |
+| Misma calle y número | `direccion-repetida` (info, **informativa**). Se conservan todas las filas y cada una es un local físico distinto del mismo portal; no se fusiona nada (corrección C1c-1) |
 | Fila idéntica a otra | `fila-duplicada-exacta` (aviso); se conservan ambas |
 
 Franquicia y presencia digital: los valores de 2025 se interpretan como respuestas **históricas**. Cada fila lleva `verificado2026: false`: no verifican la franquicia ni la revisión digital de 2026.

@@ -111,7 +111,8 @@ export const ESTADO_REVISION_TXT: Record<EstadoRevision, string> = {
 
 /** Motivos de correspondencia del plan, presentados como grupos de revisión. */
 export const MOTIVO_TXT: Record<string, { titulo: string; explicacion: string; decidible: boolean }> = {
-  'direccion-repetida-en-archivo': { titulo: 'Misma dirección en varias filas', explicacion: 'Dos negocios distintos en el mismo número no demuestran dos locales físicos: no se crea ninguno hasta decidirlo.', decidible: true },
+  // Solo para planes anteriores a la corrección C1c-1 (hoy el mismo portal crea locales distintos).
+  'direccion-repetida-en-archivo': { titulo: 'Misma dirección en varias filas (criterio anterior)', explicacion: 'Plan calculado con el criterio anterior a C1c-1: vuelva a analizar el archivo; hoy cada fila es un local físico distinto del mismo portal.', decidible: true },
   'local-existente-en-direccion': { titulo: 'Ya existe un local en esa dirección', explicacion: 'Puede ser el mismo local o no: no se elige automáticamente.', decidible: true },
   'sin-numero': { titulo: 'Dirección «S/N»', explicacion: 'Sin número no hay dirección inequívoca: no se crea local salvo decisión.', decidible: true },
   'numero-desconocido': { titulo: 'Número desconocido', explicacion: 'El registro se conserva sin vínculo para revisarlo más adelante.', decidible: false },
@@ -177,7 +178,7 @@ export function itemsRevision(resultado: ResultadoInterpretacion, plan: PlanInco
     const f = porFila.get(i.fila);
     const comboOk = CLASIFICACION.has(i.tipo) && f && equivalencias.has(claveCombo(...comboDe(f)));
     if (excluidas.has(i.fila)) estado = 'no-aplica';
-    else if (comboOk || (i.tipo === 'direccion-repetida' && decididas.has(i.fila))) estado = 'resuelto';
+    else if (comboOk) estado = 'resuelto';
     else if (tipo.decision === 'catedra') estado = 'catedra';
     else if (tipo.gravedad === 'info' && tipo.decision === 'informativa') estado = 'no-aplica';
     else estado = 'revisar';
@@ -193,7 +194,7 @@ export function itemsRevision(resultado: ResultadoInterpretacion, plan: PlanInco
     const m = MOTIVO_TXT[pf.motivo];
     items.push({
       clave: `cor-${pf.fila}`, fila: pf.fila, grupo: `correspondencia:${pf.motivo}`, titulo: m.titulo, categoria: 'correspondencia', gravedad: 'aviso',
-      estado: excluidas.has(pf.fila) ? 'no-aplica' : decididas.has(pf.fila) ? 'resuelto' : pf.motivo === 'direccion-repetida-en-archivo' ? 'catedra' : 'revisar',
+      estado: excluidas.has(pf.fila) ? 'no-aplica' : decididas.has(pf.fila) ? 'resuelto' : 'revisar',
       mensaje: m.explicacion, propuesta: m.decidible ? 'Decidir en «Correspondencias» o dejar pendiente.' : 'Queda sin vínculo para revisión posterior.', ...datosFila(pf.fila),
     });
   }

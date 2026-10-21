@@ -37,11 +37,11 @@ Espacio **Visualización** en la barra superior (ruta `#/visualizacion`). El red
 
 Ejemplo con el escenario ficticio, probado:
 - 890 registros censales, 30 de ellos sin establecimiento observado;
-- 860 establecimientos observados, de ellos 18 sin local;
-- 842 locales;
+- 860 establecimientos observados, de ellos 14 sin local;
+- 846 locales (4 de ellos en 2 portales con varios locales, C1c-1);
 - 620 negocios;
 - 240 vacíos;
-- 890 correspondencias pendientes: 842 probables, 16 dudosas y 32 sin vínculo.
+- 890 correspondencias pendientes: 846 probables, 12 dudosas y 32 sin vínculo.
 
 Los establecimientos de Oficina coinciden con `filasOficina` (prueba), así que el dashboard y Oficina cuentan lo mismo.
 

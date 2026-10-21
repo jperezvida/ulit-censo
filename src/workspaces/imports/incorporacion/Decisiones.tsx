@@ -179,7 +179,6 @@ function Correspondencias({ resultado, decisiones, onCambiar, firma, sinPermiso 
           <section key={motivo} className="tarjeta dec-tarjeta" aria-label={m.titulo}>
             <div className="fila"><b className="esp">{m.titulo}</b><span className="chip">{fmt(filas.length)} fila(s)</span></div>
             <p className="muted" style={{ margin: '2px 0 6px' }}>{m.explicacion}</p>
-            {motivo === 'direccion-repetida-en-archivo' && <div className="t-info aviso" style={{ margin: '0 0 6px' }}>Crear un local para cada fila afirma que son dos locales físicos distintos: hágalo solo si se ha comprobado (criterio pendiente de la Cátedra, decisión 5).</div>}
             {m.decidible ? (
               <table className="tabla ap-tabla">
                 <thead><tr><th>Fila</th><th>Dirección original</th><th>Negocio</th><th>Decisión</th></tr></thead>
@@ -348,7 +347,6 @@ function PendienteCatedra({ resultado, plan, decisiones }: Props) {
   const textos = textosDiccionario(resultado).filter((t) => !decisiones.diccionarioAprobado?.some((x) => x.texto.toLowerCase() === t.texto.toLowerCase()));
   const combos = combinacionesHistoricas(resultado);
   const sinEq = combos.filter((c) => !decisiones.equivalenciasClasificacion?.some((q) => claveCombo(q.grupo, q.grupoComercio, q.subgrupo, q.actividad) === c.clave));
-  const repetidas = plan.filas.filter((f) => f.motivo === 'direccion-repetida-en-archivo').length;
   return (
     <div className="col" style={{ gap: 10 }} aria-label="Pendiente de la Cátedra">
       <p className="muted" style={{ margin: 0 }}>Estas cuestiones no las resuelve la aplicación. Quedan registradas como pendientes y no impiden incorporar el histórico como referencia.</p>
@@ -356,7 +354,7 @@ function PendienteCatedra({ resultado, plan, decisiones }: Props) {
         {reglas.map((r) => <li key={r.regla}><ChipEstado e="catedra" /> {r.descripcion} — {r.celdas.length} celda(s){r.decision ? ` (decisión ${r.decision})` : ''}</li>)}
         {textos.map((t) => <li key={t.texto}><ChipEstado e="catedra" /> Diccionario: «{t.texto}» — {t.celdas.length} celda(s) (decisión 1)</li>)}
         <li><ChipEstado e="catedra" /> Correspondencias 2025 → 2026: {sinEq.length} de {combos.length} combinaciones históricas sin equivalencia aprobada (decisión 3)</li>
-        {repetidas > 0 && <li><ChipEstado e="catedra" /> Criterio para direcciones repetidas: {repetidas} fila(s) (decisión 5)</li>}
+        {plan.mismoPortal.portales > 0 && <li><ChipEstado e="resuelto" /> Varios establecimientos en el mismo portal: {plan.mismoPortal.locales} locales distintos en {plan.mismoPortal.portales} portal(es). Criterio fijado: cada fila es un local físico distinto (corrección C1c-1).</li>}
         <li><ChipEstado e="catedra" /> Estado de revisión de los históricos importados: todo queda pendiente, nada se marca como revisado (decisión 6)</li>
       </ul>
       <details className="tarjeta dec-tarjeta">

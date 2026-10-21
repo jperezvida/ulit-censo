@@ -83,7 +83,7 @@ Cada decisión registra **persona** (la del contexto), **fecha** y **motivo o re
 - **Pendiente de la Cátedra:**
   - reglas y textos sin autorizar;
   - correspondencias 2025 → 2026 (decisión 3);
-  - direcciones repetidas (decisión 5);
+  - conciliación con locales de otras campañas en la misma dirección (decisión 5; el mismo portal dentro de una campaña ya no es pendiente: C1c-1);
   - estado de revisión de los históricos (decisión 6);
   - D01–D14 y excepciones ICM.
 
@@ -126,13 +126,14 @@ Cada decisión registra **persona** (la del contexto), **fecha** y **motivo o re
 | Locales: ocupados / vacíos / sin estado | 641 / 246 / 3 |
 | Celdas | 24.030 |
 | Incidencias | 298 (15 error · 145 aviso · 138 información) |
-| Correspondencias: inequívocas / ambiguas / sin vínculo | 842 / 16 / 32 |
-| Motivos | S/N 6 · local existente 4 · número desconocido 4 · estado desconocido 2 · dirección repetida 4 · calle sin correspondencia 28 |
-| Entidades nuevas | 890 registros · 842 locales · 620 negocios · 860 observaciones · 841 ocupaciones · 0 clasificaciones 2026 |
+| Correspondencias: inequívocas / ambiguas / sin vínculo | 846 / 12 / 32 |
+| Mismo portal (locales distintos, C1c-1) | 2 portales · 4 locales |
+| Motivos | S/N 6 · local existente 4 · número desconocido 4 · estado desconocido 2 · calle sin correspondencia 28 |
+| Entidades nuevas | 890 registros · 846 locales · 620 negocios · 860 observaciones · 845 ocupaciones · 0 clasificaciones 2026 |
 
-> **Corrección pendiente C1c-1** (ver `C1C-INCORPORACION.md`, sección 12.1): las 4 filas con «dirección repetida» son locales físicos distintos del mismo portal, no una ambigüedad. Cuando se corrija, cambiarán las cifras de locales, ambiguas y correspondencias de esta tabla.
+> **Corrección C1c-1 aplicada** (ver `C1C-INCORPORACION.md`, sección 12.1): las 4 filas de los 2 portales repetidos son locales físicos distintos, no una ambigüedad. Antes: 842 inequívocas, 16 ambiguas, 842 locales y 841 ocupaciones.
 
-Con las decisiones de la prueba de interfaz (autorizar «3,5 m», crear un local para una fila S/N y excluir la fila de totales) se crean 843 locales y se incorporan 890 registros, uno de ellos con la exclusión. La campaña 2026 no cambia y el deshacer deja la base como estaba.
+Con las decisiones de la prueba de interfaz (autorizar «3,5 m», crear un local para una fila S/N y excluir la fila de totales) se crean 847 locales y se incorporan 890 registros, uno de ellos con la exclusión. La campaña 2026 no cambia y el deshacer deja la base como estaba.
 
 El **Excel ficticio de Medina 2025** que facilitasteis, comprobado fuera del repositorio con `npm run interpretar` y `npm run simular-incorporacion`, conserva los resultados de C1b y C1c:
 - 889 registros, 24.003 celdas y 452 incidencias;

@@ -43,8 +43,8 @@ describe('C1d-B · Datos del dashboard calculados sobre el modelo', () => {
     expect(d.registrosConIncidencias).toBeGreaterThan(0);
     expect(d.registrosConIncidencias).toBeLessThanOrEqual(d.incidencias);
     expect(d.registrosExcluidos).toBe(0);
-    expect(r).toMatchObject({ establecimientos: 860, locales: 842, negocios: 620, ocupados: 620, vacios: 240, sinLocal: 18 });
-    expect(d.correspondencias).toEqual({ confirmada: 0, probable: 842, dudosa: 16, sinVinculo: 32 });
+    expect(r).toMatchObject({ establecimientos: 860, locales: 846, negocios: 620, ocupados: 620, vacios: 240, sinLocal: 14 });
+    expect(d.correspondencias).toEqual({ confirmada: 0, probable: 846, dudosa: 12, sinVinculo: 32 });
     expect(d.historica).toBe(true);
   });
 

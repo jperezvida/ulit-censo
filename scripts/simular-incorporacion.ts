@@ -41,6 +41,7 @@ console.log(`  Entidades nuevas: ${Object.entries(plan.nuevas).map(([k, v]) => `
 const c = plan.correspondencias;
 console.log(`  Correspondencias: inequívocas ${c.inequivoca} · decididas ${c.decidida} · ambiguas ${c.ambigua} · sin vínculo ${c['sin-vinculo']} · excluidas ${c.excluida}`);
 console.log(`    Motivos: ${Object.entries(c.porMotivo).map(([k, v]) => `${k} ${v}`).join(' · ') || '—'}`);
+console.log(`    Mismo portal (locales distintos, C1c-1): ${plan.mismoPortal.portales} portal(es) con ${plan.mismoPortal.locales} locales`);
 console.log(`  Incidencias pendientes: ${plan.incidencias.total} (${Object.entries(plan.incidencias.porGravedad).map(([k, v]) => `${k} ${v}`).join(', ')})`);
 console.log(`  Decisiones aplicadas: reglas ${plan.decisiones.reglasAutorizadas.length} · diccionario ${plan.decisiones.diccionarioAprobado.length} · exclusiones ${plan.decisiones.exclusiones} · correspondencias ${plan.decisiones.correspondencias} · equivalencias ${plan.decisiones.equivalenciasClasificacion}`);
 for (const p of plan.pendientes) console.log(`  · Pendiente: ${p}`);
