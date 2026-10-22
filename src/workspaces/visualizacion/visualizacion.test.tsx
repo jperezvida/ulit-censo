@@ -205,7 +205,7 @@ describe('C1d-B · Dashboard', () => {
     expect((screen.getByLabelText('Filtro de calle') as HTMLSelectElement).selectedOptions[0].textContent).toContain(boton.textContent!);
   });
 
-  it('el mapa dibuja puntos solo para locales con coordenadas verificadas (nunca posiciones inventadas)', () => {
+  it('selector de vista: «Por calles» conserva el sistema actual aunque haya coordenadas; «Por establecimientos» dibuja un punto por local', () => {
     const antes = useStore.getState().db!;
     const ids = Object.values(antes.locales).filter((l) => l.municipioId === 'mun-medina' && l.coord).slice(0, 12).map((l) => l.id);
     const locales = { ...antes.locales };
@@ -214,13 +214,89 @@ describe('C1d-B · Dashboard', () => {
     try {
       montar();
       fireEvent.click(screen.getByRole('tab', { name: '2025 Censo 2025 histórico' }));
-      const mapa = screen.getByRole('img', { name: 'Mapa de establecimientos (coordenadas verificadas)' });
-      const n = mapa.querySelectorAll('circle').length;
-      expect(n).toBeGreaterThan(0);
-      expect(n).toBeLessThanOrEqual(ids.length);
-      expect(screen.getByText(/con coordenadas verificadas, en su posición/)).toBeInTheDocument();
+      const vistas = screen.getByRole('group', { name: 'Vista del mapa' });
+      // Por defecto, por calles con sus cinco capas, aunque una parte tenga coordenadas verificadas
+      expect(within(vistas).getByRole('button', { name: 'Por calles' })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('img', { name: 'Mapa por calle: Ocupación' }).querySelectorAll('circle.vz-punto')).toHaveLength(0);
+      expect(within(screen.getByRole('group', { name: 'Capa del mapa' })).getAllByRole('button')).toHaveLength(5);
+      fireEvent.click(within(vistas).getByRole('button', { name: 'Por establecimientos' }));
+      expect(screen.queryByRole('group', { name: 'Capa del mapa' })).toBeNull();
+      const mapa = screen.getByRole('img', { name: 'Mapa por establecimientos (ubicaciones simuladas)' });
+      const puntos = mapa.querySelectorAll('circle.vz-punto');
+      const n25 = Number(/^(\d+) de/.exec(contador())![1]);
+      expect(puntos.length).toBeGreaterThan(0);
+      expect(puntos.length).toBeLessThanOrEqual(n25);
+      expect(new Set([...puntos].map((c) => c.getAttribute('data-clave'))).size).toBe(puntos.length);
+      // Las verificadas prevalecen; el resto (ficticio) es simulado y se dice de forma inequívoca
+      expect([...puntos].filter((c) => c.getAttribute('data-tipo') === 'verificada').length).toBeGreaterThan(0);
+      expect(screen.getByRole('note', { name: 'Ubicaciones simuladas' })).toHaveTextContent('No son coordenadas');
+      expect(screen.getByText(/con ubicación simulada · \d+ con coordenadas verificadas/)).toBeInTheDocument();
+      // Leyenda por categoría (comercio, servicios, hostelería, vacíos) que oculta y muestra
+      const ley = screen.getByRole('group', { name: 'Leyenda: categorías de establecimiento' });
+      const vac = within(ley).getByRole('button', { name: /^Vacíos/ });
+      const nVac = Number(vac.textContent!.replace(/\D/g, ''));
+      fireEvent.click(vac);
+      expect(screen.getByRole('img', { name: /^Mapa por establecimientos/ }).querySelectorAll('circle.vz-punto')).toHaveLength(puntos.length - nVac);
+      fireEvent.click(vac);
+      // Volver a «Por calles» recupera exactamente el mapa agregado
+      fireEvent.click(within(vistas).getByRole('button', { name: 'Por calles' }));
+      expect(screen.getByRole('img', { name: 'Mapa por calle: Ocupación' })).toBeInTheDocument();
+      // Nada se ha guardado: los locales no verificados siguen sin verificar
+      expect(Object.values(useStore.getState().db!.locales).filter((l) => l.coordVerificada)).toHaveLength(ids.length);
     } finally {
       useStore.setState({ db: antes });
     }
+  });
+
+  it('ficha del establecimiento al pulsar un punto, y locales del mismo portal como puntos independientes', () => {
+    const antes = useStore.getState().db!;
+    // Dos locales ficticios en el mismo portal (misma calle y número): siguen siendo dos locales
+    const obs = Object.values(antes.observaciones).filter((o) => o.campanaId === 'camp-medina-2025' && o.localId && !o.datos.vacio && o.datos.negocioId);
+    const a = obs[0];
+    const b = obs.find((o) => o.calleId === a.calleId && o.localId !== a.localId && o.datos.negocioId)!;
+    const locales = { ...antes.locales };
+    const dir = antes.locales[a.localId!].direcciones;
+    locales[b.localId!] = { ...locales[b.localId!], direcciones: [{ ...dir[dir.length - 1] }] };
+    const observaciones = { ...antes.observaciones, [b.id]: { ...b, datos: { ...b.datos, numero: a.datos.numero, sufijo: a.datos.sufijo } } };
+    useStore.setState({ db: { ...antes, locales, observaciones } });
+    try {
+      montar();
+      fireEvent.click(screen.getByRole('tab', { name: '2025 Censo 2025 histórico' }));
+      fireEvent.click(within(screen.getByRole('group', { name: 'Vista del mapa' })).getByRole('button', { name: 'Por establecimientos' }));
+      const mapa = screen.getByRole('img', { name: /^Mapa por establecimientos/ });
+      const pa = mapa.querySelector(`circle[data-clave="${a.localId}"]`)!;
+      const pb = mapa.querySelector(`circle[data-clave="${b.localId}"]`)!;
+      expect(pa).toBeTruthy();
+      expect(pb).toBeTruthy();
+      // Expandidos: dos puntos en posiciones de dibujo distintas, unidos a su portal
+      expect(`${pa.getAttribute('cx')},${pa.getAttribute('cy')}`).not.toBe(`${pb.getAttribute('cx')},${pb.getAttribute('cy')}`);
+      expect(mapa.querySelectorAll('.vz-grupo line').length).toBeGreaterThanOrEqual(2);
+      fireEvent.click(pa);
+      const ficha = screen.getByLabelText('Establecimiento seleccionado');
+      const nombre = antes.negocios[a.datos.negocioId!].nombre;
+      expect(ficha).toHaveTextContent(nombre);
+      expect(ficha).toHaveTextContent(`${antes.calles[a.calleId].nombre}, ${a.datos.numero}`);
+      expect(ficha).toHaveTextContent(/EstadoOcupado/);
+      expect(ficha).toHaveTextContent(/Sector ?(Comercio|Servicios|Hostelería y Restauración)/);
+      expect(ficha).toHaveTextContent('Ubicación simulada a partir del callejero · no es una coordenada');
+      // El otro local del portal aparece aparte y se puede abrir
+      expect(ficha).toHaveTextContent('Mismo portal: 2 locales independientes');
+      fireEvent.click(within(ficha).getByRole('button', { name: antes.negocios[b.datos.negocioId!].nombre }));
+      expect(screen.getByLabelText('Establecimiento seleccionado')).toHaveTextContent(antes.negocios[b.datos.negocioId!].nombre);
+      fireEvent.click(screen.getByRole('button', { name: 'Cerrar la ficha' }));
+      expect(screen.queryByLabelText('Establecimiento seleccionado')).toBeNull();
+    } finally {
+      useStore.setState({ db: antes });
+    }
+  });
+
+  it('sin geometría (escenario ficticio C1d) la vista por establecimientos no está disponible y lo explica', () => {
+    montar();
+    fireEvent.change(screen.getByLabelText('Ámbito'), { target: { value: MUNICIPIO_DEMO.id } });
+    const b = within(screen.getByRole('group', { name: 'Vista del mapa' })).getByRole('button', { name: 'Por establecimientos' });
+    expect(b).toBeDisabled();
+    expect(b).toHaveAttribute('title', expect.stringMatching(/no tienen geometría/));
+    expect(screen.getByRole('table', { name: 'Matriz territorial: calles × sector' })).toBeInTheDocument();
+    expect(screen.queryByRole('note', { name: 'Ubicaciones simuladas' })).toBeNull();
   });
 });

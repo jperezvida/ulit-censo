@@ -75,10 +75,11 @@ export function Kpi({ etq, valor, sub, tono, barra, icono, color }: {
 }
 
 /** Pequeño selector segmentado dentro de una tarjeta. */
-export function Conmutador<T extends string>({ valor, opciones, onCambio, etiqueta }: { valor: T; opciones: { v: T; t: string }[]; onCambio: (v: T) => void; etiqueta: string }) {
+/** Botones excluyentes. Una opción con `motivo` se muestra deshabilitada y explica por qué. */
+export function Conmutador<T extends string>({ valor, opciones, onCambio, etiqueta }: { valor: T; opciones: { v: T; t: string; motivo?: string }[]; onCambio: (v: T) => void; etiqueta: string }) {
   return (
     <div className="vz-conmutador" role="group" aria-label={etiqueta}>
-      {opciones.map((o) => <button key={o.v} className={o.v === valor ? 'on' : ''} aria-pressed={o.v === valor} onClick={() => onCambio(o.v)}>{o.t}</button>)}
+      {opciones.map((o) => <button key={o.v} className={o.v === valor ? 'on' : ''} aria-pressed={o.v === valor} disabled={!!o.motivo} title={o.motivo} onClick={() => onCambio(o.v)}>{o.t}</button>)}
     </div>
   );
 }

@@ -5,14 +5,18 @@ import type { BaseDatos } from '../../domain/db';
 import { claseDe, cortesCuantiles, rankingCalles, SECTORES, UMBRAL_CALLE, type FilaRanking, type Sector, type UnidadPanel } from '../../domain/panel';
 import type { Calle, Id, LngLat } from '../../domain/types';
 import { COLOR, fmtPct } from './graficos';
-import { LienzoGL, webglDisponible, type CalleMapa, type PuntoMapa } from './mapaGL';
-import { SECTOR_CORTO } from './comun';
+import { LienzoGL, webglDisponible, type CalleMapa, type PuntoMapa, type TipMapa } from './mapaGL';
+import { FUENTE_TXT, SECTOR_CORTO } from './comun';
+import { VARIABLES_DIGITALES } from '../../domain/digital';
+import { desplazamientoGrupo, type PosicionEstablecimiento, type ResultadoPosiciones, type TipoPosicion } from '../../domain/posiciones';
 
 /**
- * Mapa territorial del Resumen. Nunca inventa posiciones:
- * - **puntos** por establecimiento solo si sus locales tienen coordenadas VERIFICADAS;
- * - si no, **agregados por calle** sobre la geometría del callejero;
- * - sin geometría, el Resumen muestra la matriz calle × sector (`MatrizTerritorial`), no un mapa.
+ * Mapa territorial del Resumen, con dos vistas:
+ * - **Por calles**: agregados por calle sobre la geometría del callejero, con cinco capas;
+ * - **Por establecimientos**: un punto por local físico, coloreado por sector o vacío. La posición es la
+ *   verificada, la aproximada (dibujada aparte, pendiente de validación) o, solo en datos ficticios, una
+ *   ubicación simulada sobre la calle, señalada como tal (`domain/posiciones.ts`). Nada se inventa ni se guarda.
+ * Sin geometría, el Resumen muestra la matriz calle × sector (`MatrizTerritorial`), no un mapa.
  * Mapa, rankings y matriz comparten la calle resaltada (al pasar el cursor) y la fijada (al pulsar).
  */
 
@@ -75,16 +79,7 @@ const etiquetaCapa = (capa: CapaMapa) => (capa === 'ocupacion' ? 'Ocupación' : 
 /** Calles del ámbito con su composición (todas, sin umbral: el umbral se aplica al colorear). */
 export const callesDelAmbito = (us: UnidadPanel[]) => rankingCalles(us, 'ocupados', 1, Infinity).filas;
 
-function Leyenda({ capa, cortes, colores, modo }: { capa: CapaMapa; cortes: number[]; colores: string[]; modo: 'calles' | 'puntos' }) {
-  if (modo === 'puntos') {
-    return (
-      <div className="vz-mapa-leyenda">
-        {SECTORES.map((s) => <span key={s}><i className="punto" style={{ background: COLOR[s] }} />{SECTOR_CORTO[s]}</span>)}
-        <span><i className="punto" style={{ background: COLOR['Sin clasificar'] }} />Sin clasificar</span>
-        <span><i className="punto" style={{ background: TONO_CAPA.vacios }} />Vacío</span>
-      </div>
-    );
-  }
+function Leyenda({ capa, cortes, colores }: { capa: CapaMapa; cortes: number[]; colores: string[] }) {
   return (
     <div className="vz-mapa-leyenda" aria-label={`Escala: ${etiquetaCapa(capa)}`}>
       <b>{etiquetaCapa(capa)} <small>· % de la calle</small></b>
@@ -94,18 +89,100 @@ function Leyenda({ capa, cortes, colores, modo }: { capa: CapaMapa; cortes: numb
   );
 }
 
-export function MapaTerritorial({ db, municipioId, unidades, capa, sobre, fijada, onSobre, onFijar, onFiltrar }: {
-  db: BaseDatos; municipioId: Id; unidades: UnidadPanel[]; capa: CapaMapa; sobre: Id | null; fijada: Id | null;
+// ── Modo «Por establecimientos» ──
+export type VistaMapa = 'calles' | 'establecimientos';
+export const VISTAS: { v: VistaMapa; t: string }[] = [{ v: 'calles', t: 'Por calles' }, { v: 'establecimientos', t: 'Por establecimientos' }];
+export type CategoriaPunto = Sector | 'Sin clasificar' | 'vacios';
+const CATEGORIAS: { k: CategoriaPunto; t: string }[] = [...SECTORES.map((s) => ({ k: s as CategoriaPunto, t: SECTOR_CORTO[s] })), { k: 'Sin clasificar', t: 'Sin clasificar' }, { k: 'vacios', t: 'Vacíos' }];
+export const categoriaPunto = (u: UnidadPanel): CategoriaPunto => (u.vacio ? 'vacios' : u.sector ?? 'Sin clasificar');
+/** Color de punto: el del sector; los vacíos, su tono; «sin clasificar», un gris visible sobre el mapa. */
+export const colorPunto = (c: CategoriaPunto) => (c === 'vacios' ? TONO_CAPA.vacios : c === 'Sin clasificar' ? '#8d97a8' : COLOR[c]);
+const DIGITAL_CORTO: Record<string, string> = { web: 'Web', ventaOnline: 'Venta online', googleBusiness: 'Google', respondeResenas: 'Responde reseñas', instagram: 'Instagram', facebook: 'Facebook', twitter: 'X', otrasRedes: 'Otras redes' };
+const RESP_TXT: Record<string, string> = { si: 'Sí', no: 'No', 'sin-info': 'Sin información', na: 'No aplica', pendiente: 'Pendiente' };
+const FUENTE_POS = { 'gps-campo': 'GPS de campo', catastro: 'Catastro', 'comprobacion-manual': 'comprobación manual' } as const;
+const portalTxt = (u: UnidadPanel) => (u.numero === null ? 's/n' : `${u.numero}${u.sufijo ? ` ${u.sufijo}` : ''}`);
+const nombreTxt = (u: UnidadPanel) => (u.vacio ? 'Local vacío' : u.nombre ?? 'Nombre no registrado');
+
+function LeyendaPuntos({ conteo, ocultas, onAlternar, tipos }: {
+  conteo: Record<CategoriaPunto, number>; ocultas: Set<CategoriaPunto>; onAlternar: (c: CategoriaPunto) => void; tipos: Record<TipoPosicion, number>;
+}) {
+  return (
+    <div className="vz-mapa-leyenda" role="group" aria-label="Leyenda: categorías de establecimiento">
+      {CATEGORIAS.filter((c) => conteo[c.k] > 0).map((c) => (
+        <button key={c.k} className={`vz-ley-cat ${ocultas.has(c.k) ? 'off' : ''}`} aria-pressed={!ocultas.has(c.k)} onClick={() => onAlternar(c.k)} title={ocultas.has(c.k) ? 'Mostrar' : 'Ocultar'}>
+          <i className="punto" style={{ background: colorPunto(c.k) }} />{c.t}<b className="num">{fmt(conteo[c.k])}</b>
+        </button>
+      ))}
+      {tipos.aproximada > 0 && <span className="vz-ley-tipo"><i className="punto hueco" />Aproximada · pendiente de validación</span>}
+      {tipos.verificada > 0 && (tipos.aproximada > 0 || tipos.simulada > 0) && <span className="vz-ley-tipo"><i className="punto" style={{ background: '#5b6678' }} />Verificada</span>}
+    </div>
+  );
+}
+
+/** Ficha del establecimiento pulsado: solo datos registrados (sin cadena, descripciones ni observaciones libres). */
+function FichaLocal({ db, u, p, hermanos, onSel, onCerrar }: {
+  db: BaseDatos; u: UnidadPanel; p: PosicionEstablecimiento; hermanos: UnidadPanel[]; onSel: (clave: string) => void; onCerrar: () => void;
+}) {
+  const cat = categoriaPunto(u);
+  const ver = u.localId ? db.locales[u.localId]?.coordVerificada : undefined;
+  const digital = VARIABLES_DIGITALES.filter((v) => v.tipo === 'respuesta').map((v) => ({ t: DIGITAL_CORTO[v.id] ?? v.etiqueta, r: u.digital[v.id]?.respuesta })).filter((x) => x.r && x.r !== 'pendiente');
+  const posicion = p.tipo === 'verificada' && ver ? `Posición verificada · ${FUENTE_POS[ver.fuente]} (${ver.fecha})` : p.tipo === 'aproximada' ? 'Posición aproximada · pendiente de validación' : 'Ubicación simulada a partir del callejero · no es una coordenada';
+  return (
+    <div className="vz-fijada vz-ficha-local" aria-label="Establecimiento seleccionado">
+      <div className="fila"><b className="esp">{nombreTxt(u)}</b><button className="vz-quitar" aria-label="Cerrar la ficha" onClick={onCerrar}><X size={14} /></button></div>
+      <span className="muted">{u.calle}, {portalTxt(u)}</span>
+      <span className={`vz-pos vz-pos-${p.tipo}`}>{posicion}</span>
+      <dl className="vz-ficha-dl">
+        <dt>Estado</dt><dd>{u.vacio ? 'Vacío' : 'Ocupado'}</dd>
+        {!u.vacio && (
+          <><dt>Sector</dt><dd><i className="punto" style={{ background: colorPunto(cat) }} /> {u.sector ?? 'Sin clasificar'}{u.nivel2 ? ` · ${u.nivel2}` : ''}{u.sector && <small>{FUENTE_TXT[u.fuenteClasificacion]}</small>}</dd></>
+        )}
+        {!u.vacio && u.franquicia && <><dt>Franquicia</dt><dd>{RESP_TXT[u.franquicia]}</dd></>}
+        {u.metros !== undefined && <><dt>Fachada</dt><dd>{fmt(u.metros)} m</dd></>}
+      </dl>
+      {digital.length > 0 && (
+        <div className="vz-ficha-digital">
+          <span>Presencia digital{u.digitalEstado === 'borrador' ? ' · revisión en borrador' : ''}</span>
+          <span className="vz-ficha-chips">{digital.map((d) => <span key={d.t} className={`r-${d.r}`}>{d.t} <b>{RESP_TXT[d.r!]}</b></span>)}</span>
+        </div>
+      )}
+      {hermanos.length > 0 && (
+        <div className="vz-ficha-portal">
+          <span>Mismo portal: {hermanos.length + 1} locales independientes</span>
+          {hermanos.map((h) => <button key={h.clave} className="vz-enlace" onClick={() => onSel(h.clave)}>{nombreTxt(h)}</button>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function MapaTerritorial({ db, municipioId, unidades, capa, vista = 'calles', posiciones, sobre, fijada, onSobre, onFijar, onFiltrar }: {
+  db: BaseDatos; municipioId: Id; unidades: UnidadPanel[]; capa: CapaMapa; vista?: VistaMapa; posiciones?: ResultadoPosiciones; sobre: Id | null; fijada: Id | null;
   onSobre: (id: Id | null) => void; onFijar: (id: Id | null) => void; onFiltrar: (id: Id) => void;
 }) {
-  const [tip, setTip] = useState<{ x: number; y: number; id: Id } | null>(null);
+  const [tip, setTip] = useState<TipMapa | null>(null);
+  const [puntoSel, setPuntoSel] = useState<string | null>(null);
+  const [ocultas, setOcultas] = useState<Set<CategoriaPunto>>(new Set());
   // Mapa base cartográfico (MapLibre) si hay WebGL; si no (o en pruebas), el mismo mapa en SVG.
   const [gl] = useState(webglDisponible);
   const base = useMemo(() => Object.values(db.calles).filter((c) => c.municipioId === municipioId && c.segmentos.some((s) => s.coords.length > 1)), [db.calles, municipioId]);
   const filas = useMemo(() => callesDelAmbito(unidades), [unidades]);
   const porCalle = useMemo(() => new Map(filas.map((f) => [f.calleId, f])), [filas]);
-  const puntos = useMemo(() => unidades.filter((u) => u.coord), [unidades]);
-  const modo: 'puntos' | 'calles' = puntos.length ? 'puntos' : 'calles';
+  const porClave = useMemo(() => new Map(unidades.map((u) => [u.clave, u])), [unidades]);
+  const modo: 'puntos' | 'calles' = vista === 'establecimientos' ? 'puntos' : 'calles';
+  // Posiciones (calculadas sobre TODA la campaña, estables al filtrar) de las unidades visibles.
+  const enMapa = useMemo(() => (modo === 'puntos' && posiciones ? posiciones.posiciones.filter((p) => porClave.has(p.clave)) : []), [modo, posiciones, porClave]);
+  const conteo = useMemo(() => {
+    const c = Object.fromEntries(CATEGORIAS.map((x) => [x.k, 0])) as Record<CategoriaPunto, number>;
+    for (const p of enMapa) c[categoriaPunto(porClave.get(p.clave)!)]++;
+    return c;
+  }, [enMapa, porClave]);
+  const tipos = useMemo(() => {
+    const t: Record<TipoPosicion, number> = { verificada: 0, aproximada: 0, simulada: 0 };
+    for (const p of enMapa) t[p.tipo]++;
+    return t;
+  }, [enMapa]);
+  const puntos = useMemo(() => enMapa.filter((p) => !ocultas.has(categoriaPunto(porClave.get(p.clave)!))), [enMapa, ocultas, porClave]);
   const aptas = filas.filter((f) => f.observados >= UMBRAL_CALLE);
   const cortes = cortesCuantiles(aptas.map((f) => valorCapa(f, capa)));
   const colores = rampa(TONO_CAPA[capa], Math.max(1, cortes.length));
@@ -133,7 +210,7 @@ export function MapaTerritorial({ db, municipioId, unidades, capa, sobre, fijada
 
   const color = (f?: FilaRanking) => (f && f.observados >= UMBRAL_CALLE && cortes.length ? colores[claseDe(valorCapa(f, capa), cortes)] : '#e6eaf0');
   const ancho = (f?: FilaRanking) => (f ? 2 + 5 * Math.sqrt(f.observados / maxObs) : 1.2) * fz;
-  const destacadas = [...aptas].sort((a, b) => valorCapa(b, capa) * b.observados - valorCapa(a, capa) * a.observados).slice(0, 3).map((f) => f.calleId);
+  const destacadas = modo === 'calles' ? [...aptas].sort((a, b) => valorCapa(b, capa) * b.observados - valorCapa(a, capa) * a.observados).slice(0, 3).map((f) => f.calleId) : [];
   // Etiquetas selectivas (las 3 calles destacadas de la capa, la seleccionada y la resaltada), sin solaparse.
   const etiquetas: { id: Id; x: number; y: number }[] = [];
   for (const id of [...new Set([fijada, sobre, ...destacadas].filter(Boolean) as Id[])]) {
@@ -144,36 +221,51 @@ export function MapaTerritorial({ db, municipioId, unidades, capa, sobre, fijada
     if (etiquetas.some((e) => Math.abs(e.y - y) < 15 * fz && Math.abs(e.x - x) < (largo + db.calles[e.id].nombre.length * 6.2 * fz) / 2)) continue;
     etiquetas.push({ id, x, y });
   }
-  const mover = (e: PointerEvent, id: Id) => {
+  const mover = (e: PointerEvent, id: Id, punto?: string) => {
     const r = (e.currentTarget as SVGElement).ownerSVGElement!.getBoundingClientRect();
-    setTip({ x: e.clientX - r.left, y: e.clientY - r.top, id });
+    setTip({ x: e.clientX - r.left, y: e.clientY - r.top, id, punto });
     onSobre(id);
   };
   const salir = () => { setTip(null); onSobre(null); };
   const callesGL = useMemo<CalleMapa[]>(
-    () => base.map((c) => { const f = porCalle.get(c.id); return { id: c.id, nombre: c.nombre, segmentos: c.segmentos.map((s) => s.coords), color: modo === 'puntos' ? '#9aa6b8' : color(f), ancho: f ? 2 + 5 * Math.sqrt(f.observados / maxObs) : 1.2, conDatos: !!f }; }),
+    () => base.map((c) => { const f = porCalle.get(c.id); return { id: c.id, nombre: c.nombre, segmentos: c.segmentos.map((s) => s.coords), color: modo === 'puntos' ? '#b3bccb' : color(f), ancho: modo === 'puntos' ? 1.6 : f ? 2 + 5 * Math.sqrt(f.observados / maxObs) : 1.2, conDatos: !!f }; }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [base, porCalle, capa, modo, maxObs, cortes.join(',')],
   );
-  const puntosGL = useMemo<PuntoMapa[]>(() => puntos.map((u) => {
-    const cat = u.vacio ? 'vacios' : (u.sector ?? 'Sin clasificar');
-    return { id: u.clave, calleId: u.calleId, coord: u.coord!, color: cat === 'vacios' ? TONO_CAPA.vacios : COLOR[cat], opacidad: capa === 'ocupacion' || cat === capa ? 1 : 0.22 };
-  }), [puntos, capa]);
+  /** Con una calle fijada, los establecimientos de las demás se atenúan. */
+  const opacidad = (calleId: Id) => (fijada && calleId !== fijada ? 0.28 : 1);
+  const puntosGL = useMemo<PuntoMapa[]>(() => puntos.map((p) => ({
+    id: p.clave, calleId: p.calleId, coord: p.coord, tipo: p.tipo, enGrupo: p.enGrupo, indiceEnGrupo: p.indiceEnGrupo,
+    color: colorPunto(categoriaPunto(porClave.get(p.clave)!)), opacidad: opacidad(p.calleId),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  })), [puntos, porClave, fijada]);
   const centroMun = db.municipios[municipioId]?.centro ?? base[0]?.segmentos[0]?.coords[0];
   const tipFila = tip ? porCalle.get(tip.id) : undefined;
+  const tipUnidad = tip?.punto ? porClave.get(tip.punto) : undefined;
   const fij = fijada ? porCalle.get(fijada) : undefined;
+  const sel = modo === 'puntos' && puntoSel ? enMapa.find((p) => p.clave === puntoSel) : undefined;
+  const selU = sel ? porClave.get(sel.clave) : undefined;
+  const hermanos = sel ? enMapa.filter((p) => p.portal === sel.portal && p.clave !== sel.clave).map((p) => porClave.get(p.clave)!) : [];
+  const simuladas = tipos.simulada > 0;
 
   if (!base.length) return null;
-  const etiqueta = modo === 'puntos' ? 'Mapa de establecimientos (coordenadas verificadas)' : `Mapa por calle: ${etiquetaCapa(capa)}`;
+  const etiqueta = modo === 'puntos' ? `Mapa por establecimientos${simuladas ? ' (ubicaciones simuladas)' : ''}` : `Mapa por calle: ${etiquetaCapa(capa)}`;
+  const locales = unidades.filter((u) => u.localId).length;
   return (
     <div className="vz-mapa2">
+      {modo === 'puntos' && simuladas && (
+        <div className="vz-simuladas" role="note" aria-label="Ubicaciones simuladas">
+          <b>Ubicaciones simuladas</b>
+          <span>Datos ficticios situados a lo largo de su calle. No son coordenadas.</span>
+        </div>
+      )}
       <div className="vz-mapa2-lienzo">
         {gl && centroMun ? (
           <div className="vz-mapa2-gl" role="img" aria-label={etiqueta}>
-            <LienzoGL centro={centroMun} calles={callesGL} puntos={puntosGL} sobre={sobre} fijada={fijada} onSobre={onSobre} onFijar={onFijar} onTip={setTip} />
+            <LienzoGL centro={centroMun} calles={callesGL} puntos={puntosGL} sobre={sobre} fijada={fijada} puntoSel={sel?.clave ?? null} onSobre={onSobre} onFijar={onFijar} onTip={setTip} onPunto={setPuntoSel} />
           </div>
         ) : (
-        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label={modo === 'puntos' ? 'Mapa de establecimientos (coordenadas verificadas)' : `Mapa por calle: ${etiquetaCapa(capa)}`} onPointerLeave={salir}>
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label={etiqueta} onPointerLeave={salir}>
             {/* Calles del callejero sin datos: contexto */}
             {base.filter((c) => !porCalle.has(c.id)).map((c) => c.segmentos.map((s) => <polyline key={s.id} points={linea(s.coords)} className="vz-calle-fondo" />))}
             {modo === 'calles' && base.filter((c) => porCalle.has(c.id)).map((c) => {
@@ -188,29 +280,53 @@ export function MapaTerritorial({ db, municipioId, unidades, capa, sobre, fijada
               );
             })}
             {modo === 'puntos' && base.filter((c) => porCalle.has(c.id)).map((c) => c.segmentos.map((s) => <polyline key={s.id} points={linea(s.coords)} className={`vz-calle-base ${c.id === sobre || c.id === fijada ? 'activa' : ''}`} />))}
-            {modo === 'puntos' && puntos.map((u) => {
-              const [x, y] = xy(u.coord!);
-              const cat = u.vacio ? 'vacios' : (u.sector ?? 'Sin clasificar');
-              const enCapa = capa === 'ocupacion' || cat === capa;
+            {modo === 'puntos' && puntos.filter((p) => p.enGrupo > 1).map((p) => {
+              const [x, y] = xy(p.coord);
+              const [dx, dy] = desplazamientoGrupo(p.enGrupo, p.indiceEnGrupo, 7 * fz);
+              return <g key={`g${p.clave}`} className="vz-grupo" opacity={opacidad(p.calleId)}><line x1={x} y1={y} x2={x + dx} y2={y + dy} strokeWidth={0.8 * fz} />{p.indiceEnGrupo === 0 && <circle cx={x} cy={y} r={1.6 * fz} />}</g>;
+            })}
+            {modo === 'puntos' && puntos.map((p) => {
+              const u = porClave.get(p.clave)!;
+              const [x, y] = xy(p.coord);
+              const [dx, dy] = desplazamientoGrupo(p.enGrupo, p.indiceEnGrupo, 7 * fz);
+              const c = colorPunto(categoriaPunto(u));
+              const hueco = p.tipo === 'aproximada';
               return (
-                <circle key={u.clave} cx={x} cy={y} r={(enCapa ? 4.5 : 3) * fz} strokeWidth={1.5 * fz} className="vz-punto" fill={cat === 'vacios' ? TONO_CAPA.vacios : COLOR[cat]} opacity={enCapa ? 1 : 0.22}
-                  onPointerMove={(e) => mover(e, u.calleId)} onClick={() => onFijar(fijada === u.calleId ? null : u.calleId)} />
+                <circle key={p.clave} data-clave={p.clave} data-tipo={p.tipo} cx={x + dx} cy={y + dy} r={3.4 * fz} strokeWidth={(hueco ? 1.8 : 1) * fz}
+                  className={`vz-punto ${hueco ? 'hueco' : ''}`} fill={hueco ? '#ffffff' : c} stroke={hueco ? c : '#ffffff'} opacity={opacidad(p.calleId)}
+                  aria-label={`${nombreTxt(u)}, ${u.calle} ${portalTxt(u)}`}
+                  onPointerMove={(e) => mover(e, p.calleId, p.clave)} onClick={() => setPuntoSel(puntoSel === p.clave ? null : p.clave)} />
               );
             })}
+            {sel && (() => { const [x, y] = xy(sel.coord); const [dx, dy] = desplazamientoGrupo(sel.enGrupo, sel.indiceEnGrupo, 7 * fz); return <circle cx={x + dx} cy={y + dy} r={6.5 * fz} strokeWidth={2 * fz} className="vz-punto-sel" />; })()}
             {etiquetas.map(({ id, x, y }) => (
               <text key={`e${id}`} x={x} y={y - 7 * fz} className={`vz-mapa-etq ${id === sobre || id === fijada ? 'activa' : ''}`} style={{ fontSize: 11.5 * fz, strokeWidth: 3.5 * fz }} textAnchor="middle">{db.calles[id].nombre}</text>
             ))}
           </svg>
         )}
-        {tip && tipFila && (
+        {modo === 'puntos' && !enMapa.length && (
+          <div className="vz-mapa2-vacio" role="note">Ningún establecimiento tiene posición verificada ni aproximada. Use la vista «Por calles».</div>
+        )}
+        {tip && tipUnidad ? (
+          <div className="vz-tip" style={{ left: tip.x + 14, top: Math.max(tip.y - 10, 4) }} role="tooltip">
+            <b>{nombreTxt(tipUnidad)}</b>
+            <span className="muted">{tipUnidad.calle}, {portalTxt(tipUnidad)} · {tipUnidad.vacio ? 'vacío' : tipUnidad.sector ?? 'sin clasificar'}</span>
+          </div>
+        ) : tip && tipFila && (
           <div className="vz-tip" style={{ left: tip.x + 14, top: Math.max(tip.y - 10, 4) }} role="tooltip">
             <b>{tipFila.calle}</b>
             <span><strong className="num">{tipFila.observados >= UMBRAL_CALLE ? fmtPct(valorCapa(tipFila, capa), 0) : '—'}</strong> {etiquetaCapa(capa).toLowerCase()}</span>
             <span className="muted">{fmt(tipFila.observados)} observados · {fmt(tipFila.ocupados)} ocupados · {fmt(tipFila.vacios)} vacíos</span>
           </div>
         )}
-        <div className="vz-mapa2-leyenda"><Leyenda capa={capa} cortes={cortes} colores={colores} modo={modo} /></div>
-        {fij && (
+        <div className="vz-mapa2-leyenda">
+          {modo === 'puntos'
+            ? <LeyendaPuntos conteo={conteo} ocultas={ocultas} tipos={tipos} onAlternar={(c) => setOcultas((o) => { const n = new Set(o); if (n.has(c)) n.delete(c); else n.add(c); return n; })} />
+            : <Leyenda capa={capa} cortes={cortes} colores={colores} />}
+        </div>
+        {sel && selU ? (
+          <FichaLocal db={db} u={selU} p={sel} hermanos={hermanos} onSel={setPuntoSel} onCerrar={() => setPuntoSel(null)} />
+        ) : fij && (
           <div className="vz-fijada" aria-label="Calle seleccionada">
             <div className="fila"><b className="esp">{fij.calle}</b><button className="vz-quitar" aria-label="Quitar la selección" onClick={() => onFijar(null)}><X size={14} /></button></div>
             <span className="muted">{fmt(fij.observados)} observados · ocupación {fmtPct(fij.ocupados / fij.observados, 0)}</span>
@@ -224,8 +340,16 @@ export function MapaTerritorial({ db, municipioId, unidades, capa, sobre, fijada
       </div>
       <p className="vz-mapa-nota">
         {modo === 'puntos'
-          ? `${fmt(puntos.length)} establecimientos con coordenadas verificadas, en su posición; los demás no se dibujan (no se inventan posiciones).`
-          : `Color: % de la calle (cuantiles de las ${fmt(aptas.length)} calles con al menos ${UMBRAL_CALLE} observados) · grosor: establecimientos · sin coordenadas verificadas no se dibujan puntos.`}
+          ? [
+            `${fmt(enMapa.length)} de ${fmt(locales)} locales físicos en el mapa, uno por local`,
+            tipos.simulada ? `${fmt(tipos.simulada)} con ubicación simulada` : '',
+            tipos.verificada ? `${fmt(tipos.verificada)} con coordenadas verificadas` : '',
+            tipos.aproximada ? `${fmt(tipos.aproximada)} aproximadas, pendientes de validación` : '',
+            locales - enMapa.length ? `${fmt(locales - enMapa.length)} sin posición (no se dibujan)` : '',
+            unidades.length - locales ? `${fmt(unidades.length - locales)} sin local identificado (no se dibujan)` : '',
+            enMapa.some((p) => p.enGrupo > 1) ? 'los que comparten posición se abren en corona alrededor de su portal' : '',
+          ].filter(Boolean).join(' · ') + '.'
+          : `Color: % de la calle (cuantiles de las ${fmt(aptas.length)} calles con al menos ${UMBRAL_CALLE} observados) · grosor: establecimientos.`}
       </p>
     </div>
   );

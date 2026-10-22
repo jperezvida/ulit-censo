@@ -7,7 +7,8 @@ import {
 import type { Id } from '../../domain/types';
 import { Bloque, COLOR, Conmutador, fmtPct, Hallazgos, SinDatos } from './graficos';
 import { textosOrigen, type Contexto } from './comun';
-import { CAPAS, MapaTerritorial, MatrizTerritorial, TONO_CAPA, type CapaMapa } from './mapa';
+import { CAPAS, MapaTerritorial, MatrizTerritorial, TONO_CAPA, VISTAS, type CapaMapa, type VistaMapa } from './mapa';
+import { posicionesEstablecimientos } from '../../domain/posiciones';
 
 const RANKINGS: { criterio: CriterioCalle; titulo: string; color: string }[] = [
   { criterio: 'Comercio', titulo: 'Comercio', color: COLOR.Comercio },
@@ -51,6 +52,7 @@ function RankingMini({ unidades, criterio, titulo, color, sobre, fijada, onSobre
  */
 export function Resumen({ db, datos, unidades, filtros, setFiltros }: Contexto) {
   const [capa, setCapa] = useState<CapaMapa>('ocupacion');
+  const [vista, setVista] = useState<VistaMapa>('calles');
   const [sobre, setSobre] = useState<Id | null>(null);
   const [fijada, setFijada] = useState<Id | null>(null);
   const r = resumen(unidades);
@@ -60,6 +62,9 @@ export function Resumen({ db, datos, unidades, filtros, setFiltros }: Contexto) 
   const territorio = useMemo(() => filtrar(datos.unidades, { cp: filtros.cp, calleId: filtros.calleId }), [datos.unidades, filtros.cp, filtros.calleId]);
   const ignorados = [filtros.sector && `filtro de sector «${filtros.sector}»`, filtros.franquicia && 'filtro de franquicia'].filter(Boolean) as string[];
   const conGeo = useMemo(() => Object.values(db.calles).some((c) => c.municipioId === datos.municipio.id && c.segmentos.some((s) => s.coords.length > 1)), [db.calles, datos.municipio.id]);
+  // Posiciones de TODOS los establecimientos de la campaña (estables al filtrar); simuladas solo si son ficticios.
+  const posiciones = useMemo(() => (conGeo && vista === 'establecimientos' ? posicionesEstablecimientos(db, datos.municipio, datos.unidades) : undefined), [conGeo, vista, db, datos]);
+  const vistas = VISTAS.map((v) => (v.v === 'establecimientos' && !conGeo ? { ...v, motivo: 'Las calles de este ámbito no tienen geometría: no se puede situar ningún establecimiento (ni simular su ubicación).' } : v));
   const clasif = textosOrigen(origenDatos(datos)).partes.find((p) => p.t === 'Clasificación');
 
   const perfil = perfilGrupos(unidades, (u) => u.sector);
@@ -95,11 +100,12 @@ export function Resumen({ db, datos, unidades, filtros, setFiltros }: Contexto) 
             <h2>{conGeo ? 'Mapa territorial' : 'Matriz territorial: calles × sector'}</h2>
             {!conGeo && <p>Sin geometría de calles fiable: no se dibuja un mapa.</p>}
           </div>
-          {conGeo && <div className="vz-bloque-acc"><Conmutador etiqueta="Capa del mapa" valor={capa} opciones={CAPAS} onCambio={setCapa} /></div>}
+          <div className="vz-bloque-acc"><Conmutador etiqueta="Vista del mapa" valor={conGeo ? vista : 'calles'} opciones={vistas} onCambio={setVista} /></div>
         </header>
+        {conGeo && vista === 'calles' && <div className="vz-mapa-capas"><Conmutador etiqueta="Capa del mapa" valor={capa} opciones={CAPAS} onCambio={setCapa} /></div>}
         {ignorados.length > 0 && <p className="vz-nota-filtro">El {ignorados.join(' y el ')} no se aplican al mapa ni a los rankings: comparan los cuatro grupos (los vacíos no tienen sector ni franquicia).</p>}
         {conGeo
-          ? <MapaTerritorial db={db} municipioId={datos.municipio.id} unidades={territorio} capa={capa} {...vinculo} onFiltrar={(id) => { setFijada(null); setFiltros({ ...filtros, calleId: id }); }} />
+          ? <MapaTerritorial db={db} municipioId={datos.municipio.id} unidades={territorio} capa={capa} vista={vista} posiciones={posiciones} {...vinculo} onFiltrar={(id) => { setFijada(null); setFiltros({ ...filtros, calleId: id }); }} />
           : <MatrizTerritorial unidades={territorio} {...vinculo} />}
       </section>
 

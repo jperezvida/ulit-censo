@@ -34,6 +34,9 @@ export interface UnidadPanel {
   calleId: Id;
   calle: string;
   numero: number | null;
+  sufijo?: string;
+  /** Nombre del negocio (solo ocupados con negocio registrado). Nunca se inventa. */
+  nombre?: string;
   /** Código postal SOLO si consta en el origen (registro importado). Nunca se deduce. */
   cp?: string;
   vacio: boolean;
@@ -140,7 +143,7 @@ export function datosCampana(db: BaseDatos, campanaId: Id): DatosCampana {
   }
   const historica = campana.tipo === 'historico-importado';
 
-  const unidad = (base: { clave: string; localId: Id | null; calleId: Id; calle: string; numero: number | null; vacio: boolean; negocioId: Id | null; metros?: number; fecha?: string; sinLocal: boolean }, reg?: (typeof registros)[number]): UnidadPanel => {
+  const unidad = (base: { clave: string; localId: Id | null; calleId: Id; calle: string; numero: number | null; sufijo?: string; vacio: boolean; negocioId: Id | null; metros?: number; fecha?: string; sinLocal: boolean }, reg?: (typeof registros)[number]): UnidadPanel => {
     const neg = base.negocioId;
     const cla = neg ? db.clasificaciones[kNC(neg, campanaId)] : undefined;
     let sector: Sector | undefined;
@@ -165,7 +168,7 @@ export function datosCampana(db: BaseDatos, campanaId: Id): DatosCampana {
     const fr = neg ? db.franquicias[kNC(neg, campanaId)] : undefined;
     const dig = neg ? db.digital[kNC(neg, campanaId)] : undefined;
     return {
-      ...base, cp: cpOriginal(reg?.original?.cp),
+      ...base, cp: cpOriginal(reg?.original?.cp), nombre: (!base.vacio && neg && db.negocios[neg]?.nombre?.trim()) || undefined,
       procedencia: (base.localId ? db.locales[base.localId]?.procedencia : undefined) ?? (neg ? db.negocios[neg]?.procedencia : undefined) ?? (reg ? 'importado' : undefined),
       coord: base.localId && db.locales[base.localId]?.coordVerificada ? db.locales[base.localId]?.coord : undefined, sector, nivel2, nivel3, fuenteClasificacion,
       franquicia: base.vacio ? undefined : fr?.respuesta ?? 'pendiente', franquiciaOrigen: fr?.origen,
@@ -177,14 +180,14 @@ export function datosCampana(db: BaseDatos, campanaId: Id): DatosCampana {
   const unidades: UnidadPanel[] = [];
   for (const f of filas) {
     if (f.situacion !== 'registrado') continue;
-    unidades.push(unidad({ clave: f.localId, localId: f.localId, calleId: f.calleId, calle: f.calle, numero: f.numero, vacio: f.vacio, negocioId: f.negocioId, metros: f.metros, fecha: f.obs?.fecha, sinLocal: false }, regPorLocal.get(f.localId)));
+    unidades.push(unidad({ clave: f.localId, localId: f.localId, calleId: f.calleId, calle: f.calle, numero: f.numero, sufijo: f.sufijo, vacio: f.vacio, negocioId: f.negocioId, metros: f.metros, fecha: f.obs?.fecha, sinLocal: false }, regPorLocal.get(f.localId)));
   }
   // Observaciones de la campaña SIN local identificado (correspondencia pendiente).
   for (const o of Object.values(db.observaciones)) {
     if (o.campanaId !== campanaId || o.localId) continue;
     // C1c crea observación y registro con el mismo sufijo («obs-<importación>-<fila>» / «reg-…»).
     const reg = regPorId.get(o.id.replace(/^obs-/, 'reg-'));
-    unidades.push(unidad({ clave: o.id, localId: null, calleId: o.calleId, calle: db.calles[o.calleId]?.nombre ?? '¿?', numero: o.datos.numero, vacio: o.datos.vacio, negocioId: o.datos.negocioId ?? null, metros: o.datos.metrosFachada, fecha: o.fecha, sinLocal: true }, reg));
+    unidades.push(unidad({ clave: o.id, localId: null, calleId: o.calleId, calle: db.calles[o.calleId]?.nombre ?? '¿?', numero: o.datos.numero, sufijo: o.datos.sufijo, vacio: o.datos.vacio, negocioId: o.datos.negocioId ?? null, metros: o.datos.metrosFachada, fecha: o.fecha, sinLocal: true }, reg));
   }
   // Registros con establecimiento observado: por su local o por su observación sin local.
   const localesObservados = new Set(unidades.map((u) => u.localId).filter((l): l is Id => !!l));

@@ -156,8 +156,9 @@ export interface LocalFisico {
   direcciones: Direccion[]; // la última es la vigente; conserva cambios de numeración
   coord?: LngLat;
   /**
-   * Verificación de `coord` (opcional, sin migración). Solo con ella se dibuja el local como punto en
-   * los mapas del cuadro de mando: las coordenadas interpoladas sobre la calle o simuladas no cuentan.
+   * Verificación de `coord` (opcional, sin migración). Solo con ella la posición del local cuenta como
+   * verificada en el cuadro de mando; sin ella, una `coord` es aproximada (pendiente de validación). Las
+   * ubicaciones simuladas de datos ficticios se calculan al dibujar y nunca se guardan aquí.
    */
   coordVerificada?: { fuente: 'gps-campo' | 'catastro' | 'comprobacion-manual'; fecha: string; porId?: Id };
   estado: 'activo' | 'posible-desaparicion' | 'desaparecido' | 'dividido' | 'fusionado';
