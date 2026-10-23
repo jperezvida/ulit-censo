@@ -8,6 +8,9 @@ import { generarDemo } from '../../data/semilla';
 import { callejeroSimulado, MEDINA } from '../../data/callejero';
 import { MUNICIPIO_DEMO, prepararMunicipioDemo } from '../../data/escenarioIncorporacion';
 import { aplicarEscenario, prepararEscenario } from '../../domain/incorporacionDemo';
+import { validarInstantanea } from '../../data/instantaneaOsm';
+import { instantaneaSintetica } from '../../data/fixtureOsmSintetico';
+import type { Calle } from '../../domain/types';
 
 /** Datos FICTICIOS: demostración + escenario generado por la aplicación. */
 beforeAll(async () => {
@@ -298,5 +301,22 @@ describe('C1d-B · Dashboard', () => {
     expect(b).toHaveAttribute('title', expect.stringMatching(/no tienen geometría/));
     expect(screen.getByRole('table', { name: 'Matriz territorial: calles × sector' })).toBeInTheDocument();
     expect(screen.queryByRole('note', { name: 'Ubicaciones simuladas' })).toBeNull();
+  });
+
+  it('callejero con forma OSM: calles atribuidas (ODbL) y negocios, portales y ubicaciones señalados como ficticios', () => {
+    const antes = useStore.getState();
+    const calles = (validarInstantanea(instantaneaSintetica()) as { calles: Calle[] }).calles;
+    useStore.setState({ db: generarDemo({ calles, fuente: 'instantanea-osm', detalleFuente: 'prueba' }), prefs: { ...antes.prefs, municipioId: 'mun-medina', campanaId: 'camp-medina-2026' } });
+    try {
+      montar();
+      fireEvent.click(screen.getByRole('tab', { name: '2025 Censo 2025 histórico' }));
+      expect(screen.getByText(/Callejero © colaboradores de OpenStreetMap \(ODbL\)/)).toBeInTheDocument();
+      fireEvent.click(within(screen.getByRole('group', { name: 'Vista del mapa' })).getByRole('button', { name: 'Por establecimientos' }));
+      expect(screen.getByRole('note', { name: 'Ubicaciones simuladas' })).toHaveTextContent('Calles reales de OpenStreetMap; los negocios, sus números de portal y sus ubicaciones son ficticios. No son direcciones comprobadas.');
+      fireEvent.click(screen.getByRole('img', { name: /^Mapa por establecimientos/ }).querySelector('circle.vz-punto')!);
+      expect(screen.getByLabelText('Establecimiento seleccionado')).toHaveTextContent('nº ficticio');
+    } finally {
+      useStore.setState({ db: antes.db, prefs: antes.prefs });
+    }
   });
 });

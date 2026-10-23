@@ -13,7 +13,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "callejero": "node scripts/descargar-callejero.mjs",
+    "callejero": "tsx scripts/descargar-callejero.ts",
     "perfilar": "tsx scripts/perfilar-excel.ts",
     "comprobar-datos": "node scripts/comprobar-datos-reales.mjs",
     "hooks": "git config core.hooksPath .githooks",

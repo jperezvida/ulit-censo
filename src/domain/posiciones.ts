@@ -64,9 +64,49 @@ function hash(s: string) {
 /** Distancia (m) de cada acera al eje de la calle en las posiciones simuladas. */
 const ACERA_M = 7;
 
-/** Punto a la fracción `t` de la longitud TOTAL de la calle (todos sus segmentos con geometría, en orden). */
+/**
+ * Tramos de la calle encadenados en un recorrido continuo. En OSM una calle son varias vías en orden
+ * arbitrario y con sentidos distintos: se empieza por el extremo más occidental (o más meridional) y se
+ * enlaza cada vez el tramo cuyo extremo queda más cerca, invirtiéndolo si hace falta. Así la numeración
+ * avanza en un solo sentido y pares e impares quedan cada uno en su acera. Determinista.
+ */
+export function recorridoCalle(calle: Calle): LngLat[][] {
+  const pend = calle.segmentos.filter((s) => s.coords.length > 1).map((s) => s.coords);
+  if (pend.length <= 1) return pend;
+  const clave = (p: LngLat) => p[0] + p[1] * 0.5;
+  let iIni = 0;
+  let invertir = false;
+  pend.forEach((c, i) => {
+    for (const [p, inv] of [[c[0], false], [c[c.length - 1], true]] as const) {
+      const ini = invertir ? pend[iIni][pend[iIni].length - 1] : pend[iIni][0];
+      if (clave(p) < clave(ini)) { iIni = i; invertir = inv; }
+    }
+  });
+  const orden: LngLat[][] = [];
+  let actual = pend.splice(iIni, 1)[0];
+  if (invertir) actual = [...actual].reverse();
+  orden.push(actual);
+  const d2 = (a: LngLat, b: LngLat) => (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2;
+  while (pend.length) {
+    const fin = orden[orden.length - 1][orden[orden.length - 1].length - 1];
+    let mejor = 0;
+    let inv = false;
+    let dm = Infinity;
+    pend.forEach((c, i) => {
+      const a = d2(fin, c[0]);
+      const b = d2(fin, c[c.length - 1]);
+      if (a < dm) { dm = a; mejor = i; inv = false; }
+      if (b < dm) { dm = b; mejor = i; inv = true; }
+    });
+    const c = pend.splice(mejor, 1)[0];
+    orden.push(inv ? [...c].reverse() : c);
+  }
+  return orden;
+}
+
+/** Punto a la fracción `t` de la longitud TOTAL de la calle, recorriendo sus tramos encadenados. */
 function puntoEnCalle(calle: Calle, t: number): { p: LngLat; dir: LngLat } | undefined {
-  const segs = calle.segmentos.filter((s) => s.coords.length > 1).map((s) => ({ c: s.coords, l: longitudLinea(s.coords) }));
+  const segs = recorridoCalle(calle).map((c) => ({ c, l: longitudLinea(c) }));
   const total = segs.reduce((a, s) => a + s.l, 0);
   if (!segs.length || total <= 0) return undefined;
   let resto = t * total;

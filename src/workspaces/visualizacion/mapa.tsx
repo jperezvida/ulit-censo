@@ -8,7 +8,7 @@ import { COLOR, fmtPct } from './graficos';
 import { LienzoGL, webglDisponible, type CalleMapa, type PuntoMapa, type TipMapa } from './mapaGL';
 import { FUENTE_TXT, SECTOR_CORTO } from './comun';
 import { VARIABLES_DIGITALES } from '../../domain/digital';
-import { desplazamientoGrupo, type PosicionEstablecimiento, type ResultadoPosiciones, type TipoPosicion } from '../../domain/posiciones';
+import { desplazamientoGrupo, esFicticio, type PosicionEstablecimiento, type ResultadoPosiciones, type TipoPosicion } from '../../domain/posiciones';
 
 /**
  * Mapa territorial del Resumen, con dos vistas:
@@ -120,7 +120,8 @@ function LeyendaPuntos({ conteo, ocultas, onAlternar, tipos }: {
 }
 
 /** Ficha del establecimiento pulsado: solo datos registrados (sin cadena, descripciones ni observaciones libres). */
-function FichaLocal({ db, u, p, hermanos, onSel, onCerrar }: {
+function FichaLocal({ db, u, p, hermanos, ficticio, onSel, onCerrar }: {
+  ficticio: boolean;
   db: BaseDatos; u: UnidadPanel; p: PosicionEstablecimiento; hermanos: UnidadPanel[]; onSel: (clave: string) => void; onCerrar: () => void;
 }) {
   const cat = categoriaPunto(u);
@@ -130,7 +131,7 @@ function FichaLocal({ db, u, p, hermanos, onSel, onCerrar }: {
   return (
     <div className="vz-fijada vz-ficha-local" aria-label="Establecimiento seleccionado">
       <div className="fila"><b className="esp">{nombreTxt(u)}</b><button className="vz-quitar" aria-label="Cerrar la ficha" onClick={onCerrar}><X size={14} /></button></div>
-      <span className="muted">{u.calle}, {portalTxt(u)}</span>
+      <span className="muted">{u.calle}, {portalTxt(u)}{ficticio && <small className="vz-ficticio" title="Dato de demostración: no es una dirección real comprobada"> · nº ficticio</small>}</span>
       <span className={`vz-pos vz-pos-${p.tipo}`}>{posicion}</span>
       <dl className="vz-ficha-dl">
         <dt>Estado</dt><dd>{u.vacio ? 'Vacío' : 'Ocupado'}</dd>
@@ -247,6 +248,9 @@ export function MapaTerritorial({ db, municipioId, unidades, capa, vista = 'call
   const selU = sel ? porClave.get(sel.clave) : undefined;
   const hermanos = sel ? enMapa.filter((p) => p.portal === sel.portal && p.clave !== sel.clave).map((p) => porClave.get(p.clave)!) : [];
   const simuladas = tipos.simulada > 0;
+  // Calles reales (OpenStreetMap): se atribuyen siempre; con datos ficticios, se dice que portales y ubicaciones no lo son.
+  const callesOsm = base.some((c) => c.procedencia === 'osm');
+  const atribucion = callesOsm ? ' Callejero © colaboradores de OpenStreetMap (ODbL).' : '';
 
   if (!base.length) return null;
   const etiqueta = modo === 'puntos' ? `Mapa por establecimientos${simuladas ? ' (ubicaciones simuladas)' : ''}` : `Mapa por calle: ${etiquetaCapa(capa)}`;
@@ -256,7 +260,9 @@ export function MapaTerritorial({ db, municipioId, unidades, capa, vista = 'call
       {modo === 'puntos' && simuladas && (
         <div className="vz-simuladas" role="note" aria-label="Ubicaciones simuladas">
           <b>Ubicaciones simuladas</b>
-          <span>Datos ficticios situados a lo largo de su calle. No son coordenadas.</span>
+          <span>{callesOsm
+            ? 'Calles reales de OpenStreetMap; los negocios, sus números de portal y sus ubicaciones son ficticios. No son direcciones comprobadas.'
+            : 'Datos ficticios situados a lo largo de su calle. No son coordenadas.'}</span>
         </div>
       )}
       <div className="vz-mapa2-lienzo">
@@ -325,7 +331,7 @@ export function MapaTerritorial({ db, municipioId, unidades, capa, vista = 'call
             : <Leyenda capa={capa} cortes={cortes} colores={colores} />}
         </div>
         {sel && selU ? (
-          <FichaLocal db={db} u={selU} p={sel} hermanos={hermanos} onSel={setPuntoSel} onCerrar={() => setPuntoSel(null)} />
+          <FichaLocal db={db} u={selU} p={sel} hermanos={hermanos} ficticio={esFicticio(selU, db.municipios[municipioId] ?? {})} onSel={setPuntoSel} onCerrar={() => setPuntoSel(null)} />
         ) : fij && (
           <div className="vz-fijada" aria-label="Calle seleccionada">
             <div className="fila"><b className="esp">{fij.calle}</b><button className="vz-quitar" aria-label="Quitar la selección" onClick={() => onFijar(null)}><X size={14} /></button></div>
@@ -348,8 +354,8 @@ export function MapaTerritorial({ db, municipioId, unidades, capa, vista = 'call
             locales - enMapa.length ? `${fmt(locales - enMapa.length)} sin posición (no se dibujan)` : '',
             unidades.length - locales ? `${fmt(unidades.length - locales)} sin local identificado (no se dibujan)` : '',
             enMapa.some((p) => p.enGrupo > 1) ? 'los que comparten posición se abren en corona alrededor de su portal' : '',
-          ].filter(Boolean).join(' · ') + '.'
-          : `Color: % de la calle (cuantiles de las ${fmt(aptas.length)} calles con al menos ${UMBRAL_CALLE} observados) · grosor: establecimientos.`}
+          ].filter(Boolean).join(' · ') + '.' + atribucion
+          : `Color: % de la calle (cuantiles de las ${fmt(aptas.length)} calles con al menos ${UMBRAL_CALLE} observados) · grosor: establecimientos.${atribucion}`}
       </p>
     </div>
   );

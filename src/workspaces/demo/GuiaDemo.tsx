@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, RotateCcw, X } from 'lucide-react';
+import { ArrowRight, History, Map as MapaIcono, RotateCcw, X } from 'lucide-react';
 import { useStore } from '../../store/store';
 import { localesPrevios, situacionPrevia } from '../../domain/consultas';
 import { estadoTramo } from '../../domain/planificacion';
@@ -19,6 +19,12 @@ export function GuiaDemo({ onCerrar }: { onCerrar: () => void }) {
   const db = useStore((s) => s.db!);
   const setPrefs = useStore((s) => s.setPrefs);
   const inicializar = useStore((s) => s.inicializar);
+  const callejeroReal = useStore((s) => s.callejeroReal);
+  const respaldo = useStore((s) => s.respaldo);
+  const cambiarACallejeroReal = useStore((s) => s.cambiarACallejeroReal);
+  const restaurarRespaldo = useStore((s) => s.restaurarRespaldo);
+  const avisar = useStore((s) => s.avisar);
+  const simulado = db.meta.fuenteCallejero === 'simulado';
   const nav = useNavigate();
   const itC = db.meta.itCampoTerminado;
   const itA = db.meta.itEnCurso ? db.itinerarios[db.meta.itEnCurso] : undefined;
@@ -86,13 +92,42 @@ export function GuiaDemo({ onCerrar }: { onCerrar: () => void }) {
         </li>
       </ol>
       <div className="guia-pie">
-        <div className="muted" style={{ fontSize: 11.5 }}>
-          Callejero: <b>{db.meta.fuenteCallejero === 'simulado' ? 'SIMULADO' : 'OpenStreetMap real'}</b> · {db.meta.detalleCallejero}
+        <div className="muted" style={{ fontSize: 11.5 }} aria-label="Callejero de la demostración">
+          Callejero: <b>{simulado ? 'SIMULADO' : 'OpenStreetMap real'}</b> · {db.meta.detalleCallejero}
+          {!simulado && <> · Negocios, números de portal y ubicaciones: <b>ficticios</b>.</>}
         </div>
+        {simulado && callejeroReal && (
+          <div className="guia-transicion" role="group" aria-label="Cambiar al callejero real">
+            <span>Callejero real disponible: {callejeroReal.detalle}.</span>
+            <button
+              className="btn s primario"
+              onClick={async () => {
+                if (!confirm('Se generará una demostración nueva sobre las calles reales de Medina del Campo (OpenStreetMap). Los negocios, números de portal y ubicaciones seguirán siendo ficticios.\n\nAntes se guardará una copia de seguridad de la demostración actual, que podrás recuperar desde aquí. ¿Continuar?')) return;
+                const r = await cambiarACallejeroReal();
+                avisar(r.ok ? 'Demostración sobre el callejero real de Medina del Campo. La anterior queda en la copia de seguridad.' : r.error!, r.ok ? 'ok' : 'error');
+              }}
+            >
+              <MapaIcono size={13} /> Usar calles reales (OSM)
+            </button>
+          </div>
+        )}
+        {respaldo && (
+          <button
+            className="btn s"
+            title={`${respaldo.motivo} · ${new Date(respaldo.fecha).toLocaleString('es-ES')}`}
+            onClick={async () => {
+              if (!confirm(`Se recuperará la copia de seguridad (${respaldo.motivo.toLowerCase()}, ${new Date(respaldo.fecha).toLocaleString('es-ES')}). La demostración actual pasará a ser la nueva copia: no se pierde ninguna. ¿Continuar?`)) return;
+              const r = await restaurarRespaldo();
+              avisar(r.ok ? 'Demostración anterior recuperada. La que había queda en la copia de seguridad.' : r.error!, r.ok ? 'ok' : 'error');
+            }}
+          >
+            <History size={13} /> Recuperar la demostración anterior
+          </button>
+        )}
         <button
           className="btn s"
           onClick={() => {
-            if (confirm('Se borrarán los cambios hechos en esta demostración y se volverán a generar los datos (intentando cargar de nuevo el callejero real). ¿Continuar?')) {
+            if (confirm('Se volverán a generar los datos de demostración (intentando cargar el callejero real). Antes se guarda una copia de seguridad de la demostración actual, que podrás recuperar. ¿Continuar?')) {
               onCerrar();
               inicializar(true);
             }

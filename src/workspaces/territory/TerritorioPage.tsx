@@ -436,9 +436,9 @@ export default function TerritorioPage() {
           {fuenteCallejero === 'simulado' ? (
             <Sim texto="Callejero simulado · geometría inventada" title="No se pudo obtener el callejero real de OSM; ver README" />
           ) : (
-            <span className="chip real" title={db.meta.detalleCallejero}>Callejero real · OSM</span>
+            <span className="chip real" title={`${db.meta.detalleCallejero} · Datos © colaboradores de OpenStreetMap, licencia ODbL (openstreetmap.org/copyright)`}>Callejero real · © OSM (ODbL)</span>
           )}
-          <Sim texto="Itinerarios y locales de demostración" />
+          <Sim texto={fuenteCallejero === 'simulado' ? 'Itinerarios y locales de demostración' : 'Locales, números de portal e itinerarios ficticios'} title={fuenteCallejero === 'simulado' ? undefined : 'Las calles son reales; los locales, sus números de portal y sus ubicaciones son de demostración: no son direcciones comprobadas.'} />
         </div>
 
         <Leyenda capa={capa} />

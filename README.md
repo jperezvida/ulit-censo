@@ -27,19 +27,41 @@ npm run build && npm run preview   # http://localhost:4173
   12 escenarios de la especificación con enlaces directos.
 - **Móvil:** abre `/#/campo` en un teléfono de la misma red (`npm run dev -- --host`). En
   escritorio la app de campo se muestra dentro de un marco de teléfono.
-- **Restablecer:** en el Guion, «Restablecer demo» borra los cambios y regenera los datos.
+- **Restablecer:** en el Guion, «Restablecer demo» regenera los datos. Antes guarda una **copia de seguridad** de la demostración actual, que se recupera con «Recuperar la demostración anterior».
 
 Los datos se guardan en el navegador (IndexedDB). Cada navegador tiene su propia copia.
 
 ### Callejero de Medina del Campo
 
-Al arrancar, la aplicación intenta, por este orden:
+La demostración usa las **calles reales** de Medina del Campo (nombres y trazados de OpenStreetMap).
+Los establecimientos, sus cifras, sus **números de portal** y sus **ubicaciones** son **ficticios**. La
+interfaz lo indica: no son direcciones comprobadas.
 
-1. Leer la instantánea `public/data/medina-callejero.json`, si existe. Se genera con
-   `npm run callejero` desde una red con acceso a `overpass-api.de`.
-2. Pedir el callejero a Overpass API **desde tu navegador**: una única petición, que luego queda en caché.
-3. Si nada de lo anterior funciona, usa un **callejero simulado** con geometría inventada. La
-   interfaz lo señala con el sello «Callejero simulado · geometría inventada».
+Al generar la demostración, la aplicación intenta, por este orden:
+
+1. Leer la **instantánea** incluida en el proyecto, `public/data/medina-callejero.json`. Es reproducible y
+   no necesita red. Se valida al cargarla: licencia ODbL, atribución, número de vías y zona.
+2. Si falta, pedir el callejero a Overpass API **desde tu navegador**, con una única petición. El
+   resultado no es reproducible.
+3. Si nada de lo anterior funciona, usar un **callejero simulado** con geometría inventada. La interfaz
+   lo señala con el sello «Callejero simulado · geometría inventada».
+
+**Generar o actualizar la instantánea** (desde una red con acceso a OpenStreetMap, p. ej. Codespaces):
+
+```bash
+npm run callejero                         # descarga (prueba varias réplicas de Overpass), valida y guarda
+npm run callejero -- --desde export.json  # o normaliza un JSON exportado a mano desde overpass-turbo
+npm run callejero -- --comprobar          # solo comprueba la instantánea guardada
+```
+
+La instantánea guarda solo el nombre, el tipo de vía y la geometría de cada vía, con su procedencia:
+servidor, fecha de los datos OSM, consulta, licencia y SHA-256. Se escribe una vía por línea para que
+las diferencias entre versiones sean legibles.
+
+**Demostraciones ya guardadas:** la aplicación nunca sustituye por su cuenta una demostración guardada
+en el navegador. Si la tuya usa el callejero simulado y el proyecto ya incluye la instantánea, aparece
+un aviso. En el Guion, «Usar calles reales (OSM)» guarda una copia de seguridad comprobada y genera la
+demostración nueva; «Recuperar la demostración anterior» intercambia ambas, sin perder ninguna.
 
 Datos © colaboradores de OpenStreetMap, licencia ODbL. Mapa base de OpenFreeMap / OpenMapTiles.
 El mapa base solo sirve de fondo; para trabajar sin conexión, la versión definitiva necesitará un
