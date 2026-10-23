@@ -65,6 +65,20 @@ export const CONFIG_TERRITORIAL: Record<string, ConfigTerritorial> = {
   },
 };
 
+/**
+ * C1e · Municipios de los espacios aislados (ensayo y datos reales): las mismas reglas territoriales
+ * de Medina del Campo. Van aparte para no mezclarlos con los de la demostración (p. ej., en el
+ * análisis previo de Datos).
+ */
+const MEDINA_REGLAS = CONFIG_TERRITORIAL['mun-medina'];
+export const CONFIG_TERRITORIAL_ESPACIOS: Record<string, ConfigTerritorial> = {
+  'real-mun-medina': { ...MEDINA_REGLAS, municipioId: 'real-mun-medina', municipio: 'Medina del Campo (datos reales)' },
+  'ensayo-mun-medina': { ...MEDINA_REGLAS, municipioId: 'ensayo-mun-medina', municipio: 'Medina del Campo (ensayo)' },
+};
+
+/** Configuración territorial de cualquier municipio (demostración o espacios aislados). */
+export const configTerritorial = (municipioId: string): ConfigTerritorial | undefined => CONFIG_TERRITORIAL[municipioId] ?? CONFIG_TERRITORIAL_ESPACIOS[municipioId];
+
 export type CampoTerritorial = 'distrito' | 'zona' | 'cp';
 
 export interface EvaluacionTerritorial {

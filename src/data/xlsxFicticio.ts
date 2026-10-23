@@ -45,6 +45,8 @@ export async function libroFicticio(o: OpcionesLibroFicticio = {}): Promise<Uint
   const perfil: PerfilImportacion = o.perfil === 'itinerario-28' ? PERFIL_ITINERARIO_28 : PERFIL_CENSO_27;
   const n = o.filas ?? 60;
   const wb = new ExcelJS.Workbook();
+  // Marca de libro generado por la aplicación (el espacio de datos reales lo rechaza).
+  wb.keywords = 'ULIT-GENERADO-FICTICIO';
   const nombreDatos = o.hojaDatos ?? perfil.hojasHabituales[0];
   const orden: ('datos' | 'listas' | 'resumen')[] = o.auxiliares === false ? ['datos'] : ['datos', 'listas', 'resumen'];
   const pos = Math.min(Math.max(1, o.posicionDatos ?? 1), orden.length) - 1;

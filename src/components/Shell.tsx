@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { BarChart3, ChevronDown, Compass, Database, FolderKanban, Inbox, Map, PieChart, Smartphone, UserCog } from 'lucide-react';
+import { BarChart3, ChevronDown, Compass, Database, FolderKanban, Inbox, Map, PieChart, ShieldCheck, Smartphone, UserCog } from 'lucide-react';
 import { useStore } from '../store/store';
 import { useContexto, useFichaLocal } from '../store/contexto';
 import type { Rol } from '../domain/types';
@@ -85,6 +85,10 @@ export function Shell() {
           <span className="chip sim sim-global" title="Todos los locales, negocios, personas, itinerarios y resultados son ficticios">
             Datos simulados
           </span>
+          <button className="btn s oscuro-borde" onClick={() => nav('/espacios')} title="Espacios aislados: ensayo y datos reales (separados de esta demostración)">
+            <ShieldCheck size={15} />
+            <span className="ocultar-m">Datos reales</span>
+          </button>
           <button className="btn s oscuro-borde" onClick={() => nav('/campo')} title="Abrir la app de campo (móvil)">
             <Smartphone size={15} />
             <span className="ocultar-m">Campo</span>

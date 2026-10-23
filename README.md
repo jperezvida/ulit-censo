@@ -67,6 +67,21 @@ Datos © colaboradores de OpenStreetMap, licencia ODbL. Mapa base de OpenFreeMap
 El mapa base solo sirve de fondo; para trabajar sin conexión, la versión definitiva necesitará un
 proveedor o unas teselas propias con licencia adecuada (nunca descargas masivas de servidores públicos).
 
+## Espacios aislados: ensayo y datos reales (C1e)
+
+La demostración no cambia. Para el censo **auténtico** hay una pantalla aparte (`#/espacios`, botón «Datos reales» de la cabecera) con dos espacios:
+- **Ensayo:** solo archivos sintéticos.
+- **Datos reales.**
+
+Cada uno tiene su propia base IndexedDB (`ulit-censo-ensayo` y `ulit-censo-real`), identificadores con prefijo propio y verificación de la separación. El XLSX se elige y se procesa en el navegador, sin subirlo, con el mismo importador de C1a–C1d.
+
+Antes de incorporar se exigen:
+- vista previa revisada;
+- respaldo externo **descargado y comprobado**;
+- espacio suficiente.
+
+Cada escritura se verifica. En el espacio real la confirmación está **bloqueada** (fase C1e-B). `npm run sintetico-c1e` genera el archivo sintético de ensayo, que no se sube al repositorio. Los detalles, el almacenamiento, sus límites y los pasos en Codespaces están en [`docs/fase2/C1E-INCORPORACION-REAL.md`](docs/fase2/C1E-INCORPORACION-REAL.md).
+
 ## Pruebas y comprobaciones
 
 ```bash

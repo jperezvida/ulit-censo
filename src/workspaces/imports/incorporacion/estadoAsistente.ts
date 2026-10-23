@@ -54,8 +54,8 @@ export const useAsistente = create<EstadoAsistente>((set) => ({
   reiniciar: () => set({ ...INICIAL, decisiones: {} }),
 }));
 
-/** Parte de las decisiones que cambia la INTERPRETACIÓN de C1b (reglas y diccionario). */
+/** Parte de las decisiones que cambia la INTERPRETACIÓN de C1b (reglas, diccionario y periodo). */
 export const firmaInterpretacion = (d: DecisionesIncorporacion) =>
-  JSON.stringify([(d.reglasAutorizadas ?? []).map((x) => x.regla).sort(), (d.diccionarioAprobado ?? []).map((x) => x.texto.toLowerCase()).sort()]);
+  JSON.stringify([(d.reglasAutorizadas ?? []).map((x) => x.regla).sort(), (d.diccionarioAprobado ?? []).map((x) => x.texto.toLowerCase()).sort(), d.periodoTrabajo ? [d.periodoTrabajo.desde, d.periodoTrabajo.hasta] : null]);
 
 export const hoy = () => new Date().toISOString().slice(0, 10);

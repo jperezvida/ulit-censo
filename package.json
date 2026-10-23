@@ -20,7 +20,8 @@
     "analizar": "tsx scripts/analizar-xlsx.ts",
     "xlsx-ficticio": "tsx scripts/generar-xlsx-ficticio.ts",
     "interpretar": "tsx scripts/interpretar-xlsx.ts",
-    "simular-incorporacion": "tsx scripts/simular-incorporacion.ts"
+    "simular-incorporacion": "tsx scripts/simular-incorporacion.ts",
+    "sintetico-c1e": "tsx scripts/generar-sintetico-c1e.ts"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.1.0",

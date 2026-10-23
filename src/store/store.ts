@@ -5,6 +5,7 @@ import { migrarALaActual } from '../domain/migraciones';
 import type { Id, Rol } from '../domain/types';
 import { cargarCallejeroMedina, cargarInstantaneaMedina } from '../data/callejero';
 import { generarDemo } from '../data/semilla';
+import { esBaseDeEspacio } from '../domain/espacios';
 
 const CLAVE_DB = 'ulit-censo:demo-db';
 /**
@@ -147,6 +148,8 @@ function escribir(): Promise<void> {
   const tarea = cola.then(async () => {
     const vigente = dbActual();
     if (!vigente) return;
+    // C1e: la demostración nunca escribe una base de un espacio aislado (ensayo o datos reales).
+    if (esBaseDeEspacio(vigente)) throw new Error('Una base de un espacio aislado (ensayo o datos reales) no se guarda en la demostración.');
     try {
       await idbSet(CLAVE_DB, vigente);
     } catch (e) {
@@ -195,6 +198,10 @@ export const useStore = create<Estado>((set, get) => ({
     try {
       if (!forzar) {
         const guardada = await idbGet<BaseDatos>(CLAVE_DB).catch(() => undefined);
+        if (esBaseDeEspacio(guardada)) {
+          set({ carga: { fase: 'error', mensaje: 'El almacenamiento de la demostración contiene una base de un espacio aislado (ensayo o datos reales). No se abre ni se modifica.' } });
+          return;
+        }
         if (guardada && guardada.version === VERSION_DATOS) {
           set({ db: guardada, carga: { fase: 'lista', mensaje: '' } });
           tras();
@@ -274,6 +281,7 @@ export const useStore = create<Estado>((set, get) => ({
       r = undefined;
     }
     if (!r?.db) return { ok: false, error: 'No hay ninguna copia de seguridad.' };
+    if (esBaseDeEspacio(r.db)) return { ok: false, error: 'La copia pertenece a un espacio aislado (ensayo o datos reales): no se recupera en la demostración.' };
     let anterior = r.db;
     if (anterior.version === 9 || anterior.version === 10) anterior = migrarALaActual(anterior).db;
     if (anterior.version !== VERSION_DATOS) return { ok: false, error: `La copia es de una versión de datos no compatible (v${anterior.version}).` };

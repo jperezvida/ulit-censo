@@ -159,3 +159,6 @@ datos-reales/
 *.perfil.json
 *.informe-estructural.json
 *.informe-interpretacion.json
+
+# C1e · archivos sintéticos generados localmente (nunca en el repositorio)
+sinteticos/

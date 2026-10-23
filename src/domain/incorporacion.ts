@@ -5,7 +5,7 @@ import { claveCalle, normalizar } from './text';
 import { huella } from '../data/rng';
 import { sha256Texto } from './sha256';
 import { TAXONOMIA_POR_ID, catalogoDeNodo } from './taxonomy';
-import { CONFIG_TERRITORIAL } from './territorio';
+import { configTerritorial } from './territorio';
 import { REGLAS } from './xlsx/reglasInterpretacion';
 import type { FilaInterpretada, OpcionesInterpretacion, Portal, ResultadoInterpretacion } from './xlsx/interpretacion';
 import type {
@@ -54,14 +54,23 @@ export interface DecisionesIncorporacion {
   correspondencias?: (Trazada & ({ fila: number; accion: 'local-nuevo' } | { fila: number; accion: 'local-existente'; localId: Id }))[];
   /** Equivalencias aprobadas de una combinación histórica a un nodo del catálogo. */
   equivalenciasClasificacion?: (Trazada & { grupo?: string; grupoComercio?: string; subgrupo?: string; actividad?: string; actividadId: Id; descripcion?: string })[];
+  /**
+   * C1e · Periodo REAL del trabajo de campo del censo (aaaa-mm-dd, ambos incluidos). Por defecto, el año
+   * natural. El censo de Medina 2025 tiene visitas de 2024: con esta decisión sus fechas ORIGINALES se
+   * conservan como fecha de observación, sin marcarlas fuera de campaña ni cambiarlas.
+   */
+  periodoTrabajo?: Trazada & { desde: string; hasta: string };
 }
+
+/** Periodo con el que se interpretan las fechas: el decidido o el año natural. */
+export const periodoDe = (anio: number, d: DecisionesIncorporacion = {}) => (d.periodoTrabajo ? { desde: d.periodoTrabajo.desde, hasta: d.periodoTrabajo.hasta } : { desde: `${anio}-01-01`, hasta: `${anio}-12-31` });
 
 /** Opciones de C1b que corresponden a las decisiones recibidas (nunca otras). */
 export function opcionesInterpretacion(municipioId: Id, anio: number, d: DecisionesIncorporacion = {}): OpcionesInterpretacion {
   return {
-    territorio: CONFIG_TERRITORIAL[municipioId],
+    territorio: configTerritorial(municipioId),
     modo: 'historico',
-    periodo: { desde: `${anio}-01-01`, hasta: `${anio}-12-31` },
+    periodo: periodoDe(anio, d),
     reglasAutorizadas: (d.reglasAutorizadas ?? []).map((x) => x.regla),
     diccionarioAprobado: (d.diccionarioAprobado ?? []).map((x) => x.texto),
   };
@@ -132,7 +141,7 @@ export interface PlanIncorporacion {
    */
   mismoPortal: { portales: number; locales: number };
   incidencias: { total: number; porGravedad: Record<string, number>; porTipo: Record<string, number> };
-  decisiones: { reglasAutorizadas: string[]; diccionarioAprobado: string[]; exclusiones: number; correspondencias: number; equivalenciasClasificacion: number };
+  decisiones: { reglasAutorizadas: string[]; diccionarioAprobado: string[]; exclusiones: number; correspondencias: number; equivalenciasClasificacion: number; periodo?: { desde: string; hasta: string } };
   pendientes: string[];
   reimportacion?: { importacionId: Id; campanaId?: Id; filasIguales: number; filasCambiadas: number[]; filasNuevas: number[]; filasDesaparecidas: number[] };
   filas: PlanFila[];
@@ -182,6 +191,15 @@ function validarDecisiones(db: BaseDatos, d: DecisionesIncorporacion, filas: Set
       }
     }
   }
+  if (d.periodoTrabajo) {
+    const p = d.periodoTrabajo;
+    traza(p, 'Periodo de trabajo de campo');
+    const iso = /^\d{4}-\d{2}-\d{2}$/;
+    if (!iso.test(p.desde) || !iso.test(p.hasta) || p.desde > p.hasta) errores.push('Periodo de trabajo de campo: fechas no válidas (aaaa-mm-dd, desde ≤ hasta).');
+    else if (p.hasta !== `${anio}-12-31` && p.hasta > `${anio}-12-31`) errores.push(`Periodo de trabajo de campo: no puede pasar de ${anio}-12-31 (sería otra campaña).`);
+    else if (p.hasta < `${anio}-01-01`) errores.push(`Periodo de trabajo de campo: debe incluir ${anio}.`);
+    if (!p.motivo?.trim()) errores.push('Periodo de trabajo de campo: falta el motivo.');
+  }
   for (const q of d.equivalenciasClasificacion ?? []) {
     traza(q, `Equivalencia de clasificación hacia «${q.actividadId}»`);
     if (!TAXONOMIA_POR_ID[q.actividadId]) errores.push(`Equivalencia de clasificación: el nodo «${q.actividadId}» no existe en ningún catálogo.`);
@@ -219,8 +237,9 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   const op = opcionesInterpretacion(destino.municipioId, destino.anio, decisiones);
   const igualLista = (a: string[] = [], b: string[] = []) => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
   if (!igualLista(resultado.opciones.reglasAutorizadas, op.reglasAutorizadas) || !igualLista((resultado.opciones.diccionarioAprobado ?? []).map(normalizar), (op.diccionarioAprobado ?? []).map(normalizar))
-    || resultado.opciones.territorio?.municipioId !== op.territorio?.municipioId || resultado.opciones.modo !== 'historico') {
-    bloqueos.push({ codigo: 'interpretacion-incoherente', mensaje: 'La interpretación de C1b no se hizo con las mismas reglas, diccionario y municipio que las decisiones recibidas.', detalles: [] });
+    || resultado.opciones.territorio?.municipioId !== op.territorio?.municipioId || resultado.opciones.modo !== 'historico'
+    || JSON.stringify(resultado.opciones.periodo ?? null) !== JSON.stringify(op.periodo ?? null)) {
+    bloqueos.push({ codigo: 'interpretacion-incoherente', mensaje: 'La interpretación de C1b no se hizo con las mismas reglas, diccionario, periodo y municipio que las decisiones recibidas.', detalles: [] });
   }
 
   const filasSet = new Set(capa.filas.map((f) => f.fila));
@@ -369,6 +388,7 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
     decisiones: {
       reglasAutorizadas: op.reglasAutorizadas ?? [], diccionarioAprobado: op.diccionarioAprobado ?? [], exclusiones: excluidas.size,
       correspondencias: decididas.size, equivalenciasClasificacion: equivalencias.size,
+      ...(decisiones.periodoTrabajo ? { periodo: periodoDe(destino.anio, decisiones) } : {}),
     },
     pendientes, reimportacion, filas,
   };
@@ -454,7 +474,7 @@ export function aplicarIncorporacion(
 
   const campana: Campana = {
     id: campanaId, municipioId: destino.municipioId, anio: destino.anio, nombre: plan.destino.nombre, tipo: 'historico-importado',
-    periodo: { inicio: `${destino.anio}-01-01`, fin: `${destino.anio}-12-31` }, ambitoCalleIds: [], ampliacionCalleIds: [],
+    periodo: { inicio: periodoDe(destino.anio, decisiones).desde, fin: periodoDe(destino.anio, decisiones).hasta }, ambitoCalleIds: [], ampliacionCalleIds: [],
     // Nada queda revisado ni validado.
     estados: { planificacion: 'no-aplica', campo: 'terminado', revision: 'pendiente', validacion: 'pendiente' }, procedencia: 'importado',
   };

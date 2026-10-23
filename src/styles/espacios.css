@@ -1,0 +1,20 @@
+/* C1e · Espacios aislados (ensayo y datos reales): cabecera y bandas propias, distintas de la demostración. */
+.esp-app { min-height: 100vh; background: var(--fondo, #f4f6fa); }
+.esp-cab { display: flex; align-items: center; gap: 14px; padding: 10px 20px; background: #1d2433; color: #fff; }
+.esp-cab .marca-ulit { color: #fff; }
+.esp-cab-tit { font-weight: 600; font-size: 14px; }
+.esp-cuerpo { padding: 20px; max-width: 1280px; margin: 0 auto; }
+.esp-tarjetas { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+.esp-tarjeta { display: flex; flex-direction: column; gap: 6px; padding: 16px; text-decoration: none; color: inherit; border-left: 0; }
+.esp-tarjeta:hover { box-shadow: var(--sombra-2, 0 2px 10px rgba(0,0,0,.12)); }
+.esp-banda { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-radius: 10px; font-size: 13px; }
+.esp-banda b { letter-spacing: 0.04em; }
+.esp-banda.esp-real { background: #fdecec; border: 1px solid #e7a3a3; color: #6e1414; }
+.esp-banda.esp-ensayo { background: #efecfb; border: 1px solid #c4bbef; color: #3b2e8a; }
+.req-lista li { display: flex; gap: 6px; align-items: flex-start; }
+.req-lista li.ok svg { color: #1f7a4d; }
+.req-lista li.no svg { color: #a42020; }
+.ap-celda { border: 1px solid var(--linea, #e3e7ee); background: var(--superficie, #fff); border-radius: 8px; padding: 8px 10px; text-align: left; display: flex; flex-direction: column; gap: 2px; cursor: pointer; font: inherit; }
+.ap-celda.on { border-color: var(--azul, #2a78d6); box-shadow: inset 0 0 0 1px var(--azul, #2a78d6); }
+tr.aviso td { background: #fff6e0; }
+.req-lista li.aviso svg { color: #a86400; }

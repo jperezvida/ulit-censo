@@ -235,7 +235,7 @@ export async function libroEscenarioMedina(): Promise<Uint8Array> {
 
   const wb = new ExcelJS.Workbook();
   const fijo = new Date(Date.UTC(2025, 11, 1));
-  Object.assign(wb, { creator: 'ULIT Censo · escenario ficticio', lastModifiedBy: 'ULIT Censo · escenario ficticio', created: fijo, modified: fijo });
+  Object.assign(wb, { creator: 'ULIT Censo · escenario ficticio', lastModifiedBy: 'ULIT Censo · escenario ficticio', created: fijo, modified: fijo, keywords: 'ULIT-GENERADO-FICTICIO' });
   const ws = wb.addWorksheet('Datos');
   ws.addRow(PERFIL_CENSO_27.columnas.map((c) => c.cabecera));
   for (const fila of filas) {

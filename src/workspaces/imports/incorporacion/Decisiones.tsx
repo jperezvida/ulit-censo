@@ -1,10 +1,9 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { CheckCircle2, Gavel, Undo2 } from 'lucide-react';
 import { Segmentado, fmt } from '../../../components/ui';
-import { useStore } from '../../../store/store';
 import { planificarIncorporacion, type DecisionesIncorporacion, type PlanIncorporacion } from '../../../domain/incorporacion';
 import {
-  claveCombo, combinacionesHistoricas, destinoEscenario, MOTIVO_TXT, pendientesDeNodo, puedeDecidir, reglasPropuestas, textosDiccionario,
+  claveCombo, combinacionesHistoricas, MOTIVO_TXT, pendientesDeNodo, reglasPropuestas, textosDiccionario,
 } from '../../../domain/incorporacionDemo';
 import { mostrarOriginal, type ResultadoInterpretacion } from '../../../domain/xlsx/interpretacion';
 import { DISCREPANCIAS_2026, EXCEPCIONES_ICM, ID_CATALOGO_2026 } from '../../../domain/catalogo2026';
@@ -12,7 +11,8 @@ import { rutaTexto } from '../../../domain/buscador';
 import { textoDireccion } from '../../../domain/consultas';
 import { BuscadorClasificacion, type Eleccion } from '../../office/BuscadorClasificacion';
 import { ChipEstado } from './RevisionGrupos';
-import { hoy, useAsistente } from './estadoAsistente';
+import { hoy } from './estadoAsistente';
+import { useCtxIncorporacion } from './contextoIncorporacion';
 import type { Id } from '../../../domain/types';
 
 type Pestana = 'interpretaciones' | 'correspondencias' | 'exclusiones' | 'clasificacion' | 'catedra';
@@ -38,15 +38,15 @@ function Registrar({ etiqueta, ayuda, onRegistrar, deshabilitado }: { etiqueta: 
 }
 
 function Traza({ porId, fecha, motivo }: { porId: Id; fecha: string; motivo?: string }) {
-  const db = useStore((s) => s.db!);
+  const { db } = useCtxIncorporacion();
   return <span className="muted dec-nota"><CheckCircle2 size={13} /> {db.personas[porId]?.nombre ?? porId} · {fecha}{motivo ? ` · «${motivo}»` : ''}</span>;
 }
 
 export function Decisiones({ resultado, plan, decisiones, onCambiar }: { resultado: ResultadoInterpretacion; plan: PlanIncorporacion; decisiones: DecisionesIncorporacion; onCambiar: (d: DecisionesIncorporacion) => void }) {
   const [tab, setTab] = useState<Pestana>('interpretaciones');
-  const prefs = useStore((s) => s.prefs);
-  const autorizado = puedeDecidir(prefs.roles);
-  const firma = { porId: prefs.personaId, fecha: hoy() };
+  const ctx = useCtxIncorporacion();
+  const autorizado = ctx.autorizado;
+  const firma = { porId: ctx.personaId, fecha: hoy() };
   const sinPermiso = autorizado ? undefined : 'Registrar decisiones requiere el rol de coordinación o administración.';
   const props = { resultado, plan, decisiones, onCambiar, firma, sinPermiso };
   return (
@@ -149,10 +149,9 @@ function Interpretaciones({ resultado, decisiones, onCambiar, firma, sinPermiso 
 }
 
 function Correspondencias({ resultado, decisiones, onCambiar, firma, sinPermiso }: Props) {
-  const db = useStore((s) => s.db!);
-  const st = useAsistente();
+  const { db, destino } = useCtxIncorporacion();
   // Plan SIN correspondencias decididas: así se conocen los motivos originales de cada fila.
-  const base = useMemo(() => planificarIncorporacion(db, resultado, destinoEscenario(st.escenarioId, st.anio, st.nombre), { ...decisiones, correspondencias: [] }), [db, resultado, st.escenarioId, st.anio, st.nombre, decisiones]);
+  const base = useMemo(() => planificarIncorporacion(db, resultado, destino, { ...decisiones, correspondencias: [] }), [db, resultado, destino, decisiones]);
   const porFila = useMemo(() => new Map(resultado.filas.map((f) => [f.fila, f])), [resultado]);
   const orig = useMemo(() => new Map(resultado.original.filas.map((f) => [f.fila, f.celdas])), [resultado]);
   const grupos = useMemo(() => {
@@ -217,7 +216,7 @@ function Correspondencias({ resultado, decisiones, onCambiar, firma, sinPermiso 
 }
 
 function ElegirCorrespondencia({ fila, candidatos, sinPermiso, onElegir }: { fila: number; candidatos: Id[]; sinPermiso?: string; onElegir: (fila: number, a: { accion: 'local-nuevo' } | { accion: 'local-existente'; localId: Id }, motivo: string) => void }) {
-  const db = useStore((s) => s.db!);
+  const { db } = useCtxIncorporacion();
   const [opcion, setOpcion] = useState('');
   const [motivo, setMotivo] = useState('');
   if (sinPermiso) return <span className="muted dec-nota">Pendiente · {sinPermiso}</span>;
