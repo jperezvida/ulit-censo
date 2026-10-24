@@ -64,6 +64,7 @@ export const REGLAS: Record<string, Regla> = Object.fromEntries(
     r('fecha-serial-sin-formato', 'propuesta', 'Número sin formato de fecha en «Fecha censo»: podría ser un número de serie de Excel.', 'pendiente-catedra'),
     r('fecha-anio-dos-cifras', 'propuesta', 'Fecha con año de dos cifras («05/01/25» → 2025).', 'pendiente-catedra'),
     r('cp-cuatro-cifras', 'propuesta', 'Código postal de 4 cifras: probablemente perdió el cero inicial.', 'pendiente-informatica', 'informática 2'),
+    r('direccion-completa-coma', 'propuesta', 'Dirección completa en una celda («Calle Mayor, 12»): separar calle y número solo si hay UNA coma, la calle no tiene cifras y lo que sigue es exactamente un número de portal («12», «12 B», «12 bis») o «S/N». El texto original se conserva.', 'pendiente-catedra'),
     r('fecha-fuera-de-campana', 'propuesta', 'Fecha válida pero fuera del periodo de la campaña: se conserva como propuesta.'),
     r('cp-distinto-del-fijo', 'propuesta', 'Código postal distinto del valor fijo del municipio: se conserva como propuesta.'),
     // Invalidez
@@ -105,6 +106,8 @@ export const TIPOS_INCIDENCIA = {
   'cp-distinto-del-fijo': t('CP distinto del fijo del municipio', 'aviso', 'revision', 'Comprobar el origen. No se sustituye por el valor fijo.'),
   'cp-cuatro-cifras': t('CP de 4 cifras', 'aviso', 'catedra', 'Probable pérdida del cero inicial; requiere confirmar el criterio (tipo de CP con informática).'),
   'cp-no-valido': t('CP no válido', 'error', 'revision', 'Revisar el origen; la celda queda sin valor.'),
+  'direccion-completa-separable': t('Dirección completa separable en calle y número', 'aviso', 'catedra', 'Se propone separarla por su única coma; solo se aplica si se autoriza la regla «direccion-completa-coma». Mientras tanto, el registro se conserva sin vínculo territorial.'),
+  'direccion-completa-no-separable': t('Dirección completa que no se separa', 'info', 'informativa', 'Su forma no permite separar calle y número con seguridad: se conserva literal y el vínculo territorial queda pendiente de conciliación.'),
   'direccion-ausente': t('Dirección vacía', 'error', 'revision', 'Sin dirección no puede situarse el local: completar desde el origen o descartar en la conciliación.'),
   'numero-ausente': t('Número de portal desconocido', 'aviso', 'revision', 'Se distingue de «S/N». Completar en la conciliación o en campo.'),
   'numero-no-reconocido': t('Número de portal no reconocido', 'error', 'revision', 'Revisar el origen; se conserva el texto original.'),

@@ -18,10 +18,14 @@ import { MARCA_FICTICIO } from './xlsxSinteticoC1e';
  *      de listas y de resumen.
  *  C · «Aldea Sintética 2022»: cabeceras AMBIGUAS (dos columnas que podrían ser el nombre y dos que
  *      podrían ser la dirección): ninguna se debe asignar automáticamente.
+ *  D · «Lugar Sintético del Valle 2021»: SIN columna de número de portal (solo la calle).
+ *  E · «Monte Sintético 2020»: la dirección COMPLETA en una sola celda («Domicilio completo»), con
+ *      formas separables («…, 12», «…, 3 B», «…, S/N») y no separables («… 7», «…, 4, 1º A»,
+ *      «Polígono…, nave 3»), y una vacía.
  */
 
 export interface CasoGeneralidad {
-  id: 'A' | 'B' | 'C';
+  id: 'A' | 'B' | 'C' | 'D' | 'E';
   municipio: string;
   anio: number;
   archivo: string;
@@ -112,6 +116,48 @@ async function libroC(calles = CALLES_FICTICIAS): Promise<Uint8Array> {
   return cerrar(wb, 'Aldea Sintética 2022');
 }
 
+/** D · Lugar Sintético del Valle 2021 (12 filas): sin columna de número. */
+async function libroD(calles = CALLES_FICTICIAS): Promise<Uint8Array> {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Censo');
+  ws.addRow(['Calle', 'Nombre comercial', 'Local vacío', 'Fecha', 'Notas']);
+  for (let i = 0; i < 12; i++) {
+    const vacio = i % 4 === 0;
+    const row = ws.addRow([calles[i % calles.length], vacio ? null : `ESTABLECIMIENTO SINTÉTICO D${i + 1}`, vacio ? 1 : 0, new Date(Date.UTC(2021, 2, 1 + i)), i === 3 ? 'Junto a la iglesia' : null]);
+    row.getCell(4).numFmt = 'dd/mm/yyyy';
+  }
+  return cerrar(wb, 'Lugar Sintético del Valle 2021');
+}
+
+/**
+ * E · Monte Sintético 2020 (10 filas): dirección completa en una celda. `DIRECCIONES_E` describe cada
+ * fila y lo que se espera de ella (para las pruebas): separable o no, y el portal si lo es.
+ */
+export const DIRECCIONES_E: { plantilla: (c: string[]) => string | null; separable: false | { calle: 0 | 1; portal: { tipo: 'numero'; numero: number; sufijo?: string } | { tipo: 'sin-numero' } } }[] = [
+  { plantilla: (c) => `${c[0]}, 12`, separable: { calle: 0, portal: { tipo: 'numero', numero: 12 } } },
+  { plantilla: (c) => `${c[1]}, 3 B`, separable: { calle: 1, portal: { tipo: 'numero', numero: 3, sufijo: 'B' } } },
+  { plantilla: (c) => `${c[0]}, S/N`, separable: { calle: 0, portal: { tipo: 'sin-numero' } } },
+  { plantilla: (c) => `${c[1]} 7`, separable: false },
+  { plantilla: (c) => `${c[0]}, 4, 1º A`, separable: false },
+  { plantilla: (c) => `${c[1]}, 14`, separable: { calle: 1, portal: { tipo: 'numero', numero: 14 } } },
+  { plantilla: () => null, separable: false },
+  { plantilla: (c) => `${c[0]}, 12`, separable: { calle: 0, portal: { tipo: 'numero', numero: 12 } } },
+  { plantilla: () => 'Polígono sintético, nave 3', separable: false },
+  { plantilla: (c) => `${c[1]}, 20 izq.`, separable: false },
+];
+
+async function libroE(calles = CALLES_FICTICIAS): Promise<Uint8Array> {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Locales');
+  ws.addRow(['Domicilio completo', 'Nombre comercial', 'Local vacío', 'Fecha de visita']);
+  DIRECCIONES_E.forEach((d, i) => {
+    const vacio = i === 5;
+    const row = ws.addRow([d.plantilla(calles), vacio ? null : `NEGOCIO SINTÉTICO E${i + 1}`, vacio ? 1 : 0, new Date(Date.UTC(2020, 5, 1 + i))]);
+    row.getCell(4).numFmt = 'dd/mm/yyyy';
+  });
+  return cerrar(wb, 'Monte Sintético 2020');
+}
+
 export const CASOS_GENERALIDAD: CasoGeneralidad[] = [
   {
     id: 'A', municipio: 'Villa Sintética de Arriba', anio: 2023, archivo: 'censo_villa_sintetica_arriba_2023_SINTETICO.xlsx', filas: 40, hoja: 'Censo 2023', filaCabecera: 3,
@@ -127,5 +173,15 @@ export const CASOS_GENERALIDAD: CasoGeneralidad[] = [
     id: 'C', municipio: 'Aldea Sintética', anio: 2022, archivo: 'censo_aldea_sintetica_2022_SINTETICO.xlsx', filas: 12, hoja: 'Datos', filaCabecera: 1,
     esperado: { 'Nombre comercial': null, 'Nombre del local': null, Dirección: null, 'Dirección fiscal': null, Número: 'numero', Vacío: 'vacio', Fecha: 'fecha' },
     generar: libroC,
+  },
+  {
+    id: 'D', municipio: 'Lugar Sintético del Valle', anio: 2021, archivo: 'censo_lugar_sintetico_valle_2021_SINTETICO.xlsx', filas: 12, hoja: 'Censo', filaCabecera: 1,
+    esperado: { Calle: 'direccion', 'Nombre comercial': 'nombre', 'Local vacío': 'vacio', Fecha: 'fecha', Notas: null },
+    generar: libroD,
+  },
+  {
+    id: 'E', municipio: 'Monte Sintético', anio: 2020, archivo: 'censo_monte_sintetico_2020_SINTETICO.xlsx', filas: 10, hoja: 'Locales', filaCabecera: 1,
+    esperado: { 'Domicilio completo': 'direccionCompleta', 'Nombre comercial': 'nombre', 'Local vacío': 'vacio', 'Fecha de visita': 'fecha' },
+    generar: libroE,
   },
 ];

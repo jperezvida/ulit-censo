@@ -256,9 +256,11 @@ export type CeldaOriginal = (
 ) & { formula?: true };
 
 /** Interpretación (C1b) de una celda, guardada junto al original para trazabilidad. */
+export type PortalRegistro = { tipo: 'numero'; numero: number; sufijo?: string } | { tipo: 'sin-numero' };
+
 export interface CeldaInterpretadaRegistro {
   estado: 'valido' | 'vacio' | 'no-aplica' | 'invalido' | 'transformado' | 'pendiente';
-  valor?: boolean | number | string | { tipo: 'numero'; numero: number; sufijo?: string } | { tipo: 'sin-numero' };
+  valor?: boolean | number | string | PortalRegistro | { tipo: 'direccion'; calle: string; portal: PortalRegistro };
   regla: string;
 }
 

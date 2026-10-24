@@ -1,4 +1,4 @@
-import { CAMPOS, CAMPO_POR_CLAVE, normalizarTitulo, type CampoCatalogo } from './camposImportacion';
+import { CAMPOS, CAMPOS_LOCALIZACION, CAMPO_POR_CLAVE, normalizarTitulo, type CampoCatalogo } from './camposImportacion';
 import { compararCabecera, type ColumnaPerfil, type PerfilImportacion } from './perfilesImportacion';
 
 /**
@@ -113,6 +113,10 @@ export interface EvaluacionCorrespondencia {
   /** Se puede usar: obligatorios asignados, sin dudas pendientes ni campos repetidos. */
   lista: boolean;
   obligatoriosFaltan: CampoCatalogo[];
+  /** Ninguna columna es la calle ni la dirección completa. */
+  faltaLocalizacion: boolean;
+  /** Hay calle pero no número de portal: se importa y el vínculo con el portal queda pendiente. */
+  sinNumero: boolean;
   recomendadosFaltan: CampoCatalogo[];
   dudosas: ColumnaCorrespondencia[];
   repetidos: string[];
@@ -124,11 +128,13 @@ export function evaluarCorrespondencia(corr: ColumnaCorrespondencia[]): Evaluaci
   const claves = corr.map((c) => c.clave).filter((k): k is string => !!k);
   const repetidos = [...new Set(claves.filter((k, i) => claves.indexOf(k) !== i))];
   const obligatoriosFaltan = CAMPOS.filter((c) => c.obligatorio && !claves.includes(c.clave));
+  const faltaLocalizacion = !CAMPOS_LOCALIZACION.some((c) => claves.includes(c.clave));
+  const sinNumero = claves.includes('direccion') && !claves.includes('numero');
   const recomendadosFaltan = CAMPOS.filter((c) => c.recomendado && !claves.includes(c.clave));
   const dudosas = corr.filter((c) => c.estado === 'ambigua');
   return {
-    lista: !obligatoriosFaltan.length && !dudosas.length && !repetidos.length,
-    obligatoriosFaltan, recomendadosFaltan, dudosas, repetidos, asignadas: claves.length, adicionales: corr.filter((c) => !c.clave).length,
+    lista: !obligatoriosFaltan.length && !faltaLocalizacion && !dudosas.length && !repetidos.length,
+    obligatoriosFaltan, faltaLocalizacion, sinNumero, recomendadosFaltan, dudosas, repetidos, asignadas: claves.length, adicionales: corr.filter((c) => !c.clave).length,
   };
 }
 
@@ -139,10 +145,10 @@ export function perfilDesdeCorrespondencia(
   corr: ColumnaCorrespondencia[], meta: { nombre: string; descripcion?: string; hoja: string; filaCabecera: number; id?: string; version?: number; por?: string; fecha?: string },
 ): PerfilImportacion {
   const ev = evaluarCorrespondencia(corr);
-  if (!ev.lista) throw new Error('La correspondencia no está completa: faltan campos obligatorios o quedan columnas dudosas.');
+  if (!ev.lista) throw new Error('La correspondencia no está completa: falta la calle (o la dirección completa) o quedan columnas dudosas.');
   const columnas: ColumnaPerfil[] = corr.filter((c) => c.clave).map((c) => {
     const campo = CAMPO_POR_CLAVE[c.clave!];
-    return { clave: campo.clave, cabecera: c.cabecera, tipo: campo.tipo, obligatoria: campo.obligatorio, ...(campo.territorial ? { territorial: campo.territorial } : {}) };
+    return { clave: campo.clave, cabecera: c.cabecera, tipo: campo.tipo, obligatoria: campo.obligatorio || !!campo.localizacion || campo.clave === 'numero', ...(campo.territorial ? { territorial: campo.territorial } : {}) };
   });
   return {
     formato: 'ulit-censo/perfil-importacion',
@@ -173,6 +179,7 @@ export function validarPerfil(x: unknown): { ok: true; perfil: PerfilImportacion
     vistas.add(c.clave);
   }
   for (const k of CAMPOS.filter((c) => c.obligatorio).map((c) => c.clave)) if (!vistas.has(k)) return { ok: false, motivo: `Falta el campo obligatorio «${CAMPO_POR_CLAVE[k].etiqueta}».` };
+  if (!CAMPOS_LOCALIZACION.some((c) => vistas.has(c.clave))) return { ok: false, motivo: 'Falta la calle o la dirección completa.' };
   return { ok: true, perfil: { ...p, hojasHabituales: p.hojasHabituales ?? [], columnas: p.columnas.map((c) => ({ ...c, tipo: CAMPO_POR_CLAVE[c.clave].tipo })) } };
 }
 

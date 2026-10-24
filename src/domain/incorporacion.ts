@@ -8,7 +8,7 @@ import { TAXONOMIA_POR_ID, catalogoDeNodo } from './taxonomy';
 import { configTerritorial } from './territorio';
 import { REGLAS, TIPOS_INCIDENCIA } from './xlsx/reglasInterpretacion';
 import { validarDecisionesCalle, type DecisionCalle } from './conciliacionCalles';
-import type { FilaInterpretada, OpcionesInterpretacion, Portal, ResultadoInterpretacion } from './xlsx/interpretacion';
+import { denominacionCalle, localizacionDe, type FilaInterpretada, type OpcionesInterpretacion, type ResultadoInterpretacion } from './xlsx/interpretacion';
 import type {
   Campana, CeldaOriginal, ColeccionIncorporada, Confianza, DatoDigital, Id, Importacion, LocalFisico, Observacion, Ocupacion, RegistroOrigen,
   RevisionDigital, TrazaIncorporacion, VariableDigital, VinculoHistorico,
@@ -105,6 +105,8 @@ export type MotivoSinLocal =
   | 'calle-ambigua'
   | 'numero-desconocido'
   | 'sin-numero'
+  /** Solo hay dirección completa y no se ha separado en calle y número (regla no autorizada o forma no separable). */
+  | 'direccion-sin-separar'
   /**
    * Ya NO se produce (corrección C1c-1): varias filas con la misma calle y número en una campaña son
    * locales físicos distintos. Se conserva en el tipo para leer planes y trazas anteriores.
@@ -268,7 +270,8 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   }
 
   const filasSet = new Set(capa.filas.map((f) => f.fila));
-  const literalDir = new Map(capa.filas.map((f) => [f.fila, f.celdas.direccion ? (f.celdas.direccion.t === 'texto' ? f.celdas.direccion.v : f.celdas.direccion.t === 'vacio' ? '' : String(f.celdas.direccion.v)) : '']));
+  const interpretadaPorFila = new Map(resultado.filas.map((fi) => [fi.fila, fi]));
+  const literalDir = new Map(capa.filas.map((f) => [f.fila, denominacionCalle(f, interpretadaPorFila.get(f.fila)) ?? '']));
   const errores = [
     ...validarDecisiones(db, decisiones, filasSet, destino.municipioId, destino.anio),
     ...validarDecisionesCalle(db, decisiones.calles ?? [], destino.municipioId, new Set(literalDir.values())),
@@ -338,18 +341,18 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
 
   // Primera pasada: calle y dirección de cada fila.
   const previo = resultado.filas.map((fi) => {
-    const dir = fi.celdas.direccion;
-    const num = fi.celdas.numero;
-    const automaticas = esValida(dir) ? porClave.get(claveCalle(String(dir!.valor))) ?? [] : [];
-    const conciliada = !automaticas.length ? callesDecididas.get(literalDir.get(fi.fila) ?? '') : undefined;
+    // Calle y portal de sus columnas, o de la dirección completa SOLO si su separación está autorizada.
+    const loc = localizacionDe(fi);
+    const automaticas = loc.calle ? porClave.get(claveCalle(loc.calle)) ?? [] : [];
+    const conciliada = !automaticas.length && loc.calle ? callesDecididas.get(literalDir.get(fi.fila) ?? '') : undefined;
     const claves = conciliada ? [conciliada] : automaticas;
-    const portal = esValida(num) ? (num!.valor as Portal) : undefined;
+    const portal = loc.portal;
     const calleId = claves.length === 1 ? claves[0] : undefined;
     const kDir = calleId && portal?.tipo === 'numero' ? `${calleId}|${portal.numero}|${(portal.sufijo ?? '').toUpperCase()}` : undefined;
-    return { fi, claves, calleId, portal, kDir, calleDecidida: !!conciliada };
+    return { fi, claves, calleId, portal, kDir, calleDecidida: !!conciliada, sinSeparar: loc.origen === 'sin-separar' };
   });
 
-  const filas: PlanFila[] = previo.map(({ fi, claves, calleId, portal, kDir, calleDecidida }) => {
+  const filas: PlanFila[] = previo.map(({ fi, claves, calleId, portal, kDir, calleDecidida, sinSeparar }) => {
     const base = { fila: fi.fila, local: fi.local, incidencias: incPorFila.get(fi.fila) ?? 0, calleId, ...(calleDecidida ? { calleDecidida } : {}) };
     if (excluidas.has(fi.fila)) return { ...base, correspondencia: 'excluida', localNuevo: false, negocio: false, observacion: false, ocupacion: false };
     const negocio = !!calleId && fi.local === 'ocupado' && esValida(fi.celdas.nombre) && !!String(fi.celdas.nombre!.valor).trim();
@@ -362,6 +365,7 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
       if (dec.accion === 'local-existente') return ocupacion(dec.localId, false);
       return ocupacion(`loc-${importacionId}-${fi.fila}`, true);
     }
+    if (sinSeparar) return sinLocal('sin-vinculo', 'direccion-sin-separar');
     if (!claves.length) return sinLocal('sin-vinculo', 'calle-sin-correspondencia');
     if (claves.length > 1) return sinLocal('sin-vinculo', 'calle-ambigua');
     if (!portal) return sinLocal('sin-vinculo', 'numero-desconocido');
@@ -557,7 +561,7 @@ export function aplicarIncorporacion(
     if (pf.correspondencia === 'excluida') return;
 
     const c = fi.celdas;
-    const portal = esValida(c.numero) ? (c.numero.valor as Portal) : undefined;
+    const portal = localizacionDe(fi).portal;
     const numero = portal?.tipo === 'numero' ? portal.numero : null;
     const sufijo = portal?.tipo === 'numero' ? portal.sufijo : undefined;
     const fecha = esValida(c.fecha) ? String(c.fecha.valor) : undefined;

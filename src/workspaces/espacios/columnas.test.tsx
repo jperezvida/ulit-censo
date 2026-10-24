@@ -48,7 +48,7 @@ describe('G1 · Paso «Columnas» (interfaz)', () => {
   it('columnas dudosas: no se asignan solas; se relacionan a mano, se guarda el perfil y se analiza sin informe de referencia', async () => {
     const c = caso('C');
     await abrirEnsayoCon(bytesC, c.archivo);
-    expect(screen.getAllByRole('alert').map((a) => a.textContent).join(' ')).toMatch(/Falta indicar qué columna es: Calle o vía.*4 columna\(s\) podrían ser el mismo dato/);
+    expect(screen.getAllByRole('alert').map((a) => a.textContent).join(' ')).toMatch(/Falta indicar qué columna es la calle o la dirección completa.*4 columna\(s\) podrían ser el mismo dato/);
     expect(screen.getByRole('button', { name: /Analizar con estas columnas/ })).toBeDisabled();
     expect(datoDe('Número').value).toBe('numero');
     expect(datoDe('Dirección').value).toBe('');
@@ -88,7 +88,7 @@ describe('G1 · Paso «Columnas» (interfaz)', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /Analizar con estas columnas/ })).toBeEnabled());
     // La fila de títulos se puede cambiar a mano (si se elige mal, faltan los obligatorios)
     fireEvent.change(screen.getByLabelText('Fila de títulos'), { target: { value: '1' } });
-    await screen.findByText(/Falta indicar qué columna es: Calle o vía, Número de portal/);
+    await screen.findByText(/Falta indicar qué columna es la calle o la dirección completa/);
     fireEvent.change(screen.getByLabelText('Fila de títulos'), { target: { value: '3' } });
     await waitFor(() => expect(screen.getByRole('button', { name: /Analizar con estas columnas/ })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: /Analizar con estas columnas/ }));
@@ -96,5 +96,21 @@ describe('G1 · Paso «Columnas» (interfaz)', () => {
     const res = useAsistenteEspacio.getState().preparado!.resultado;
     expect(res.original.filas).toHaveLength(40);
     expect(res.original.adicionales?.map((x) => x.cabecera)).toEqual(['Observaciones del censista', 'Código interno']);
+  }, 120000);
+
+  it('localización incompleta: sin columna de número o con la dirección completa en una celda, se puede continuar', async () => {
+    const d = caso('D');
+    await abrirEnsayoCon(await d.generar(), d.archivo);
+    for (const [h, k] of Object.entries(d.esperado)) expect(datoDe(h).value, h).toBe(k ?? '');
+    expect(screen.getByLabelText('Resumen de columnas')).toHaveTextContent(/Calle o dirección completa.*Número \(opcional\)/);
+    expect(screen.getByText(/Sin columna de número: los registros se importan igualmente/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: /Analizar con estas columnas/ })).toBeEnabled());
+    // La misma columna, relacionada a mano como dirección completa: el aviso de número desaparece.
+    fireEvent.change(datoDe('Calle'), { target: { value: '' } });
+    await screen.findByText(/Falta indicar qué columna es la calle o la dirección completa/);
+    expect(screen.getByRole('button', { name: /Analizar con estas columnas/ })).toBeDisabled();
+    fireEvent.change(datoDe('Calle'), { target: { value: 'direccionCompleta' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: /Analizar con estas columnas/ })).toBeEnabled());
+    expect(screen.queryByText(/Sin columna de número/)).toBeNull();
   }, 120000);
 });

@@ -115,6 +115,7 @@ export const MOTIVO_TXT: Record<string, { titulo: string; explicacion: string; d
   'direccion-repetida-en-archivo': { titulo: 'Misma dirección en varias filas (criterio anterior)', explicacion: 'Plan calculado con el criterio anterior a C1c-1: vuelva a analizar el archivo; hoy cada fila es un local físico distinto del mismo portal.', decidible: true },
   'local-existente-en-direccion': { titulo: 'Ya existe un local en esa dirección', explicacion: 'Puede ser el mismo local o no: no se elige automáticamente.', decidible: true },
   'sin-numero': { titulo: 'Dirección «S/N»', explicacion: 'Sin número no hay dirección inequívoca: no se crea local salvo decisión.', decidible: true },
+  'direccion-sin-separar': { titulo: 'Dirección completa sin separar', explicacion: 'La calle y el número están en una sola celda y no se han separado con seguridad: el registro se conserva sin vínculo territorial.', decidible: false },
   'numero-desconocido': { titulo: 'Número desconocido', explicacion: 'El registro se conserva sin vínculo para revisarlo más adelante.', decidible: false },
   'calle-sin-correspondencia': { titulo: 'Calle sin correspondencia en el callejero', explicacion: 'No se inventa la calle: el registro se conserva sin vínculo.', decidible: false },
   'calle-ambigua': { titulo: 'Calle ambigua', explicacion: 'El nombre coincide con varias calles: el registro se conserva sin vínculo.', decidible: false },
@@ -165,6 +166,8 @@ function valorTexto(v: unknown): string {
   if (v === undefined) return '—';
   if (typeof v === 'boolean') return v ? 'Sí' : 'No';
   if (v && typeof v === 'object') {
+    const d = v as { tipo: string; calle?: string; portal?: unknown };
+    if (d.tipo === 'direccion') return `${d.calle}, ${valorTexto(d.portal)}`;
     const p = v as { tipo: string; numero?: number; sufijo?: string };
     return p.tipo === 'sin-numero' ? 'Sin número (S/N)' : `${p.numero}${p.sufijo ? ` ${p.sufijo}` : ''}`;
   }

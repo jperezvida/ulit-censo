@@ -19,6 +19,12 @@ export interface CampoCatalogo {
   tipo: TipoEsperado;
   /** Sin él no se puede incorporar el censo. */
   obligatorio: boolean;
+  /**
+   * Campo de LOCALIZACIÓN: el archivo debe tener al menos uno (la calle o la dirección completa).
+   * Sin número, con «S/N» o con la dirección en una sola celda el registro se importa igualmente:
+   * se conserva su original y el vínculo territorial queda pendiente.
+   */
+  localizacion?: boolean;
   /** Recomendable: sin él la importación es posible, pero pierde información relevante. */
   recomendado?: boolean;
   territorial?: 'distrito' | 'zona' | 'cp';
@@ -29,8 +35,9 @@ export interface CampoCatalogo {
 const f = (clave: string, etiqueta: string, grupo: GrupoCampo, tipo: TipoEsperado, sinonimos: string[], extra: Partial<CampoCatalogo> = {}): CampoCatalogo => ({ clave, etiqueta, grupo, tipo, obligatorio: false, sinonimos, ...extra });
 
 export const CAMPOS: CampoCatalogo[] = [
-  f('direccion', 'Calle o vía', 'Dirección', 'texto', ['direccion', 'calle', 'via', 'nombre de la via', 'nombre de la calle', 'nombre de calle', 'domicilio', 'direccion postal'], { obligatorio: true }),
-  f('numero', 'Número de portal', 'Dirección', 'portal', ['num', 'numero', 'n', 'nº', 'portal', 'numero de portal', 'n portal', 'num portal'], { obligatorio: true, ayuda: 'Entero, con sufijo («6 B») o «S/N».' }),
+  f('direccion', 'Calle o vía', 'Dirección', 'texto', ['direccion', 'calle', 'via', 'nombre de la via', 'nombre de la calle', 'nombre de calle', 'domicilio', 'direccion postal'], { localizacion: true }),
+  f('numero', 'Número de portal', 'Dirección', 'portal', ['num', 'numero', 'n', 'nº', 'portal', 'numero de portal', 'n portal', 'num portal'], { ayuda: 'Opcional. Entero, con sufijo («6 B») o «S/N». Sin él, el vínculo con el portal queda pendiente.' }),
+  f('direccionCompleta', 'Dirección completa (calle y número juntos)', 'Dirección', 'texto', ['direccion completa', 'domicilio completo', 'direccion y numero', 'calle y numero', 'direccion completa del local'], { localizacion: true, ayuda: 'Se conserva literal. Solo se separa en calle y número si se autoriza la regla «direccion-completa-coma».' }),
   f('cp', 'Código postal', 'Territorio', 'codigo-postal', ['cp', 'c p', 'codigo postal', 'cod postal'], { territorial: 'cp' }),
   f('distrito', 'Distrito', 'Territorio', 'codigo', ['distrito'], { territorial: 'distrito' }),
   f('zona', 'Zona', 'Territorio', 'codigo', ['zona'], { territorial: 'zona' }),
@@ -60,6 +67,9 @@ export const CAMPOS: CampoCatalogo[] = [
   f('seguidoresTwitter', 'Seguidores de Twitter / X', 'Presencia digital', 'entero', ['segu t', 'seguidores twitter', 'seguidores de twitter']),
   f('numRedes', 'Nº de redes sociales', 'Presencia digital', 'entero', ['n redes', 'numero de redes', 'redes sociales']),
 ];
+
+/** Campos de localización: basta con uno de ellos. */
+export const CAMPOS_LOCALIZACION = CAMPOS.filter((c) => c.localizacion);
 
 export const CAMPO_POR_CLAVE: Record<string, CampoCatalogo> = Object.fromEntries(CAMPOS.map((c) => [c.clave, c]));
 export const GRUPOS_CAMPO: GrupoCampo[] = ['Dirección', 'Local', 'Negocio', 'Censo', 'Clasificación', 'Presencia digital', 'Territorio', 'Itinerario'];

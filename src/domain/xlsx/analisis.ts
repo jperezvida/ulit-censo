@@ -239,13 +239,14 @@ const columnasArchivo = (cabs: Map<number, string>): ColumnaArchivo[] => [...cab
 
 /**
  * G1 · Cobertura por el CATÁLOGO común: proporción de cabeceras que corresponden (o pueden
- * corresponder) a un campo. Solo cuenta si alguna columna puede ser la calle y otra el número.
+ * corresponder) a un campo. Solo cuenta si alguna columna puede ser la calle o la dirección completa
+ * (el número de portal es opcional).
  */
 function coberturaCatalogo(cabs: Map<number, string>): number {
   if (cabs.size < 3) return 0;
   const corr = proponerCorrespondencia(columnasArchivo(cabs));
   const puede = (k: string) => corr.some((c) => c.clave === k || c.candidatos?.includes(k));
-  if (!puede('direccion') || !puede('numero')) return 0;
+  if (!puede('direccion') && !puede('direccionCompleta')) return 0;
   return corr.filter((c) => c.clave || c.candidatos?.length).length / corr.length;
 }
 

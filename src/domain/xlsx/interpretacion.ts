@@ -67,7 +67,9 @@ export interface CapaOriginal {
 export type EstadoValor = 'valido' | 'vacio' | 'no-aplica' | 'invalido' | 'transformado' | 'pendiente';
 
 export type Portal = { tipo: 'numero'; numero: number; sufijo?: string } | { tipo: 'sin-numero' };
-export type ValorInterpretado = boolean | number | string | Portal;
+/** Dirección completa separada en calle y número (solo con la regla «direccion-completa-coma» autorizada). */
+export type DireccionSeparada = { tipo: 'direccion'; calle: string; portal: Portal };
+export type ValorInterpretado = boolean | number | string | Portal | DireccionSeparada;
 
 export interface CeldaInterpretada {
   estado: EstadoValor;
@@ -379,8 +381,34 @@ const CLASIFICACION = ['grupoActividad', 'grupoComercio', 'subgrupo', 'actividad
 /** Respuesta de la que depende cada cifra (si es No, la cifra vacía no aplica). */
 const DEPENDE: Record<string, string> = { seguidoresInstagram: 'instagram', seguidoresFacebook: 'facebook', seguidoresTwitter: 'twitter', numResenas: 'googleBusiness', respondeResenas: 'googleBusiness' };
 
+/**
+ * Dirección completa en una sola celda («Calle Mayor, 12»). Se conserva SIEMPRE como texto literal.
+ * Solo se PROPONE separarla cuando hay UNA sola coma, la calle no contiene cifras y tras la coma hay
+ * exactamente un número de portal («12», «12 B», «12 bis») o «S/N»; la separación se aplica
+ * únicamente si se autoriza la regla. Cualquier otra forma («Calle Mayor 12», «Calle Mayor, 12, 2º B»,
+ * «Calle Mayor, 12 izq.») no se separa: se conserva literal y el vínculo queda pendiente.
+ */
+function direccionCompleta(o: ValorOriginal, cx: Ctx): Res {
+  const c = comunes(o);
+  if (c) return c;
+  if (o.t !== 'texto') return { estado: 'invalido', regla: 'tipo-no-admitido', inc: [{ tipo: 'tipo-no-admitido' }] };
+  const t = o.v.trim().replace(/\s+/g, ' ');
+  // Exactamente UNA coma; antes, texto sin dígitos (la calle); después, «12», «12 B», «12 bis» o «S/N».
+  const m = t.match(/^([^,\d]*[^,\d\s])\s*,\s*(?:(\d{1,4})(?:\s*-?\s*([A-Za-zÑñ]|bis))?|(s\s*\/\s*n\.?))$/i);
+  if (m && (m[4] || +m[2] > 0)) {
+    const calle = m[1].trim();
+    const por: Portal = m[4] ? { tipo: 'sin-numero' } : { tipo: 'numero', numero: +m[2], ...(m[3] ? { sufijo: m[3].toUpperCase() } : {}) };
+    return propuesta(cx, 'direccion-completa-coma', { tipo: 'direccion', calle, portal: por }, {
+      tipo: 'direccion-completa-separable',
+      mensaje: `«${t}» → calle «${calle}», ${por.tipo === 'numero' ? `número ${por.numero}${por.sufijo ? ` ${por.sufijo}` : ''}` : 'S/N'}.`,
+    });
+  }
+  return { estado: 'valido', regla: 'texto-literal', valor: o.v, inc: [{ tipo: 'direccion-completa-no-separable' }] };
+}
+
 function interpretarCelda(col: ColumnaOrigen, o: ValorOriginal, cx: Ctx): Res {
   if (col.territorial) return territorial(col.territorial, o, cx);
+  if (col.clave === 'direccionCompleta') return direccionCompleta(o, cx);
   if (col.clave === 'numero') return portal(o);
   if (col.clave === 'fachada') return fachada(o, cx);
   switch (col.tipo) {
@@ -449,7 +477,7 @@ export function interpretarCapa(capa: CapaOriginal, op: OpcionesInterpretacion =
         }
       }
       if (col.clave === 'fecha' && r.estado === 'vacio' && !r.inc) r.inc = [{ tipo: 'fecha-ausente' }];
-      if (col.clave === 'direccion' && sinValor) r = { ...r, inc: [{ tipo: 'direccion-ausente' }] };
+      if ((col.clave === 'direccion' || col.clave === 'direccionCompleta') && sinValor) r = { ...r, inc: [{ tipo: 'direccion-ausente' }] };
       fijar(fi, fo, col.clave, r);
     }
 
@@ -541,13 +569,12 @@ export function interpretarCapa(capa: CapaOriginal, op: OpcionesInterpretacion =
   });
 
   // 7. Direcciones repetidas y filas idénticas: se conservan todas; solo se informa.
-  if (porClave.has('direccion') && porClave.has('numero')) {
+  if ((porClave.has('direccion') && porClave.has('numero')) || porClave.has('direccionCompleta')) {
     const grupos = new Map<string, number[]>();
     filas.forEach((fi, i) => {
-      const d = fi.celdas.direccion;
-      const n = fi.celdas.numero;
-      if (!d?.valor || !n?.valor || typeof n.valor !== 'object' || n.valor.tipo !== 'numero') return;
-      const k = `${claveDenominacion(String(d.valor))}|${n.valor.numero}${n.valor.sufijo ?? ''}`;
+      const { calle, portal: n } = localizacionDe(fi);
+      if (!calle || n?.tipo !== 'numero') return;
+      const k = `${claveDenominacion(calle)}|${n.numero}${n.sufijo ?? ''}`;
       grupos.set(k, [...(grupos.get(k) ?? []), i]);
     });
     let g = 0;
@@ -556,7 +583,7 @@ export function interpretarCapa(capa: CapaOriginal, op: OpcionesInterpretacion =
       g++;
       for (const i of idx) {
         filas[i].grupoDireccion = g;
-        anotar(filas[i], capa.filas[i], 'direccion', { tipo: 'direccion-repetida', mensaje: `Misma calle y número que la(s) fila(s) ${idx.filter((j) => j !== i).map((j) => capa.filas[j].fila).join(', ')} (grupo ${g}).`, detalle: `grupo ${g}; otras filas: ${idx.filter((j) => j !== i).map((j) => capa.filas[j].fila).join(', ')}` });
+        anotar(filas[i], capa.filas[i], porClave.has('direccion') ? 'direccion' : 'direccionCompleta', { tipo: 'direccion-repetida', mensaje: `Misma calle y número que la(s) fila(s) ${idx.filter((j) => j !== i).map((j) => capa.filas[j].fila).join(', ')} (grupo ${g}).`, detalle: `grupo ${g}; otras filas: ${idx.filter((j) => j !== i).map((j) => capa.filas[j].fila).join(', ')}` });
       }
     }
   }
@@ -569,6 +596,38 @@ export function interpretarCapa(capa: CapaOriginal, op: OpcionesInterpretacion =
   });
 
   return { original: capa, filas, incidencias, opciones: op };
+}
+
+/**
+ * Localización de una fila interpretada: calle y portal de sus columnas propias o, si el archivo solo
+ * trae la dirección completa, de su separación AUTORIZADA. Nada se deduce de otra forma.
+ */
+export function localizacionDe(fi: FilaInterpretada): { calle?: string; portal?: Portal; origen: 'columnas' | 'direccion-completa' | 'sin-separar' | 'ninguna' } {
+  const ok = (c?: CeldaInterpretada) => !!c && (c.estado === 'valido' || c.estado === 'transformado') && c.valor !== undefined;
+  const d = fi.celdas.direccion;
+  if (ok(d) && String(d!.valor).trim()) {
+    const n = fi.celdas.numero;
+    return { calle: String(d!.valor), ...(ok(n) && typeof n!.valor === 'object' ? { portal: n!.valor as Portal } : {}), origen: 'columnas' };
+  }
+  const dc = fi.celdas.direccionCompleta;
+  if (dc && ok(dc) && typeof dc.valor === 'object' && (dc.valor as DireccionSeparada).tipo === 'direccion') {
+    const v = dc.valor as DireccionSeparada;
+    return { calle: v.calle, portal: v.portal, origen: 'direccion-completa' };
+  }
+  if (dc && dc.estado !== 'vacio') return { origen: 'sin-separar' };
+  return { origen: 'ninguna' };
+}
+
+/**
+ * Denominación LITERAL de la calle de una fila, la que se concilia con el callejero: la celda de la
+ * calle tal cual o, si el archivo solo trae la dirección completa, la calle de su separación
+ * autorizada. `undefined` si la fila no tiene calle utilizable (dirección completa sin separar).
+ */
+export function denominacionCalle(fo: FilaOriginal, fi?: FilaInterpretada): string | undefined {
+  const d = fo.celdas.direccion;
+  if (d) return d.t === 'vacio' ? '' : d.t === 'texto' ? d.v : String(d.v);
+  const loc = fi ? localizacionDe(fi) : undefined;
+  return loc?.origen === 'direccion-completa' ? loc.calle : undefined;
 }
 
 // ───────────── Desde un XLSX ─────────────

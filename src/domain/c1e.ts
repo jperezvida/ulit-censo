@@ -2,7 +2,7 @@ import type { BaseDatos } from './db';
 import { claveCalle, normalizar } from './text';
 import type { DecisionesIncorporacion, MotivoSinLocal, PlanIncorporacion } from './incorporacion';
 import { proponer, type DenominacionPendiente } from './conciliacionCalles';
-import { claveDenominacion, type ResultadoInterpretacion, type ValorOriginal } from './xlsx/interpretacion';
+import { claveDenominacion, denominacionCalle, type ResultadoInterpretacion, type ValorOriginal } from './xlsx/interpretacion';
 import type { InformeEstructural } from './xlsx/analisis';
 import { TIPOS_INCIDENCIA } from './xlsx/reglasInterpretacion';
 import type { InformeAgregado } from './xlsx/referencias';
@@ -244,8 +244,11 @@ export function conciliacionCalles(db: BaseDatos, resultado: ResultadoInterpreta
   for (const c of Object.values(db.calles)) if (c.municipioId === municipioId) porClave.set(claveCalle(c.nombre), [...(porClave.get(claveCalle(c.nombre)) ?? []), c.id]);
   const decididas = new Map((decisiones.calles ?? []).map((d) => [d.denominacion, d]));
   const m = new Map<string, DenominacionCalle>();
+  const interpretadas = new Map(resultado.filas.map((fi) => [fi.fila, fi]));
   for (const f of resultado.original.filas) {
-    const lit = texto(f.celdas.direccion);
+    const lit = denominacionCalle(f, interpretadas.get(f.fila));
+    // Dirección completa sin separar: no hay calle que conciliar (el registro queda pendiente de vínculo).
+    if (lit === undefined) continue;
     const d = m.get(lit);
     if (d) { d.filas++; continue; }
     if (!lit.trim()) { m.set(lit, { literal: lit, filas: 1, estado: 'vacia' }); continue; }

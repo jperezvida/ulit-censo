@@ -129,11 +129,12 @@ export function PasoColumnas({ onContinuar }: { onContinuar: (l: LecturaArchivo)
         </div>
 
         <div className="col-resumen" aria-label="Resumen de columnas">
-          {CAMPOS.filter((c) => c.obligatorio).map((c) => (
-            <span key={c.clave} className={`chip ${asignadas.some((a) => a.clave === c.clave) ? 'ok' : 'error'}`}>{asignadas.some((a) => a.clave === c.clave) ? <CheckCircle2 size={13} /> : <XCircle size={13} />} {c.etiqueta}</span>
-          ))}
+          <span className={`chip ${ev.faltaLocalizacion ? 'error' : 'ok'}`}>{ev.faltaLocalizacion ? <XCircle size={13} /> : <CheckCircle2 size={13} />} Calle o dirección completa</span>
+          <span className={`chip ${asignadas.some((a) => a.clave === 'numero') ? 'ok' : ''}`}>{asignadas.some((a) => a.clave === 'numero') ? <CheckCircle2 size={13} /> : null} Número (opcional)</span>
           <span className="muted">{asignadas.length} reconocidas · {ev.adicionales - ev.dudosas.length} adicionales{ev.dudosas.length ? ` · ${ev.dudosas.length} por decidir` : ''}</span>
         </div>
+        {ev.faltaLocalizacion && <div className="t-info error" role="alert"><XCircle size={15} /> Falta indicar qué columna es la calle o la dirección completa.</div>}
+        {ev.sinNumero && <p className="muted" style={{ margin: 0 }}>Sin columna de número: los registros se importan igualmente y su vínculo con el portal queda pendiente. No se inventan números.</p>}
         {ev.obligatoriosFaltan.length > 0 && <div className="t-info error" role="alert"><XCircle size={15} /> Falta indicar qué columna es: {ev.obligatoriosFaltan.map((c) => c.etiqueta).join(', ')}.</div>}
         {ev.dudosas.length > 0 && <div className="t-info aviso" role="alert"><AlertTriangle size={15} /> {ev.dudosas.length} columna(s) podrían ser el mismo dato que otra: elija cuál es cuál (o «no es un dato de ULIT»).</div>}
         {ev.recomendadosFaltan.length > 0 && <p className="muted" style={{ margin: 0 }}>Sin columna para: {ev.recomendadosFaltan.map((c) => c.etiqueta).join(', ')}. Esos datos quedarán vacíos; no se inventan.</p>}
@@ -153,7 +154,7 @@ export function PasoColumnas({ onContinuar }: { onContinuar: (l: LecturaArchivo)
                         <optgroup key={g} label={g}>
                           {CAMPOS.filter((f) => f.grupo === g).map((f) => {
                             const otra = corr.find((x) => x.clave === f.clave && x.indice !== c.indice);
-                            return <option key={f.clave} value={f.clave} disabled={!!otra}>{f.etiqueta}{f.obligatorio ? ' *' : ''}{otra ? ` (ya en ${otra.letra})` : ''}</option>;
+                            return <option key={f.clave} value={f.clave} disabled={!!otra}>{f.etiqueta}{f.obligatorio || f.localizacion ? ' *' : ''}{otra ? ` (ya en ${otra.letra})` : ''}</option>;
                           })}
                         </optgroup>
                       ))}
@@ -166,7 +167,7 @@ export function PasoColumnas({ onContinuar }: { onContinuar: (l: LecturaArchivo)
             </tbody>
           </table>
         </div>
-        <p className="muted" style={{ margin: 0 }}>* Obligatorio.</p>
+        <p className="muted" style={{ margin: 0 }}>* Basta con una de las dos: la calle o la dirección completa.</p>
       </section>
 
       <section className="tarjeta inc-bloque" aria-label="Vista previa de los datos">
@@ -199,7 +200,7 @@ export function PasoColumnas({ onContinuar }: { onContinuar: (l: LecturaArchivo)
       </section>
 
       <div className="inc-nav fila">
-        <span className="muted esp">{ev.lista ? 'Todo listo para analizar los datos.' : 'Complete las columnas obligatorias y las dudosas para continuar.'}</span>
+        <span className="muted esp">{ev.lista ? 'Todo listo para analizar los datos.' : 'Indique la calle (o la dirección completa) y resuelva las columnas dudosas para continuar.'}</span>
         <button className="btn primario" disabled={!ev.lista} onClick={continuar}>Analizar con estas columnas <ArrowRight size={15} /></button>
       </div>
     </div>
