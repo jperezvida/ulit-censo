@@ -5,12 +5,14 @@ import { spawn } from 'node:child_process';
 import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { evaluarDespliegueCreado, evaluarDominioProduccion, evaluarRetirable, extraerDespliegue } from '../../scripts/vercel/desplegar-preview.mjs';
+import { evaluarAliasRetirado, evaluarDespliegueCreado, evaluarDominioProduccion, evaluarRetirable, extraerDespliegue } from '../../scripts/vercel/desplegar-preview.mjs';
 
 /** Respuesta JSON REAL de `vercel deploy --prebuilt --target preview --non-interactive` (CLI 63.1.0) del despliegue erróneo. */
 const CLI_REAL = readFileSync(resolve('src/domain/fixtures/vercel-cli-63-deploy-produccion.json'), 'utf8');
 const PROD_ERRONEO = 'dpl_5wBBNu998QbWfURDUtHgy5FSKgJV';
 const ID = 'prj_4jaGUwOyzt4Kt3J7wzoDHJgZtAvE';
+/** Alias reales del despliegue erróneo (comprobados en Vercel). */
+const ALIAS_PROD = ['ulit-censo-pruebas.vercel.app', 'ulit-censo-pruebas-jaimes-projects-e2a33d1a.vercel.app'];
 
 describe('Respuesta de la CLI de Vercel y tipo real del despliegue', () => {
   it('lee el identificador de la respuesta JSON real (no la usa como dirección)', () => {
@@ -49,6 +51,13 @@ describe('Respuesta de la CLI de Vercel y tipo real del despliegue', () => {
     expect(evaluarRetirable({ ...d, projectId: 'prj_otro' }, { id: PROD_ERRONEO, projectId: ID }).ok).toBe(false);
     expect(evaluarRetirable({ ...d, target: null }, { id: PROD_ERRONEO, projectId: ID }).ok).toBe(false);
     expect(evaluarRetirable({ ...d, id: 'dpl_otro' }, { id: PROD_ERRONEO, projectId: ID }).ok).toBe(false);
+    // Alias: solo cuenta la API (no basta con que el dominio pida autenticación)
+    expect(evaluarAliasRetirado({ status: 404, json: null }, [PROD_ERRONEO]).ok).toBe(true);
+    expect(evaluarAliasRetirado({ status: 200, json: { deploymentId: 'dpl_Otro' } }, [PROD_ERRONEO])).toMatchObject({ ok: true, otro: 'dpl_Otro' });
+    expect(evaluarAliasRetirado({ status: 200, json: { deploymentId: PROD_ERRONEO } }, [PROD_ERRONEO]).ok).toBe(false);
+    expect(evaluarAliasRetirado({ status: 200, json: {} }, [PROD_ERRONEO]).ok).toBe(false);
+    expect(evaluarAliasRetirado({ status: 401, json: null }, [PROD_ERRONEO]).ok).toBe(false);
+    expect(evaluarAliasRetirado({ status: 500, json: null }, [PROD_ERRONEO]).ok).toBe(false);
     expect(evaluarDominioProduccion({ status: 404, server: 'Vercel' }).ok).toBe(true);
     expect(evaluarDominioProduccion({ status: 401, server: 'Vercel' }).ok).toBe(true);
     expect(evaluarDominioProduccion({ status: 200, server: 'Vercel', cuerpo: '{"formato":"ulit-censo/version"}' }).ok).toBe(false);
@@ -88,12 +97,20 @@ interface Escenario {
   retirar?: string;
   rama?: string;
   token?: string;
+  /** La API acepta el DELETE del alias pero no lo retira. */
+  aliasNoSeBorra?: boolean;
+  /** Alias que apunta al despliegue erróneo pero que la API NO lista entre sus alias. */
+  aliasOculto?: string;
 }
 
 /** API de Vercel simulada: registra cada llamada y mantiene despliegues y alias. */
 async function apiSimulada(e: Escenario) {
   const deps = new Map<string, Dep>((e.previos ?? []).map((d) => [d.id, d]));
   const alias = new Map<string, string>();
+  // Alias reales del despliegue erróneo. Al eliminar un despliegue NO se borran sus alias (peor caso).
+  if (deps.get(PROD_ERRONEO)?.target === 'production') for (const a of ALIAS_PROD) alias.set(a, PROD_ERRONEO);
+  if (e.aliasOculto) alias.set(e.aliasOculto, PROD_ERRONEO);
+  const destinoProd = deps.get(PROD_ERRONEO)?.target === 'production' ? { id: PROD_ERRONEO } : undefined;
   const llamadas: string[] = [];
   let n = 0;
   const base = await escuchar((req, res) => {
@@ -114,7 +131,7 @@ async function apiSimulada(e: Escenario) {
       if (req.headers.authorization !== 'Bearer token-de-prueba' || u.searchParams.get('teamId') !== 'team_1') return json(403, { error: 'forbidden' });
       llamadas.push(`${req.method} ${u.pathname}${u.searchParams.get('target') ? `?target=${u.searchParams.get('target')}` : ''}`);
       const m = (re: RegExp) => u.pathname.match(re);
-      if (m(/^\/v9\/projects\/[^/]+$/)) return json(200, { id: ID, name: 'ulit-censo-pruebas', ssoProtection: 'sso' in e ? e.sso : { deploymentType: 'prod_deployment_urls_and_all_previews' } });
+      if (m(/^\/v9\/projects\/[^/]+$/)) return json(200, { id: ID, name: 'ulit-censo-pruebas', ssoProtection: 'sso' in e ? e.sso : { deploymentType: 'prod_deployment_urls_and_all_previews' }, targets: destinoProd ? { production: destinoProd } : {} });
       if (u.pathname === '/v6/deployments') {
         const t = u.searchParams.get('target');
         return json(200, { deployments: [...deps.values()].filter((d) => !t || d.target === t).map((d) => ({ uid: d.id, target: d.target, url: d.url })) });
@@ -123,11 +140,18 @@ async function apiSimulada(e: Escenario) {
       if (r && req.method === 'GET') return deps.has(r[1]) ? json(200, deps.get(r[1])) : json(404, { error: { code: 'not_found' } });
       if (r && req.method === 'DELETE') return deps.delete(r[1]) ? json(200, { uid: r[1], state: 'DELETED' }) : json(404, {});
       r = m(/^\/v2\/deployments\/([^/]+)\/aliases$/);
+      if (r && req.method === 'GET') {
+        const id = r[1];
+        return json(200, { aliases: [...alias].filter(([a, d]) => d === id && a !== e.aliasOculto).map(([a]) => ({ uid: `ali_${a}`, alias: a })) });
+      }
       if (r) return alias.set(JSON.parse(cuerpo).alias, r[1]), json(200, { alias: JSON.parse(cuerpo).alias });
       r = m(/^\/v4\/aliases\/([^/]+)$/);
       if (r) return alias.has(r[1]) ? json(200, { alias: r[1], deploymentId: alias.get(r[1]) }) : json(404, {});
       r = m(/^\/v2\/aliases\/([^/]+)$/);
-      if (r) return alias.delete(r[1]), json(200, { status: 'SUCCESS' });
+      if (r) {
+        if (!e.aliasNoSeBorra) alias.delete(r[1].replace(/^ali_/, ''));
+        return json(200, { status: 'SUCCESS' });
+      }
       json(404, { error: 'ruta no simulada' });
     });
   });
@@ -175,6 +199,7 @@ async function ejecutar(e: Escenario) {
     GITHUB_REF_NAME: e.rama ?? 'claude/fase2-oficina-itinerarios',
     VERCEL_TOKEN: e.token ?? 'token-de-prueba',
     RETIRAR_PRODUCCION: e.retirar ?? PROD_ERRONEO,
+    ALIAS_PRODUCCION: ALIAS_PROD.join(' '),
     VERCEL_API: api.base,
     URL_DESPLIEGUE: await sitio(e.despliegue ?? 'redireccion-sso'),
     URL_FIJA: await sitio(e.fija ?? 'protegido-401'),
@@ -199,6 +224,13 @@ describe('desplegar-preview.mjs · solo PREVIEW verificada por la API, retirada 
     expect(r.deps.has(PROD_ERRONEO)).toBe(false);
     expect([...r.deps.values()].map((d) => d.target)).toEqual([null]);
     expect(r.alias.get('ulit-censo-pruebas-vista.vercel.app')).toBe('dpl_Nuevo1');
+    // Los dos alias del despliegue erróneo, retirados y VERIFICADOS por la API antes de la dirección fija
+    for (const a of ALIAS_PROD) {
+      expect(r.alias.has(a), a).toBe(false);
+      expect(r.i(new RegExp(`DELETE /v2/aliases/ali_${a.replace(/\./g, '\\.')}`)), a).toBeLessThan(r.i(/DELETE \/v13\/deployments\/dpl_5wBB/));
+      expect(r.i(new RegExp(`GET /v4/aliases/${a.replace(/\./g, '\\.')}`)), a).toBeGreaterThan(r.i(/DELETE \/v13\/deployments\/dpl_5wBB/));
+      expect(r.i(new RegExp(`GET /v4/aliases/${a.replace(/\./g, '\\.')}`)), a).toBeLessThan(r.i(/POST \/v2\/deployments\/dpl_Nuevo1\/aliases/));
+    }
     // Orden: tipo por la API → retirada → comprobación sin producción → alias
     expect(r.i(/GET \/v13\/deployments\/dpl_Nuevo1/)).toBeGreaterThan(r.i(/CREAR/));
     expect(r.i(/DELETE \/v13\/deployments\/dpl_5wBB/)).toBeGreaterThan(r.i(/GET \/v13\/deployments\/dpl_Nuevo1/));
@@ -214,9 +246,24 @@ describe('desplegar-preview.mjs · solo PREVIEW verificada por la API, retirada 
     expect(r.codigo).toBe(1);
     expect(r.salida).toMatch(/Vercel ha creado dpl_Nuevo1 como PRODUCCIÓN/);
     expect(r.deps.has('dpl_Nuevo1')).toBe(false);
-    expect(r.i(/aliases/)).toBe(-1);
+    expect(r.i(/POST \/v2\/deployments\/[^/]+\/aliases/)).toBe(-1);
     // El despliegue erróneo anterior no se retira en una ejecución fallida (se retira cuando hay preview válida)
     expect(r.deps.has(PROD_ERRONEO)).toBe(true);
+  }, 60000);
+
+  it('alias del despliegue erróneo que no se retira (DELETE aceptado sin efecto): se detiene sin asignar la dirección fija', async () => {
+    const r = await ejecutar({ previos: [previoProd()], aliasNoSeBorra: true });
+    expect(r.codigo).toBe(1);
+    expect(r.salida).toMatch(/sigue apuntando al despliegue retirado dpl_5wBB/);
+    expect(r.i(/POST \/v2\/deployments\/dpl_Nuevo1\/aliases/)).toBe(-1);
+    expect(r.alias.has('ulit-censo-pruebas-vista.vercel.app')).toBe(false);
+  }, 60000);
+
+  it('alias que la API no lista entre los del despliegue pero sigue apuntando a él: se detecta y se detiene', async () => {
+    const r = await ejecutar({ previos: [previoProd()], aliasOculto: ALIAS_PROD[1] });
+    expect(r.codigo).toBe(1);
+    expect(r.salida).toMatch(new RegExp(`El alias ${ALIAS_PROD[1].replace(/\./g, '\\.')} no está retirado`));
+    expect(r.i(/POST \/v2\/deployments\/dpl_Nuevo1\/aliases/)).toBe(-1);
   }, 60000);
 
   it('proyecto sin ningún despliegue: no despliega (Vercel asignaría el primero a producción)', async () => {
@@ -240,7 +287,7 @@ describe('desplegar-preview.mjs · solo PREVIEW verificada por la API, retirada 
     expect(r.codigo).toBe(1);
     expect(r.deps.has('dpl_Nuevo1')).toBe(false);
     expect(r.deps.has(PROD_ERRONEO)).toBe(true);
-    expect(r.i(/aliases/)).toBe(-1);
+    expect(r.i(/POST \/v2\/deployments\/[^/]+\/aliases/)).toBe(-1);
   }, 60000);
 
   it('otro despliegue de producción no previsto: no lo toca y no asigna alias', async () => {
@@ -249,13 +296,13 @@ describe('desplegar-preview.mjs · solo PREVIEW verificada por la API, retirada 
     expect(r.codigo).toBe(1);
     expect(r.salida).toMatch(/no previstos \(dpl_OtroProd\)/);
     expect(r.deps.has('dpl_OtroProd')).toBe(true);
-    expect(r.i(/aliases/)).toBe(-1);
+    expect(r.i(/POST \/v2\/deployments\/[^/]+\/aliases/)).toBe(-1);
   }, 60000);
 
   it('dominio de producción todavía sirviendo la aplicación: no asigna alias', async () => {
     const r = await ejecutar({ previos: [previoProd()], produccion: 'abierto' });
     expect(r.codigo).toBe(1);
-    expect(r.i(/aliases/)).toBe(-1);
+    expect(r.i(/POST \/v2\/deployments\/[^/]+\/aliases/)).toBe(-1);
   }, 60000);
 
   it('dirección fija sin proteger: la retira y elimina el despliegue', async () => {

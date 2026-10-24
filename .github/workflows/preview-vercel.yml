@@ -24,6 +24,8 @@ env:
   # Despliegue creado por error como PRODUCCIÓN en la primera ejecución (Vercel asigna a producción el primer
   # despliegue de un proyecto). Se retira SOLO si sigue siendo de este proyecto y de producción.
   RETIRAR_PRODUCCION: dpl_5wBBNu998QbWfURDUtHgy5FSKgJV
+  # Alias de ese despliegue: tras retirarlo se comprueba POR LA API que ninguno apunta ya a él.
+  ALIAS_PRODUCCION: ulit-censo-pruebas.vercel.app ulit-censo-pruebas-jaimes-projects-e2a33d1a.vercel.app
   VERCEL_TELEMETRY_DISABLED: '1'
 
 jobs:

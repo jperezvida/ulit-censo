@@ -16,8 +16,10 @@
 //      se ELIMINA de inmediato y se falla.
 //   7. Protección comprobada SIN sesión sobre el despliegue (scripts/vercel/proteccion.mjs).
 //   8. Retirada de los despliegues de producción indicados (solo los de la lista, de este proyecto y de
-//      tipo producción) y comprobación de que el proyecto queda SIN ningún despliegue de producción y de
-//      que su dominio de producción no sirve la aplicación.
+//      tipo producción): primero sus alias y después el despliegue. Comprobación POR LA API de que ninguno
+//      de sus alias (los detectados y los de $ALIAS_PRODUCCION) apunta ya a él, de que el proyecto no
+//      tiene ningún despliegue de producción ni un destino de producción activo, y de que su dominio de
+//      producción no sirve la aplicación.
 //   9. Solo entonces se asigna la dirección fija; se verifica por la API que apunta a este despliegue y,
 //      sin sesión, que está protegida. Si no, se retira la dirección y el despliegue, y se falla.
 // El token se lee de VERCEL_TOKEN (secreto del entorno «preview» de GitHub) y nunca se imprime.
@@ -66,6 +68,20 @@ export function evaluarRetirable(dep, { id, projectId }) {
   if (dep.projectId !== projectId) return { ok: false, motivo: `${id} no pertenece al proyecto ${projectId}: no se toca` };
   if (dep.target !== 'production') return { ok: false, motivo: `${id} no es de producción (target: ${dep.target ?? 'null'}): no se toca` };
   return { ok: true, motivo: `${id} es de producción y de este proyecto` };
+}
+
+/**
+ * Alias tras la retirada (respuesta de GET /v4/aliases/:alias). Solo vale que ya no exista (404) o que
+ * apunte a OTRO despliegue (que además se comprueba que no sea de producción). Una respuesta HTTP de
+ * autenticación en el dominio no demuestra nada: esto se decide solo con la API.
+ */
+export function evaluarAliasRetirado(r, retirados) {
+  if (r.status === 404) return { ok: true, motivo: 'ya no existe' };
+  if (r.status !== 200 || !r.json) return { ok: false, motivo: `no se puede confirmar (API ${r.status})` };
+  const destino = r.json.deploymentId;
+  if (!destino) return { ok: false, motivo: 'la API no indica a qué despliegue apunta' };
+  if (retirados.includes(destino)) return { ok: false, motivo: `sigue apuntando al despliegue retirado ${destino}` };
+  return { ok: true, otro: destino, motivo: `apunta a otro despliegue (${destino})` };
 }
 
 /** El dominio de producción no debe servir la aplicación (404 tras la retirada, o protegido). */
@@ -129,6 +145,8 @@ async function principal() {
   }
   const retirar = (env.RETIRAR_PRODUCCION ?? '').split(/[\s,]+/).filter(Boolean);
   for (const id of retirar) if (!/^dpl_[A-Za-z0-9]+$/.test(id)) fallar(`Identificador de despliegue no válido en RETIRAR_PRODUCCION: ${id}`);
+  const aliasProduccion = (env.ALIAS_PRODUCCION ?? '').split(/[\s,]+/).filter(Boolean);
+  for (const a of aliasProduccion) if (!/^[a-z0-9-]+(\.[a-z0-9-]+)*\.vercel\.app$/.test(a)) fallar(`Alias no válido en ALIAS_PRODUCCION: ${a}`);
 
   // 2. Proyecto propio y enlace.
   if (vc(['project', 'inspect', env.PROYECTO], { capturar: true, tolerar: true }) === null) {
@@ -203,14 +221,42 @@ async function principal() {
     fallar('El despliegue no está protegido (o no se ha podido confirmar). Se ha eliminado y NO se ha asignado la dirección fija.');
   }
 
-  // 8. Retirada de los despliegues de producción indicados y estado final SIN producción.
-  for (const id of pendientes) if (!(await eliminar(id))) fallar(`No se ha podido confirmar la retirada de ${id}. No se ha asignado la dirección fija.`);
+  // 8. Retirada de los despliegues de producción indicados: primero sus alias (solo los que apuntan a ese
+  //    despliegue), después el despliegue. Luego, verificación por la API del estado final.
+  const aliasVigilados = new Set(aliasProduccion);
+  for (const id of pendientes) {
+    const suyos = await api('GET', `/v2/deployments/${id}/aliases`);
+    if (suyos.status !== 200 || !Array.isArray(suyos.json?.aliases)) fallar(`No se pueden leer los alias de ${id}. No se ha retirado nada ni asignado la dirección fija.`);
+    for (const a of suyos.json.aliases) {
+      aliasVigilados.add(a.alias);
+      const quitado = await api('DELETE', `/v2/aliases/${a.uid ?? a.alias}`);
+      console.log(`${quitado.status === 200 || quitado.status === 404 ? '✔' : '✘'} Alias ${a.alias} de ${id}: DELETE ${quitado.status}`);
+    }
+    if (!(await eliminar(id))) fallar(`No se ha podido confirmar la retirada de ${id}. No se ha asignado la dirección fija.`);
+  }
+  for (const a of aliasVigilados) {
+    const r = await api('GET', `/v4/aliases/${a}`);
+    let v = evaluarAliasRetirado(r, retirar);
+    if (v.ok && v.otro) {
+      const otro = await api('GET', `/v13/deployments/${v.otro}`);
+      if (otro.status !== 200 || otro.json?.target === 'production') v = { ok: false, motivo: `apunta a ${v.otro}, que es de producción o no se puede comprobar` };
+    }
+    console.log(`${v.ok ? '✔' : '✘'} Alias ${a} → ${v.motivo}`);
+    if (!v.ok) fallar(`El alias ${a} no está retirado (${v.motivo}). Se detiene sin asignar la dirección fija.`);
+  }
   const prod = await api('GET', `/v6/deployments?projectId=${ID}&target=production&limit=100`);
   if (prod.status !== 200 || !Array.isArray(prod.json?.deployments)) fallar('No se puede comprobar que el proyecto no tenga despliegues de producción. No se ha asignado la dirección fija.');
   // (se filtra también aquí por si la API ignorase el filtro; los recién retirados ya dan 404 en la consulta directa)
   const restantes = prod.json.deployments.map((d) => d.uid ?? d.id).filter((id, i) => prod.json.deployments[i].target === 'production' && !pendientes.includes(id));
   if (restantes.length) {
     fallar(`El proyecto tiene despliegues de PRODUCCIÓN no previstos (${restantes.join(', ')}); no se tocan. No se ha asignado la dirección fija.`);
+  }
+  // Destino de producción del proyecto: no debe quedar ninguno activo.
+  const destinoProd = (await api('GET', `/v9/projects/${ID}`)).json?.targets?.production;
+  const idDestino = destinoProd?.id ?? destinoProd?.uid;
+  if (idDestino) {
+    const d = await api('GET', `/v13/deployments/${idDestino}`);
+    if (d.status !== 404) fallar(`El proyecto conserva un destino de producción activo (${idDestino}, API ${d.status}). No se ha asignado la dirección fija.`);
   }
   const dominioProd = env.URL_PRODUCCION ?? `https://${env.PROYECTO}.vercel.app`;
   let respProd;
@@ -222,7 +268,8 @@ async function principal() {
   }
   console.log(`${respProd.ok ? '✔' : '✘'} ${dominioProd} → ${respProd.motivo}`);
   if (!respProd.ok) fallar(`El dominio de producción ${dominioProd} sigue sirviendo contenido. No se ha asignado la dirección fija.`);
-  resumen('- Proyecto **sin ningún despliegue de producción** (comprobado por la API).');
+  resumen(`- Retirados: ${pendientes.length ? pendientes.map((i) => `\`${i}\``).join(', ') : 'nada pendiente'}. Alias verificados por la API: ${[...aliasVigilados].map((a) => `\`${a}\``).join(', ') || '—'}.`);
+  resumen('- Proyecto **sin ningún despliegue de producción activo** (comprobado por la API).');
 
   // 9. Dirección fija, verificada por la API y sin sesión.
   const urlFija = env.URL_FIJA ?? `https://${env.DIRECCION_FIJA}`;

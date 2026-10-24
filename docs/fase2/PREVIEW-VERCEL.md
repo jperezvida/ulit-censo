@@ -35,7 +35,12 @@ El token se guarda **solo en el entorno `preview` de GitHub Actions**, restringi
    5. Valida, antes de desplegar, los despliegues de producción que hay que retirar (`RETIRAR_PRODUCCION` en el workflow): deben ser de este proyecto y de producción. Si no, falla sin tocar nada.
    6. Despliega con la CLI, lee su respuesta JSON y **consulta el despliegue en la API**. Debe ser de este proyecto, estar listo y ser de tipo **preview** (`target` nulo). Si Vercel lo hubiera creado como **producción**, lo **elimina** de inmediato y falla.
    7. Comprueba **sin sesión** el despliegue (`/`, `/index.html`, `/version.json`). Si no está protegido, lo elimina y falla.
-   8. Retira los despliegues de producción indicados y comprueba por la API que el proyecto queda **sin ningún despliegue de producción**. Si hubiera otros no previstos, no los toca y falla. También comprueba que el dominio de producción (`ulit-censo-pruebas.vercel.app`) ya no sirve la aplicación.
+   8. Retira los despliegues de producción indicados: primero los alias que apuntan a cada uno y después el despliegue. A continuación comprueba **por la API**:
+      - que ninguno de esos alias apunta ya al despliegue retirado. Se comprueban los que lista la API y los de `ALIAS_PRODUCCION` en el workflow: `ulit-censo-pruebas.vercel.app` y `ulit-censo-pruebas-jaimes-projects-e2a33d1a.vercel.app`. Una respuesta HTTP de autenticación en el dominio **no** cuenta como prueba;
+      - que el proyecto queda **sin ningún despliegue de producción** y sin un destino de producción activo. Si hubiera otros despliegues no previstos, no los toca y falla;
+      - además, que el dominio de producción ya no sirve la aplicación.
+
+      Si algo no se cumple, se detiene **sin asignar la dirección fija**.
    9. Solo entonces asigna la **dirección fija**. Verifica por la API que apunta a esta preview y, sin sesión, que está protegida. Si no, retira la dirección y el despliegue, y falla.
 5. Abra la dirección fija, inicie sesión con su cuenta de Vercel y guárdela en favoritos.
 
