@@ -52,6 +52,17 @@ async function elegirYAnalizar(b: Uint8Array) {
   await screen.findByLabelText('Identificación del archivo', undefined, { timeout: 20000 });
 }
 
+
+/** Paso «Columnas»: elegir el perfil de referencia de Medina 2025 y comparar con su informe. */
+async function columnasMedina() {
+  const sel = await screen.findByLabelText('Perfil de importación', undefined, { timeout: 20000 });
+  fireEvent.change(sel, { target: { value: 'medina-2025-referencia' } });
+  await waitFor(() => expect(screen.getByLabelText('Comparar con el informe de referencia')).toBeInTheDocument(), { timeout: 20000 });
+  fireEvent.click(screen.getByLabelText('Comparar con el informe de referencia'));
+  await waitFor(() => expect(screen.getByRole('button', { name: /Analizar con estas columnas/ })).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: /Analizar con estas columnas/ }));
+}
+
 describe('C1e · Espacios aislados (interfaz)', () => {
   it('ensayo: archivo local → diagnóstico igual al informe → vista previa → exige respaldo comprobado → incorpora', async () => {
     montar('/espacios/ensayo');
@@ -61,9 +72,10 @@ describe('C1e · Espacios aislados (interfaz)', () => {
     const ident = screen.getByLabelText('Identificación del archivo');
     expect(ident).toHaveTextContent(/Archivo SINTÉTICO/);
     expect(ident).toHaveTextContent(/No coincide con la huella del archivo auténtico/);
-    fireEvent.click(screen.getByRole('button', { name: /Analizar el archivo/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Siguiente: columnas/ }));
+    await columnasMedina();
     const diag = await screen.findByRole('region', { name: 'Diagnóstico agregado' }, { timeout: 60000 });
-    expect(diag).toHaveTextContent(/indicadores coinciden con el informe agregado/);
+    expect(diag).toHaveTextContent(/indicadores coinciden con el informe de referencia/);
     expect(diag).toHaveTextContent(/«Tablas Dinámicas» \(resumen, no se importa\)/);
     const calles = screen.getByRole('region', { name: 'Conciliación de calles' });
     expect(within(calles).getByRole('table', { name: /Pendiente de conciliar/ }).querySelectorAll('tbody tr')).toHaveLength(21);
@@ -97,9 +109,10 @@ describe('C1e · Espacios aislados (interfaz)', () => {
     await crearEspacio();
     await elegirYAnalizar(bytes);
     expect(screen.getByRole('alert')).toHaveTextContent(/no se admite en el espacio de datos reales/);
-    expect(screen.getByRole('button', { name: /Analizar el archivo/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Siguiente: columnas/ })).toBeDisabled();
     await elegirYAnalizar(sinMarca);
-    fireEvent.click(screen.getByRole('button', { name: /Analizar el archivo/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Siguiente: columnas/ }));
+    await columnasMedina();
     await screen.findByRole('region', { name: 'Diagnóstico agregado' }, { timeout: 60000 });
     fireEvent.click(screen.getByRole('button', { name: /Siguiente: Decisiones/ }));
     fireEvent.click(screen.getByRole('button', { name: /Siguiente: Vista previa/ }));

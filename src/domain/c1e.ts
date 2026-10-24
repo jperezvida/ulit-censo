@@ -5,6 +5,8 @@ import { proponer, type DenominacionPendiente } from './conciliacionCalles';
 import { claveDenominacion, type ResultadoInterpretacion, type ValorOriginal } from './xlsx/interpretacion';
 import type { InformeEstructural } from './xlsx/analisis';
 import { TIPOS_INCIDENCIA } from './xlsx/reglasInterpretacion';
+import type { InformeAgregado } from './xlsx/referencias';
+import { INFORME_AGREGADO_MEDINA_2025 } from './xlsx/referencias';
 import type { Id } from './types';
 
 /**
@@ -15,23 +17,7 @@ import type { Id } from './types';
  * contiene filas, nombres de negocio ni direcciones individuales: solo recuentos.
  */
 
-/** Indicadores del informe agregado de la Cátedra (Medina 2025, sin datos comerciales). */
-export const INFORME_AGREGADO_MEDINA_2025 = {
-  filas: 889,
-  columnas: 27,
-  hojaDatos: 'Datos',
-  hojasAuxiliares: ['Tablas Dinámicas', 'Hoja1'],
-  localVacio: { ocupado: 608, vacio: 280, sinValor: 1 },
-  grActividad: { comercio: 242, servicios: 277, hosteleria: 90, vacio: 280, variantesHosteleria: 2 },
-  fechas: { anio2024: 355, anio2025: 533, textoInvalido: 1 },
-  calles: { literales: 93, sinMayusculas: 92 },
-  cp: { valor: '47400', filas: 889 },
-  sinNumero: 5,
-  direcciones: { pares: 625, paresRepetidos: 186, registrosEnRepetidos: 445 },
-  vaciosSinFachada: 12,
-  ocupadosSinActividad: 108,
-  franquicia: { ceros: 529, unos: 79, vacios: 281 },
-} as const;
+export { INFORME_AGREGADO_MEDINA_2025 };
 
 const vacia = (o?: ValorOriginal) => !o || o.t === 'vacio' || (o.t === 'texto' && !o.v.trim());
 const texto = (o?: ValorOriginal) => (!o || o.t === 'vacio' ? '' : o.t === 'fecha' ? o.v : String(o.v));
@@ -62,8 +48,13 @@ function anioOriginal(o?: ValorOriginal): number | null {
   return null;
 }
 
-/** Diagnóstico agregado de la capa original, comparado con el informe de la Cátedra. */
-export function diagnosticoAgregado(resultado: ResultadoInterpretacion & { estructura?: InformeEstructural }, esperado = INFORME_AGREGADO_MEDINA_2025): DiagnosticoAgregado {
+/**
+ * Diagnóstico agregado de la capa original. Solo se compara con indicadores ESPERADOS cuando se
+ * reciben (perfil de un censo concreto, `referenciaAplicable`): con cualquier otro archivo se muestran
+ * los recuentos sin compararlos. Solo se calculan los indicadores de las columnas presentes.
+ */
+export function diagnosticoAgregado(resultado: ResultadoInterpretacion & { estructura?: InformeEstructural }, esperado?: InformeAgregado): DiagnosticoAgregado {
+  const e = <T,>(f: (x: InformeAgregado) => T): T | undefined => (esperado ? f(esperado) : undefined);
   const capa = resultado.original;
   const filas = capa.filas;
   const c = (f: (typeof filas)[number], k: string) => f.celdas[k];
@@ -71,9 +62,9 @@ export function diagnosticoAgregado(resultado: ResultadoInterpretacion & { estru
   const add = (clave: string, etiqueta: string, valor: number | string, esp?: number | string, nota?: string) =>
     ind.push({ clave, etiqueta, valor, ...(nota ? { nota } : {}), ...(esp !== undefined ? { esperado: esp, coincide: valor === esp } : {}) });
 
-  add('filas', 'Filas de datos', filas.length, esperado.filas);
-  add('columnas', 'Columnas reconocidas del perfil', capa.columnas.length, esperado.columnas);
-  add('hoja', 'Hoja de datos', capa.hoja, esperado.hojaDatos);
+  add('filas', 'Filas de datos', filas.length, e((x) => x.filas));
+  add('columnas', 'Columnas reconocidas del perfil', capa.columnas.length, e((x) => x.columnas));
+  add('hoja', 'Hoja de datos', capa.hoja, e((x) => x.hojaDatos));
 
   const vac = { ocupado: 0, vacio: 0, sinValor: 0, otros: 0 };
   for (const f of filas) {
@@ -83,9 +74,9 @@ export function diagnosticoAgregado(resultado: ResultadoInterpretacion & { estru
     else if (esNum(o, 1)) vac.vacio++;
     else vac.otros++;
   }
-  add('vacio-0', '«Local Vacío» = 0 (ocupado)', vac.ocupado, esperado.localVacio.ocupado);
-  add('vacio-1', '«Local Vacío» = 1 (vacío)', vac.vacio, esperado.localVacio.vacio);
-  add('vacio-sin', '«Local Vacío» sin valor', vac.sinValor, esperado.localVacio.sinValor);
+  add('vacio-0', '«Local Vacío» = 0 (ocupado)', vac.ocupado, e((x) => x.localVacio.ocupado));
+  add('vacio-1', '«Local Vacío» = 1 (vacío)', vac.vacio, e((x) => x.localVacio.vacio));
+  add('vacio-sin', '«Local Vacío» sin valor', vac.sinValor, e((x) => x.localVacio.sinValor));
   if (vac.otros) add('vacio-otros', '«Local Vacío» con otro valor', vac.otros, 0);
 
   const gr = { comercio: 0, servicios: 0, hosteleria: 0, vacio: 0, otros: 0 };
@@ -99,11 +90,11 @@ export function diagnosticoAgregado(resultado: ResultadoInterpretacion & { estru
     else if (n.startsWith('hosteleria')) { gr.hosteleria++; variantesHost.add(t); }
     else gr.otros++;
   }
-  add('gr-comercio', 'GrActividad: Comercio', gr.comercio, esperado.grActividad.comercio);
-  add('gr-servicios', 'GrActividad: Servicios', gr.servicios, esperado.grActividad.servicios);
-  add('gr-hosteleria', 'GrActividad: Hostelería y restauración', gr.hosteleria, esperado.grActividad.hosteleria);
-  add('gr-hosteleria-variantes', 'Variantes de escritura de Hostelería', variantesHost.size, esperado.grActividad.variantesHosteleria);
-  add('gr-vacio', 'GrActividad vacía', gr.vacio, esperado.grActividad.vacio);
+  add('gr-comercio', 'GrActividad: Comercio', gr.comercio, e((x) => x.grActividad.comercio));
+  add('gr-servicios', 'GrActividad: Servicios', gr.servicios, e((x) => x.grActividad.servicios));
+  add('gr-hosteleria', 'GrActividad: Hostelería y restauración', gr.hosteleria, e((x) => x.grActividad.hosteleria));
+  add('gr-hosteleria-variantes', 'Variantes de escritura de Hostelería', variantesHost.size, e((x) => x.grActividad.variantesHosteleria));
+  add('gr-vacio', 'GrActividad vacía', gr.vacio, e((x) => x.grActividad.vacio));
   if (gr.otros) add('gr-otros', 'GrActividad con otro valor', gr.otros, 0);
 
   const fe = { a2024: 0, a2025: 0, otrosAnios: 0, texto: 0, vacias: 0 };
@@ -116,22 +107,25 @@ export function diagnosticoAgregado(resultado: ResultadoInterpretacion & { estru
     else if (a !== null) fe.otrosAnios++;
     else fe.texto++;
   }
-  add('fechas-2024', 'Fechas de 2024', fe.a2024, esperado.fechas.anio2024);
-  add('fechas-2025', 'Fechas de 2025', fe.a2025, esperado.fechas.anio2025);
-  add('fechas-texto', 'Fechas en texto o no reconocidas', fe.texto, esperado.fechas.textoInvalido);
+  add('fechas-2024', 'Fechas de 2024', fe.a2024, e((x) => x.fechas.anio2024));
+  add('fechas-2025', 'Fechas de 2025', fe.a2025, e((x) => x.fechas.anio2025));
+  add('fechas-texto', 'Fechas en texto o no reconocidas', fe.texto, e((x) => x.fechas.textoInvalido));
   if (fe.vacias) add('fechas-vacias', 'Sin fecha', fe.vacias, 0);
   if (fe.otrosAnios) add('fechas-otros', 'Fechas de otros años', fe.otrosAnios, 0);
 
   const literales = new Set(filas.map((f) => texto(c(f, 'direccion'))).filter((t) => t.trim()));
-  add('calles-literales', 'Denominaciones de calle distintas (literales)', literales.size, esperado.calles.literales);
-  add('calles-mayusculas', 'Distintas al igualar mayúsculas y minúsculas', new Set([...literales].map((t) => t.toLocaleLowerCase('es'))).size, esperado.calles.sinMayusculas);
+  add('calles-literales', 'Denominaciones de calle distintas (literales)', literales.size, e((x) => x.calles.literales));
+  add('calles-mayusculas', 'Distintas al igualar mayúsculas y minúsculas', new Set([...literales].map((t) => t.toLocaleLowerCase('es'))).size, e((x) => x.calles.sinMayusculas));
 
   const cps = new Map<string, number>();
   for (const f of filas) { const t = texto(c(f, 'cp')).trim(); cps.set(t, (cps.get(t) ?? 0) + 1); }
-  add('cp', `Filas con CP ${esperado.cp.valor}`, cps.get(esperado.cp.valor) ?? 0, esperado.cp.filas);
-  if (cps.size > 1) add('cp-otros', 'Filas con otro CP o sin CP', filas.length - (cps.get(esperado.cp.valor) ?? 0), 0);
+  const cpRef = e((x) => x.cp.valor);
+  if (cpRef !== undefined) {
+    add('cp', `Filas con CP ${cpRef}`, cps.get(cpRef) ?? 0, e((x) => x.cp.filas));
+    if (cps.size > 1) add('cp-otros', 'Filas con otro CP o sin CP', filas.length - (cps.get(cpRef) ?? 0), 0);
+  } else add('cp-distintos', 'Códigos postales distintos', [...cps.keys()].filter((k) => k).length);
 
-  add('sin-numero', 'Filas sin número de portal', filas.filter((f) => vacia(c(f, 'numero'))).length, esperado.sinNumero);
+  add('sin-numero', 'Filas sin número de portal', filas.filter((f) => vacia(c(f, 'numero'))).length, e((x) => x.sinNumero));
   // Portales: la calle se compara NORMALIZADA (sin distinguir mayúsculas ni espacios) y el número tal
   // como figura; los valores originales no se modifican. «S/N» se agrupa textualmente (como en el
   // informe de referencia), pero no identifica un portal numérico: se separa en dos recuentos.
@@ -150,15 +144,15 @@ export function diagnosticoAgregado(resultado: ResultadoInterpretacion & { estru
   const literal = grupos((f) => (conDireccion(f) ? `${texto(c(f, 'direccion'))}\u0000${texto(c(f, 'numero'))}` : null));
   const sn = norm.rep.filter(([k]) => /^s\s*\/\s*n\.?$/i.test(k.split('\u0000')[1]));
   const variantes = norm.pares !== literal.pares;
-  add('pares', 'Pares calle + número distintos', norm.pares, esperado.direcciones.pares, 'Calle normalizada (sin distinguir mayúsculas ni espacios); número tal como figura, incluido «S/N».');
-  add('pares-repetidos', 'Pares que aparecen más de una vez', norm.repetidos, esperado.direcciones.paresRepetidos);
-  add('registros-mismo-portal', 'Registros en direcciones compartidas (recuento textual)', norm.registros, esperado.direcciones.registrosEnRepetidos, 'Mismo criterio que el informe de referencia: incluye los «S/N» agrupados por calle.');
+  add('pares', 'Pares calle + número distintos', norm.pares, e((x) => x.direcciones.pares), 'Calle normalizada (sin distinguir mayúsculas ni espacios); número tal como figura, incluido «S/N».');
+  add('pares-repetidos', 'Pares que aparecen más de una vez', norm.repetidos, e((x) => x.direcciones.paresRepetidos));
+  add('registros-mismo-portal', 'Registros en direcciones compartidas (recuento textual)', norm.registros, e((x) => x.direcciones.registrosEnRepetidos), 'Mismo criterio que el informe de referencia: incluye los «S/N» agrupados por calle.');
   add('registros-sn-agrupados', '· de ellos, «S/N» agrupados por calle (no identifican un portal)', sn.reduce((a, [, n]) => a + n, 0), undefined, sn.length ? `${sn.length} vía(s) con varios «S/N».` : undefined);
   add('registros-portal-numerico', '· de ellos, en portales NUMÉRICOS compartidos (regla de C1b)', resultado.filas.filter((f) => f.grupoDireccion).length, undefined, 'Locales independientes del mismo portal: se conservan todos, no se fusionan.');
   if (variantes) add('pares-literales', 'Pares sin normalizar la calle (solo informativo)', literal.pares, undefined, `Con la calle tal como está escrita: ${literal.registros} registros en direcciones compartidas. La diferencia se debe a grafías de una misma calle que solo difieren en mayúsculas o espacios.`);
 
-  add('vacios-sin-fachada', 'Locales vacíos sin «Long fachada» (m lineales)', filas.filter((f) => esNum(c(f, 'vacio'), 1) && vacia(c(f, 'fachada'))).length, esperado.vaciosSinFachada);
-  add('ocupados-sin-actividad', 'Locales ocupados sin «Actividad»', filas.filter((f) => esNum(c(f, 'vacio'), 0) && vacia(c(f, 'actividad'))).length, esperado.ocupadosSinActividad);
+  add('vacios-sin-fachada', 'Locales vacíos sin «Long fachada» (m lineales)', filas.filter((f) => esNum(c(f, 'vacio'), 1) && vacia(c(f, 'fachada'))).length, e((x) => x.vaciosSinFachada));
+  add('ocupados-sin-actividad', 'Locales ocupados sin «Actividad»', filas.filter((f) => esNum(c(f, 'vacio'), 0) && vacia(c(f, 'actividad'))).length, e((x) => x.ocupadosSinActividad));
 
   const fr = { ceros: 0, unos: 0, vacios: 0, otros: 0 };
   for (const f of filas) {
@@ -168,13 +162,21 @@ export function diagnosticoAgregado(resultado: ResultadoInterpretacion & { estru
     else if (esNum(o, 1)) fr.unos++;
     else fr.otros++;
   }
-  add('franquicia-0', 'Franquicia = 0', fr.ceros, esperado.franquicia.ceros);
-  add('franquicia-1', 'Franquicia = 1', fr.unos, esperado.franquicia.unos);
-  add('franquicia-vacia', 'Franquicia vacía', fr.vacios, esperado.franquicia.vacios);
+  add('franquicia-0', 'Franquicia = 0', fr.ceros, e((x) => x.franquicia.ceros));
+  add('franquicia-1', 'Franquicia = 1', fr.unos, e((x) => x.franquicia.unos));
+  add('franquicia-vacia', 'Franquicia vacía', fr.vacios, e((x) => x.franquicia.vacios));
   if (fr.otros) add('franquicia-otros', 'Franquicia con otro valor', fr.otros, 0);
 
+  // Solo los indicadores de las columnas que tiene el archivo (un campo ausente no se cuenta como vacío).
+  const tiene = (k: string) => capa.columnas.some((col) => col.clave === k);
+  const DEPENDE: [RegExp, string[]][] = [
+    [/^vacio-/, ['vacio']], [/^gr-/, ['grupoActividad']], [/^fechas-/, ['fecha']], [/^calles-/, ['direccion']], [/^cp/, ['cp']],
+    [/^sin-numero$/, ['numero']], [/^(pares|registros-)/, ['direccion', 'numero']], [/^vacios-sin-fachada$/, ['vacio', 'fachada']],
+    [/^ocupados-sin-actividad$/, ['vacio', 'actividad']], [/^franquicia-/, ['franquicia']],
+  ];
+  const presentes = ind.filter((i) => (DEPENDE.find(([re]) => re.test(i.clave))?.[1] ?? []).every(tiene));
   const hojas = (resultado.estructura?.hojas ?? []).map((h) => ({ nombre: h.nombre, rol: h.rol, usada: h.nombre === capa.hoja }));
-  return { hoja: capa.hoja, hojas, indicadores: ind, diferencias: ind.filter((i) => i.coincide === false) };
+  return { hoja: capa.hoja, hojas, indicadores: presentes, diferencias: presentes.filter((i) => i.coincide === false) };
 }
 
 // ───────────── Recuento de registros antes de confirmar ─────────────

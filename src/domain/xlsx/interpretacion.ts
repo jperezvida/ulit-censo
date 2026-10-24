@@ -1,7 +1,8 @@
 import type ExcelJS from 'exceljs';
 import { leerLibro, type LimitesXlsx, LIMITES_XLSX } from './lector';
 import { analizarLibroLeido, valorPlano, esFormula, type InformeEstructural } from './analisis';
-import { PERFILES_IMPORTACION, type TipoEsperado } from './perfilesImportacion';
+import { PERFILES_IMPORTACION, type PerfilImportacion, type TipoEsperado } from './perfilesImportacion';
+import { evaluarCorrespondencia, perfilDesdeCorrespondencia } from './correspondencia';
 import { CATEGORIA_DIAGNOSTICO, ETIQUETA_DIAGNOSTICO, diagnosticarClasificacion, type ResultadoClasificacion } from './clasificacionHistorica';
 import { DICCIONARIO_SIN_INFORMACION_PROPUESTO, TIPOS_INCIDENCIA, type Decision, type Gravedad, type IdTipoIncidencia } from './reglasInterpretacion';
 import type { ConfigTerritorial, ReglaTerritorial } from '../territorio';
@@ -40,6 +41,8 @@ export interface FilaOriginal {
   /** Número de fila en la hoja de origen. */
   fila: number;
   celdas: Record<string, ValorOriginal>;
+  /** G1 · Valores de las columnas ADICIONALES (sin campo de ULIT), por letra de columna. No se interpretan. */
+  adicionales?: Record<string, ValorOriginal>;
 }
 
 export interface CapaOriginal {
@@ -48,6 +51,8 @@ export interface CapaOriginal {
   filaCabecera: number;
   perfil: { id: string; version: number };
   columnas: ColumnaOrigen[];
+  /** G1 · Columnas sin campo de ULIT: se conservan tal cual (cabecera exacta y letra). */
+  adicionales?: { letra: string; cabecera: string }[];
   filas: FilaOriginal[];
   /**
    * Filas que C1a marca HEURÍSTICAMENTE como posibles totales. Se conservan íntegras en `filas`
@@ -570,9 +575,9 @@ export function interpretarCapa(capa: CapaOriginal, op: OpcionesInterpretacion =
 
 export class ErrorInterpretacion extends Error {}
 
-/** Capa original a partir de un libro ya leído y su informe estructural (C1a). */
-export function extraerCapaOriginal(libro: ExcelJS.Workbook, informe: InformeEstructural): CapaOriginal {
-  const perfil = PERFILES_IMPORTACION.find((p) => p.id === informe.perfilPropuesto);
+/** Capa original a partir de un libro ya leído, su informe estructural (C1a) y el perfil con el que se analizó. */
+export function extraerCapaOriginal(libro: ExcelJS.Workbook, informe: InformeEstructural, perfilElegido?: PerfilImportacion): CapaOriginal {
+  const perfil = perfilElegido ?? PERFILES_IMPORTACION.find((p) => p.id === informe.perfilPropuesto);
   if (!perfil || !informe.hojaDatos || !informe.filas.filaCabecera) {
     throw new ErrorInterpretacion('El archivo no es compatible con ningún perfil conocido: revise primero el análisis previo (C1a).');
   }
@@ -581,6 +586,8 @@ export function extraerCapaOriginal(libro: ExcelJS.Workbook, informe: InformeEst
     const def = perfil.columnas.find((p) => p.clave === c.perfil!.clave)!;
     return { col: c.indice, origen: { clave: def.clave, letra: c.letra, cabecera: c.cabecera, tipo: def.tipo, ...(def.territorial ? { territorial: def.territorial } : {}) } as ColumnaOrigen };
   });
+  const asignadas = new Set(columnas.map((c) => c.col));
+  const adicionales = informe.cabeceras.filter((c) => !asignadas.has(c.indice));
   const totales = new Set(informe.filas.posiblesTotales);
   const filas: FilaOriginal[] = [];
   const candidatasExcluir: CapaOriginal['candidatasExcluir'] = [];
@@ -594,15 +601,23 @@ export function extraerCapaOriginal(libro: ExcelJS.Workbook, informe: InformeEst
       if (o.t !== 'vacio') celdas[origen.clave] = o;
       if (!vacia(o)) alguna = true;
     }
+    const extra: Record<string, ValorOriginal> = {};
+    for (const a of adicionales) {
+      const o = valorOriginal(row.getCell(a.indice));
+      if (o.t !== 'vacio') extra[a.letra] = o;
+      if (!vacia(o)) alguna = true;
+    }
     if (!alguna) continue;
     // Heurística de C1a (p. ej. «Total…» en la primera celda de texto): puede fallar, así que la fila
     // se conserva entera y solo se marca como candidata a excluir.
     if (totales.has(r)) candidatasExcluir.push({ fila: r, motivo: 'C1a la identifica como posible fila de totales (heurística); pendiente de confirmación humana.', origen: 'heuristica-c1a' });
-    filas.push({ fila: r, celdas });
+    filas.push({ fila: r, celdas, ...(Object.keys(extra).length ? { adicionales: extra } : {}) });
   }
   return {
     archivo: { nombre: informe.archivo.nombre, sha256: informe.archivo.sha256 }, hoja: ws.name, filaCabecera: informe.filas.filaCabecera,
-    perfil: { id: perfil.id, version: perfil.version }, columnas: columnas.map((c) => c.origen), filas, candidatasExcluir,
+    perfil: { id: perfil.id, version: perfil.version }, columnas: columnas.map((c) => c.origen),
+    ...(adicionales.length ? { adicionales: adicionales.map((a) => ({ letra: a.letra, cabecera: a.cabecera })) } : {}),
+    filas, candidatasExcluir,
   };
 }
 
@@ -610,13 +625,63 @@ export function extraerCapaOriginal(libro: ExcelJS.Workbook, informe: InformeEst
  * Lee un XLSX con el lector seguro (mismos límites que C1a), identifica hoja y perfil, extrae la
  * capa original e interpreta. Solo lectura: no toca la base de datos ni guarda el archivo.
  */
+/**
+ * G1 · Cómo leer el archivo: perfil elegido (o creado con la correspondencia de columnas) y, si la
+ * detección automática no basta, la hoja y la fila de cabecera.
+ */
+export interface EleccionLectura {
+  perfil?: PerfilImportacion;
+  hoja?: string;
+  filaCabecera?: number;
+}
+
 export async function interpretarXlsx(
-  datos: ArrayBuffer | Uint8Array, nombreArchivo: string, opciones: OpcionesInterpretacion = {}, limites: LimitesXlsx = LIMITES_XLSX,
+  datos: ArrayBuffer | Uint8Array, nombreArchivo: string, opciones: OpcionesInterpretacion = {}, limites: LimitesXlsx = LIMITES_XLSX, eleccion: EleccionLectura = {},
 ): Promise<ResultadoInterpretacion & { estructura: InformeEstructural }> {
   const bytes = datos instanceof Uint8Array ? datos : new Uint8Array(datos);
   const leido = await leerLibro(bytes, limites);
-  const estructura = await analizarLibroLeido(leido, bytes, nombreArchivo, { territorio: opciones.territorio });
-  const capa = extraerCapaOriginal(leido.libro, estructura);
+  let perfil = eleccion.perfil;
+  // La ubicación guardada en el perfil solo se usa si el libro tiene esa hoja (otro año puede llamarla distinto).
+  const hojaPerfil = perfil?.ubicacion?.hoja && leido.libro.getWorksheet(perfil.ubicacion.hoja) ? perfil.ubicacion : undefined;
+  const ubic = eleccion.hoja ? { hoja: eleccion.hoja, filaCabecera: eleccion.filaCabecera } : { hoja: hojaPerfil?.hoja, filaCabecera: hojaPerfil?.filaCabecera };
+  let estructura = await analizarLibroLeido(leido, bytes, nombreArchivo, { territorio: opciones.territorio, ...(perfil ? { perfiles: [perfil] } : {}), ...ubic });
+  if (perfil) {
+    const comp = estructura.perfiles.find((p) => p.perfilId === perfil!.id);
+    if (!estructura.hojaDatos || !comp?.compatible) {
+      throw new ErrorInterpretacion(`El archivo no encaja con el perfil «${perfil.nombre}»${comp?.faltan.length ? `: faltan ${comp.faltan.map((f) => `«${f.trim()}»`).join(', ')}` : ''}. Revise la hoja, la fila de cabecera o las columnas.`);
+    }
+  } else if (!estructura.perfilPropuesto) {
+    // Sin perfil compatible: solo si la correspondencia automática con el catálogo es completa y sin dudas.
+    const ev = evaluarCorrespondencia(estructura.correspondencia);
+    if (!estructura.hojaDatos || !estructura.filas.filaCabecera || !ev.lista) {
+      throw new ErrorInterpretacion('El archivo no es compatible con ningún perfil conocido y sus columnas no se reconocen con seguridad: relaciónelas en el paso «Columnas».');
+    }
+    perfil = perfilDesdeCorrespondencia(estructura.correspondencia, { id: 'automatico', nombre: 'Correspondencia automática', hoja: estructura.hojaDatos, filaCabecera: estructura.filas.filaCabecera });
+    estructura = await analizarLibroLeido(leido, bytes, nombreArchivo, { territorio: opciones.territorio, perfiles: [perfil], hoja: estructura.hojaDatos, filaCabecera: estructura.filas.filaCabecera });
+  }
+  const capa = extraerCapaOriginal(leido.libro, estructura, perfil);
   return { ...interpretarCapa(capa, opciones), estructura };
 }
 
+
+/**
+ * G1 · Primeras filas de datos, tal como figuran (para previsualizar la correspondencia de columnas en
+ * el navegador). Solo lectura; no se guarda nada.
+ */
+export function muestraFilas(libro: ExcelJS.Workbook, hoja: string, filaCabecera: number, indices: number[], n = 5): Record<number, string>[] {
+  const ws = libro.getWorksheet(hoja);
+  if (!ws) return [];
+  const out: Record<number, string>[] = [];
+  for (let r = filaCabecera + 1; r <= ws.rowCount && out.length < n; r++) {
+    const row = ws.getRow(r);
+    const fila: Record<number, string> = {};
+    let alguna = false;
+    for (const i of indices) {
+      const o = valorOriginal(row.getCell(i));
+      if (o.t !== 'vacio') alguna = true;
+      fila[i] = o.t === 'vacio' ? '' : o.t === 'texto' ? o.v : mostrarOriginal(o);
+    }
+    if (alguna) out.push(fila);
+  }
+  return out;
+}

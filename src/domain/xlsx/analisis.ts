@@ -2,6 +2,7 @@ import type ExcelJS from 'exceljs';
 import { leerLibro, type AdaptacionParte, type LibroLeido } from './lector';
 import { compararCabecera, normalizarCabecera, PERFILES_IMPORTACION, type Coincidencia, type ColumnaPerfil, type PerfilImportacion, type TipoEsperado } from './perfilesImportacion';
 import { evaluarCampoTerritorial, type ConfigTerritorial, type EvaluacionTerritorial } from '../territorio';
+import { proponerCorrespondencia, type ColumnaArchivo, type ColumnaCorrespondencia } from './correspondencia';
 
 /**
  * Informe ESTRUCTURAL previo a una importación (C1a).
@@ -76,6 +77,10 @@ export interface InformeEstructural {
   eleccionHoja: 'automatica' | 'ambigua' | 'ninguna';
   perfiles: CompatibilidadPerfil[];
   perfilPropuesto: string | null;
+  /** G1 · Todas las cabeceras de la fila de cabecera (también las que no reconoce ningún perfil). */
+  cabeceras: ColumnaArchivo[];
+  /** G1 · Correspondencia propuesta (perfil + catálogo común); las dudosas no se asignan. */
+  correspondencia: ColumnaCorrespondencia[];
   columnas: InformeColumna[];
   filas: { filaCabecera: number | null; conDatos: number; primera: number | null; ultima: number | null; enBlancoIntercaladas: number; posiblesTotales: number[] };
   estructura: { panelesCongelados?: { filas: number; columnas: number }; filtro?: string; filasOcultas: number; columnasOcultas: number; celdasCombinadas: number; validaciones: number; formulas: number };
@@ -89,6 +94,9 @@ export interface OpcionesAnalisis {
   /** Configuración territorial del municipio al que se destina el archivo. */
   territorio?: ConfigTerritorial;
   perfiles?: PerfilImportacion[];
+  /** G1 · Hoja y fila de cabecera elegidas por la persona (cuando la detección no basta). */
+  hoja?: string;
+  filaCabecera?: number;
 }
 
 // ───────────── Utilidades de celda ─────────────
@@ -216,7 +224,8 @@ function compatibilidad(cabs: Map<number, string>, perfil: PerfilImportacion): C
   const obligatoriasFaltan = perfil.columnas.filter((c) => c.obligatoria && !usadas.has(c.clave)).length;
   return {
     perfilId: perfil.id, version: perfil.version, nombre: perfil.nombre,
-    compatible: obligatoriasFaltan === 0 && sobran.length === 0 && duplicadas.length === 0,
+    // Las columnas que sobran no impiden importar: se conservan como adicionales (G1).
+    compatible: obligatoriasFaltan === 0 && duplicadas.length === 0,
     encontradas: usadas.size, total: perfil.columnas.length, faltan, sobran, diferencias,
     ordenIgual: ordenArchivo.join('|') === ordenPerfil.join('|'), duplicadas, asignacion,
   };
@@ -226,7 +235,21 @@ const RANGO: Record<Coincidencia, number> = { exacta: 0, espacios: 1, mayusculas
 const MARCAS_RESUMEN = ['etiquetas de fila', 'total general', 'cuenta de', 'suma de', 'promedio de', 'tabla dinamica', 'tabla dinámica'];
 const CABECERAS_LISTAS = ['local vacio', 'local vacío', 'gr actividad', 'gr comercio', 'subgrupo actividad', 'actividad'];
 
-/** Fila de cabecera: la que mejor cubre algún perfil entre las 10 primeras. */
+const columnasArchivo = (cabs: Map<number, string>): ColumnaArchivo[] => [...cabs.keys()].sort((a, b) => a - b).map((i) => ({ indice: i, letra: letraColumna(i), cabecera: cabs.get(i)! }));
+
+/**
+ * G1 · Cobertura por el CATÁLOGO común: proporción de cabeceras que corresponden (o pueden
+ * corresponder) a un campo. Solo cuenta si alguna columna puede ser la calle y otra el número.
+ */
+function coberturaCatalogo(cabs: Map<number, string>): number {
+  if (cabs.size < 3) return 0;
+  const corr = proponerCorrespondencia(columnasArchivo(cabs));
+  const puede = (k: string) => corr.some((c) => c.clave === k || c.candidatos?.includes(k));
+  if (!puede('direccion') || !puede('numero')) return 0;
+  return corr.filter((c) => c.clave || c.candidatos?.length).length / corr.length;
+}
+
+/** Fila de cabecera: la que mejor cubre algún perfil, o el catálogo común, entre las 10 primeras. */
 function mejorCabecera(ws: ExcelJS.Worksheet, perfiles: PerfilImportacion[]) {
   let mejor = { fila: null as number | null, cobertura: 0, cabs: new Map<number, string>() };
   for (let r = 1; r <= Math.min(10, ws.rowCount); r++) {
@@ -237,6 +260,8 @@ function mejorCabecera(ws: ExcelJS.Worksheet, perfiles: PerfilImportacion[]) {
       const cobertura = comp.encontradas / p.columnas.length;
       if (cobertura > mejor.cobertura) mejor = { fila: r, cobertura, cabs };
     }
+    const cat = coberturaCatalogo(cabs);
+    if (cat > mejor.cobertura) mejor = { fila: r, cobertura: cat, cabs };
   }
   return mejor;
 }
@@ -251,7 +276,7 @@ function rolDeHoja(ws: ExcelJS.Worksheet, cobertura: number): { rol: RolHoja; mo
   }
   const resumen = textos.filter((t) => MARCAS_RESUMEN.some((m) => t.startsWith(m) || t.includes(m)));
   if (resumen.length >= 2) return { rol: 'resumen', motivo: 'Contiene rótulos de tabla de resumen («Etiquetas de fila», «Cuenta de…», «Total general»): no es fuente de registros.' };
-  if (cobertura >= 0.6) return { rol: 'datos', motivo: `Sus cabeceras cubren el ${Math.round(cobertura * 100)} % de un perfil conocido.` };
+  if (cobertura >= 0.6) return { rol: 'datos', motivo: `Sus cabeceras cubren el ${Math.round(cobertura * 100)} % de un perfil o de los campos de ULIT.` };
   const listas = textos.filter((t) => CABECERAS_LISTAS.includes(t)).length;
   if (listas >= 3) return { rol: 'listas', motivo: 'Listas de clasificación (columnas independientes; no forman una jerarquía).' };
   return { rol: 'otra', motivo: 'No coincide con ningún perfil conocido.' };
@@ -281,10 +306,13 @@ export async function analizarLibroLeido(leido: LibroLeido, bytes: Uint8Array, n
   const hojas: InformeHoja[] = [];
   const candidatas: { ws: ExcelJS.Worksheet; fila: number; cobertura: number; cabs: Map<number, string> }[] = [];
   leido.libro.worksheets.forEach((ws, i) => {
+    const elegidaPorPersona = opciones.hoja === ws.name;
     const m = mejorCabecera(ws, perfiles);
-    const { rol, motivo } = rolDeHoja(ws, m.cobertura);
-    hojas.push({ nombre: ws.name, posicion: i + 1, visible: ws.state === undefined || ws.state === 'visible', filas: ws.actualRowCount, columnas: ws.actualColumnCount, filaCabecera: rol === 'datos' ? m.fila : null, rol, motivo, cobertura: Math.round(m.cobertura * 1000) / 1000 });
-    if (rol === 'datos' && m.fila) candidatas.push({ ws, fila: m.fila, cobertura: m.cobertura, cabs: m.cabs });
+    if (elegidaPorPersona && opciones.filaCabecera) Object.assign(m, { fila: opciones.filaCabecera, cabs: cabecerasDeFila(ws, opciones.filaCabecera) });
+    const { rol, motivo } = elegidaPorPersona ? { rol: 'datos' as RolHoja, motivo: 'Hoja de datos elegida por la persona.' } : rolDeHoja(ws, m.cobertura);
+    hojas.push({ nombre: ws.name, posicion: i + 1, visible: ws.state === undefined || ws.state === 'visible', filas: ws.actualRowCount, columnas: ws.actualColumnCount, filaCabecera: rol === 'datos' ? m.fila ?? 1 : null, rol, motivo, cobertura: Math.round(m.cobertura * 1000) / 1000 });
+    if (elegidaPorPersona) candidatas.push({ ws, fila: m.fila ?? 1, cobertura: Infinity, cabs: m.fila ? m.cabs : cabecerasDeFila(ws, 1) });
+    else if (rol === 'datos' && m.fila && !opciones.hoja) candidatas.push({ ws, fila: m.fila, cobertura: m.cobertura, cabs: m.cabs });
   });
   candidatas.sort((a, b) => b.cobertura - a.cobertura);
   const elegida = candidatas[0];
@@ -306,7 +334,7 @@ export async function analizarLibroLeido(leido: LibroLeido, bytes: Uint8Array, n
     ],
   };
   if (!elegida) {
-    return { ...base, hojaDatos: null, perfiles: [], perfilPropuesto: null, columnas: [], filas: { filaCabecera: null, conDatos: 0, primera: null, ultima: null, enBlancoIntercaladas: 0, posiblesTotales: [] }, estructura: { filasOcultas: 0, columnasOcultas: 0, celdasCombinadas: 0, validaciones: 0, formulas: 0 }, avisos };
+    return { ...base, hojaDatos: null, perfiles: [], perfilPropuesto: null, cabeceras: [], correspondencia: [], columnas: [], filas: { filaCabecera: null, conDatos: 0, primera: null, ultima: null, enBlancoIntercaladas: 0, posiblesTotales: [] }, estructura: { filasOcultas: 0, columnasOcultas: 0, celdasCombinadas: 0, validaciones: 0, formulas: 0 }, avisos };
   }
 
   // 2. Perfiles compatibles con la hoja de datos
@@ -314,7 +342,12 @@ export async function analizarLibroLeido(leido: LibroLeido, bytes: Uint8Array, n
   const comps = perfiles.map((p) => compatibilidad(elegida.cabs, p)).sort((a, b) => Number(b.compatible) - Number(a.compatible) || b.encontradas / b.total - a.encontradas / a.total);
   const propuesto = comps.find((c) => c.compatible) ?? null;
   const asignacion = (propuesto ?? comps[0]).asignacion;
-  if (!propuesto) avisos.push(`Ningún perfil es plenamente compatible. El más cercano es «${comps[0].nombre}» (${comps[0].encontradas} de ${comps[0].total} columnas).`);
+  const cabeceras = columnasArchivo(elegida.cabs);
+  // Solo un perfil COMPATIBLE (o el elegido por la persona) reconoce columnas por sí mismo; si no, el
+  // catálogo común, que detecta las columnas que compiten por un mismo campo.
+  const perfilBase = propuesto ? perfiles.find((p) => p.id === propuesto.perfilId) : opciones.perfiles?.length === 1 ? opciones.perfiles[0] : undefined;
+  const correspondencia = proponerCorrespondencia(cabeceras, perfilBase);
+  if (!propuesto && comps.length) avisos.push(`Ningún perfil es plenamente compatible. El más cercano es «${comps[0].nombre}» (${comps[0].encontradas} de ${comps[0].total} columnas): relacione las columnas en el paso «Columnas».`);
   for (const c of comps) for (const d of c.diferencias) if (c === propuesto && d.coincidencia === 'tildes') avisos.push(`Cabecera «${d.cabeceraArchivo}» reconocida como «${d.cabeceraPerfil}» pese a una diferencia de tildes: revísala.`);
 
   // 3. Columnas, tipos y formatos
@@ -438,6 +471,8 @@ export async function analizarLibroLeido(leido: LibroLeido, bytes: Uint8Array, n
     hojaDatos: ws.name,
     perfiles: comps.map(({ asignacion: _a, ...c }) => c),
     perfilPropuesto: propuesto?.perfilId ?? null,
+    cabeceras,
+    correspondencia,
     columnas,
     filas: { filaCabecera: elegida.fila, conDatos: filasConDatos.length, primera: filasConDatos[0] ?? null, ultima: filasConDatos.at(-1) ?? null, enBlancoIntercaladas: enBlanco, posiblesTotales },
     estructura: { panelesCongelados: vista?.state === 'frozen' ? { filas: vista.ySplit ?? 0, columnas: vista.xSplit ?? 0 } : undefined, filtro, filasOcultas, columnasOcultas, celdasCombinadas: merges, validaciones, formulas },

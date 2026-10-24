@@ -45,7 +45,7 @@ export const BASE_INDEXEDDB: Record<TipoEspacio, string> = { ensayo: 'ulit-censo
  * (`CENSO COMPLETO MEDINA 2025(1).xlsx`). Una huella no revela el contenido. Se usa para:
  * avisar si el archivo elegido en el espacio real NO es ese; e impedir que se use en el ensayo.
  */
-export const SHA256_ORIGINAL_MEDINA_2025 = '645179a850474ab92bc54c9ed4e6e2f300790f62081fb0ea02d3999e3c4cb67a';
+export { SHA256_ORIGINAL_MEDINA_2025 } from './xlsx/referencias';
 
 export interface MetaEspacio {
   espacio: TipoEspacio;

@@ -34,14 +34,40 @@ export interface ColumnaPerfil {
   nota?: string;
 }
 
+/**
+ * Indicadores esperados de un censo CONCRETO (informe agregado facilitado por quien lo elaboró). Solo
+ * se comparan cuando el archivo es ese censo (misma huella SHA-256) o la persona lo pide expresamente.
+ */
+export interface ReferenciaCenso {
+  descripcion: string;
+  sha256?: string;
+  indicadores?: Record<string, unknown>;
+}
+
+/**
+ * Perfil de importación: DATOS (no código). Dice qué columna del Excel corresponde a cada campo del
+ * catálogo común (`camposImportacion.ts`), dónde están los datos y qué columnas adicionales se
+ * conservan sin interpretarlas. Es versionado: cambiar una correspondencia crea una versión nueva.
+ */
 export interface PerfilImportacion {
+  /** Marca de formato al exportar o guardar el perfil. */
+  formato?: 'ulit-censo/perfil-importacion';
   id: string;
   version: number;
   nombre: string;
   descripcion: string;
+  /** «referencia»: incluido en la aplicación; «usuario»: creado con la correspondencia de columnas. */
+  origen?: 'referencia' | 'usuario';
   /** Nombres habituales de la hoja de datos (solo orientativos: se detecta por estructura). */
   hojasHabituales: string[];
+  /** Hoja y fila de cabecera elegidas al crear el perfil (orientativas para otros archivos). */
+  ubicacion?: { hoja?: string; filaCabecera?: number };
   columnas: ColumnaPerfil[];
+  /** Cabeceras de columnas que no corresponden a ningún campo: se conservan tal cual, sin interpretar. */
+  adicionales?: string[];
+  /** Solo en perfiles de un censo concreto: indicadores y huella de referencia (opcionales). */
+  referencia?: ReferenciaCenso;
+  creado?: { por?: string; fecha: string };
 }
 
 const c = (clave: string, cabecera: string, tipo: TipoEsperado, extra: Partial<ColumnaPerfil> = {}): ColumnaPerfil => ({ clave, cabecera, tipo, obligatoria: true, ...extra });

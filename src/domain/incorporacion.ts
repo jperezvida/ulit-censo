@@ -535,8 +535,12 @@ export function aplicarIncorporacion(
     const exc = exclusiones.get(pf.fila);
     const registro: RegistroOrigen = {
       id: regId, importacionId, fila: pf.fila,
-      datos: Object.fromEntries(capa.columnas.map((c) => [c.cabecera.trim(), textoCelda(fo.celdas[c.clave] ?? { t: 'vacio' })])),
+      datos: {
+        ...Object.fromEntries(capa.columnas.map((c) => [c.cabecera.trim(), textoCelda(fo.celdas[c.clave] ?? { t: 'vacio' })])),
+        ...Object.fromEntries((capa.adicionales ?? []).map((a) => [a.cabecera.trim(), textoCelda(fo.adicionales?.[a.letra] ?? { t: 'vacio' })])),
+      },
       original: fo.celdas,
+      ...(capa.adicionales?.length ? { adicionales: Object.fromEntries(capa.adicionales.filter((a) => fo.adicionales?.[a.letra]).map((a) => [a.cabecera.trim(), fo.adicionales![a.letra]])) } : {}),
       interpretacion: {
         // Solo las celdas NO triviales: una celda «válida» por lectura directa se reconstruye del
         // original con la misma regla (perfil y versión en la traza). Así no se duplica el archivo.

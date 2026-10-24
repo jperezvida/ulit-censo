@@ -479,9 +479,17 @@ describe('C1b · Desde XLSX ficticios (lector seguro y perfiles de C1a)', () => 
     await expect(interpretarXlsx(bytes, 'x.xlsx', {}, { ...LIMITES_XLSX, maxBytesArchivo: 1000 })).rejects.toBeInstanceOf(ErrorLector);
   });
 
-  it('rechaza con claridad un libro sin perfil compatible', async () => {
-    const bytes = await libroFicticio({ filas: 10, omitir: ['Local Vacío', 'Nº redes', 'web', 'Facebook'] });
+  it('rechaza con claridad un libro sin las columnas obligatorias (calle y número)', async () => {
+    const bytes = await libroFicticio({ filas: 10, omitir: ['Dirección', 'Num'] });
     await expect(interpretarXlsx(bytes, 'x.xlsx')).rejects.toThrow(/no es compatible con ningún perfil/);
+  });
+
+  it('G1 · faltan columnas OPCIONALES: se interpreta sin inventar sus valores', async () => {
+    const bytes = await libroFicticio({ filas: 10, omitir: ['Local Vacío', 'Nº redes', 'web', 'Facebook'] });
+    const r = await interpretarXlsx(bytes, 'x.xlsx');
+    expect(r.filas).toHaveLength(10);
+    expect(r.original.columnas.map((c) => c.clave)).not.toContain('vacio');
+    expect(r.filas.every((f) => f.local === 'desconocido' && !('vacio' in f.celdas) && !('web' in f.celdas))).toBe(true);
   });
 
   it('rendimiento: 10.000 filas ficticias', async () => {

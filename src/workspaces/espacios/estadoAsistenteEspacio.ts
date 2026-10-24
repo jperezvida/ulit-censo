@@ -3,6 +3,8 @@ import type { DecisionesIncorporacion, PlanIncorporacion } from '../../domain/in
 import type { ResultadoInterpretacion } from '../../domain/xlsx/interpretacion';
 import type { InformeEstructural } from '../../domain/xlsx/analisis';
 import type { Id } from '../../domain/types';
+import type { PerfilImportacion } from '../../domain/xlsx/perfilesImportacion';
+import type { InformeAgregado } from '../../domain/xlsx/referencias';
 
 /**
  * Estado del asistente de incorporación en un espacio aislado (C1e). Vive SOLO en memoria: los bytes
@@ -10,7 +12,16 @@ import type { Id } from '../../domain/types';
  * cambian las decisiones) y se descartan al reiniciar o cerrar la pestaña. Nunca se guardan en el
  * navegador, en el repositorio ni en registros de diagnóstico.
  */
-export type EtapaEspacio = 1 | 2 | 3 | 4 | 5;
+export type EtapaEspacio = 1 | 2 | 3 | 4 | 5 | 6;
+
+/** G1 · Cómo leer el archivo: perfil (de referencia, guardado o creado ahora), hoja, cabecera y referencia. */
+export interface LecturaArchivo {
+  perfil: PerfilImportacion;
+  hoja: string;
+  filaCabecera: number;
+  /** Indicadores de referencia que se comparan (solo con un perfil de un censo concreto). */
+  referencia?: InformeAgregado;
+}
 
 export interface ArchivoElegido {
   nombre: string;
@@ -24,6 +35,7 @@ interface Estado {
   etapa: EtapaEspacio;
   archivo: ArchivoElegido | null;
   decisiones: DecisionesIncorporacion;
+  lectura: LecturaArchivo | null;
   preparado: { resultado: ResultadoInterpretacion & { estructura?: InformeEstructural }; plan: PlanIncorporacion } | null;
   interpretadoCon: string;
   revisada: boolean;
@@ -34,7 +46,7 @@ interface Estado {
   reiniciar: () => void;
 }
 
-const INICIAL = { etapa: 1 as EtapaEspacio, archivo: null, decisiones: {}, preparado: null, interpretadoCon: '', revisada: false, cargando: null, error: null, aplicado: null };
+const INICIAL = { etapa: 1 as EtapaEspacio, archivo: null, decisiones: {}, lectura: null, preparado: null, interpretadoCon: '', revisada: false, cargando: null, error: null, aplicado: null };
 
 export const useAsistenteEspacio = create<Estado>((set) => ({
   ...INICIAL,

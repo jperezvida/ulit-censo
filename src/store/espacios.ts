@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { createStore, get as idbGet, set as idbSet, type UseStore } from 'idb-keyval';
 import { VERSION_DATOS, type BaseDatos } from '../domain/db';
 import { migrarALaActual } from '../domain/migraciones';
+import { PERFIL_ITINERARIO_28 } from '../domain/xlsx/perfilesImportacion';
 import { BASE_INDEXEDDB, crearBaseEspacio, huellaBase, municipioDeEspacio, personaEspacio, SHA256_ORIGINAL_MEDINA_2025, verificarEspacio, type TipoEspacio } from '../domain/espacios';
 import { aplicarIncorporacion, deshacerIncorporacion, type DecisionesIncorporacion, type DestinoIncorporacion, type PlanIncorporacion } from '../domain/incorporacion';
 import { comprobarRespaldo, crearRespaldo, type Respaldo } from '../domain/respaldo';
@@ -129,10 +130,12 @@ export function requisitosIncorporacion(p: {
     { id: 'plan', ok: !!p.plan?.aplicable, texto: !p.plan ? 'Falta analizar el archivo.' : p.plan.aplicable ? 'Plan aplicable, sin bloqueos.' : `Plan bloqueado: ${p.plan.bloqueos[0]?.mensaje ?? ''}` },
     {
       id: 'perfil',
-      ok: !p.plan || (p.plan.perfil.id === 'censo-municipal-27' && p.plan.destino.anio === 2025),
-      texto: !p.plan || (p.plan.perfil.id === 'censo-municipal-27' && p.plan.destino.anio === 2025)
-        ? 'Censo histórico de 27 columnas, como campaña histórica de 2025.'
-        : 'En esta fase solo se incorpora el censo histórico 2025 (27 columnas). Los itinerarios y datos de campo de 2026 no se importan todavía.',
+      // G1: cualquier perfil de CENSO histórico (de referencia o creado con la correspondencia de columnas);
+      // los itinerarios de campo 2026 no se importan como histórico.
+      ok: !p.plan || (p.plan.perfil.id !== PERFIL_ITINERARIO_28.id && p.plan.destino.anio === 2025),
+      texto: !p.plan || (p.plan.perfil.id !== PERFIL_ITINERARIO_28.id && p.plan.destino.anio === 2025)
+        ? `Censo histórico (perfil «${p.plan?.perfil.id ?? '—'}»), como campaña histórica de 2025.`
+        : 'En esta fase solo se incorpora un censo histórico como campaña de 2025. Los itinerarios y datos de campo de 2026 no se importan todavía.',
     },
     {
       id: 'archivo',

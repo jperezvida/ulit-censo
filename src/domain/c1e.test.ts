@@ -39,7 +39,7 @@ describe('C1e · Archivo sintético con las características agregadas del censo
   it('reproduce exactamente todos los indicadores del informe agregado y lleva la marca de sintético', async () => {
     const db = base();
     const { resultado } = await prepararIncorporacion(db, bytes, ARCHIVO_SINTETICO_C1E, destino(), periodo(db));
-    const d = diagnosticoAgregado(resultado);
+    const d = diagnosticoAgregado(resultado, INFORME_AGREGADO_MEDINA_2025);
     expect(d.diferencias).toEqual([]);
     expect(d.indicadores.filter((i) => i.coincide).length).toBeGreaterThanOrEqual(24);
     // Hojas auxiliares presentes y NO usadas como registros

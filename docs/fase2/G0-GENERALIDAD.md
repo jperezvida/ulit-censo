@@ -45,3 +45,14 @@ Las 7 limitaciones están escritas como el comportamiento **deseado** y marcadas
 - Si una empieza a funcionar, la CI **avisa**, para convertirla en una prueba normal.
 
 G1 las convierte en pruebas normales.
+
+## Resultado tras G1
+
+Las 7 limitaciones funcionan ya y son pruebas normales:
+- A y B: se detectan su hoja y su fila de cabecera, y se interpretan todas sus filas.
+- Las tres variantes del formato Medina se interpretan.
+- En C, las cuatro cabeceras dudosas **no** se asignan solas: se relacionan en el paso «Columnas».
+
+**Límite que se mantiene a propósito:** valores como «Sí»/«No» en una columna 0/1 (caso A) **no se convierten**. Quedan como «no reconocidos», con su incidencia, hasta que se apruebe una regla de equivalencia (decisión pendiente, no se inventa).
+
+Detalles en [G1-PERFILES.md](G1-PERFILES.md).

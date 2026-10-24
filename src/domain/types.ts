@@ -274,6 +274,8 @@ export interface RegistroOrigen {
   datos: Record<string, string>;
   /** C1c: celdas originales con su tipo, valor y formato, por clave de columna del perfil. */
   original?: Record<string, CeldaOriginal>;
+  /** G1 · Columnas ADICIONALES del archivo (sin campo de ULIT), por su cabecera exacta: se conservan sin interpretar. */
+  adicionales?: Record<string, CeldaOriginal>;
   /**
    * C1c: interpretación de C1b, sin confirmar nada. `celdas` solo contiene las celdas no triviales
    * (vacías, no aplicables, inválidas, transformadas o pendientes); las válidas por lectura directa

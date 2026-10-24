@@ -33,6 +33,17 @@ beforeEach(async () => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
+
+/** Paso «Columnas»: elegir el perfil de referencia de Medina 2025 y comparar con su informe. */
+async function columnasMedina() {
+  const sel = await screen.findByLabelText('Perfil de importación', undefined, { timeout: 20000 });
+  fireEvent.change(sel, { target: { value: 'medina-2025-referencia' } });
+  await waitFor(() => expect(screen.getByLabelText('Comparar con el informe de referencia')).toBeInTheDocument(), { timeout: 20000 });
+  fireEvent.click(screen.getByLabelText('Comparar con el informe de referencia'));
+  await waitFor(() => expect(screen.getByRole('button', { name: /Analizar con estas columnas/ })).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: /Analizar con estas columnas/ }));
+}
+
 describe('C1e-B · Análisis del Excel real SIN GUARDAR', () => {
   it('almacén: la base vive solo en memoria y toda escritura se rechaza', async () => {
     expect(await useEspacios.getState().abrirEnMemoria('real', { nombre: 'Persona que analiza', roles: ['coordinador'] })).toEqual({ ok: true });
@@ -57,7 +68,8 @@ describe('C1e-B · Análisis del Excel real SIN GUARDAR', () => {
     await screen.findByLabelText('Archivo XLSX del censo', undefined, { timeout: 20000 });
     fireEvent.change(screen.getByLabelText('Archivo XLSX del censo'), { target: { files: [new File([externo as BlobPart], 'censo.xlsx')] } });
     await screen.findByLabelText('Identificación del archivo', undefined, { timeout: 20000 });
-    fireEvent.click(screen.getByRole('button', { name: /Analizar el archivo/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Siguiente: columnas/ }));
+    await columnasMedina();
     await screen.findByRole('region', { name: 'Diagnóstico agregado' }, { timeout: 60000 });
     // Diagnóstico corregido: calle normalizada, «S/N» y portales numéricos por separado
     const ind = screen.getByRole('table', { name: 'Indicadores del archivo' });

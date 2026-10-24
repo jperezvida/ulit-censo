@@ -14,14 +14,16 @@ import { ContextoIncorporacion } from '../imports/incorporacion/contextoIncorpor
 import { firmaInterpretacion, hoy } from '../imports/incorporacion/estadoAsistente';
 import { useAsistenteEspacio, type EtapaEspacio } from './estadoAsistenteEspacio';
 import { leerBytes } from './leerArchivo';
+import { PasoColumnas } from './PasoColumnas';
 import type { BaseDatos } from '../../domain/db';
 
 const ETAPAS: { n: EtapaEspacio; t: string; d: string }[] = [
-  { n: 1, t: 'Archivo', d: 'Selección local y huella' },
-  { n: 2, t: 'Diagnóstico', d: 'Comparar con el informe' },
-  { n: 3, t: 'Decisiones', d: 'Resolver lo pendiente' },
-  { n: 4, t: 'Vista previa', d: 'Revisar y confirmar' },
-  { n: 5, t: 'Resultado', d: 'Incorporado' },
+  { n: 1, t: 'Archivo', d: 'Elegir el Excel' },
+  { n: 2, t: 'Columnas', d: 'Cómo se lee' },
+  { n: 3, t: 'Diagnóstico', d: 'Recuentos y avisos' },
+  { n: 4, t: 'Decisiones', d: 'Resolver lo pendiente' },
+  { n: 5, t: 'Vista previa', d: 'Revisar y confirmar' },
+  { n: 6, t: 'Resultado', d: 'Incorporado' },
 ];
 
 const errorTexto = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -49,10 +51,10 @@ export function AsistenteEspacio({ tipo }: { tipo: TipoEspacio }) {
   const persona = personaEspacio(db);
   const destino = useMemo<DestinoIncorporacion>(() => ({ municipioId: municipioDeEspacio(tipo), anio: 2025, nombre: `Censo 2025 · histórico importado${tipo === 'real' ? '' : ' (ENSAYO)'}` }), [tipo]);
   const autorizado = !!persona && (persona.roles.includes('coordinador') || persona.roles.includes('administrador'));
-  const puedeIr = (n: EtapaEspacio) => n === 1 || (n <= 4 && !!st.preparado && !st.aplicado) || (n === 5 && !!st.aplicado);
+  const puedeIr = (n: EtapaEspacio) => n === 1 || (n === 2 && !!st.archivo && !st.aplicado) || (n <= 5 && !!st.preparado && !st.aplicado) || (n === 6 && !!st.aplicado);
 
-  const recalcular = async (decisiones: DecisionesIncorporacion = st.decisiones, forzar = false) => {
-    const firma = firmaInterpretacion(decisiones);
+  const recalcular = async (decisiones: DecisionesIncorporacion = st.decisiones, forzar = false, lectura = st.lectura) => {
+    const firma = `${firmaInterpretacion(decisiones)}|${lectura ? JSON.stringify([lectura.perfil.id, lectura.perfil.version, lectura.perfil.columnas, lectura.hoja, lectura.filaCabecera]) : ''}`;
     if (!forzar && st.preparado && firma === st.interpretadoCon) {
       try {
         st.set({ decisiones, preparado: { ...st.preparado, plan: planificarIncorporacion(useEspacios.getState().db!, st.preparado.resultado, destino, decisiones) }, error: null, revisada: false });
@@ -64,7 +66,7 @@ export function AsistenteEspacio({ tipo }: { tipo: TipoEspacio }) {
     if (!st.archivo) return st.set({ error: 'Seleccione primero el archivo.' });
     st.set({ decisiones, cargando: 'Leyendo e interpretando el archivo en este navegador (lectura segura C1a + interpretación C1b)…', error: null, revisada: false });
     try {
-      const r = await prepararIncorporacion(useEspacios.getState().db!, st.archivo.bytes, st.archivo.nombre, destino, decisiones);
+      const r = await prepararIncorporacion(useEspacios.getState().db!, st.archivo.bytes, st.archivo.nombre, destino, decisiones, lectura ? { perfil: lectura.perfil, hoja: lectura.hoja, filaCabecera: lectura.filaCabecera } : {});
       useAsistenteEspacio.getState().set({ preparado: r, interpretadoCon: firma, cargando: null });
     } catch (e) {
       useAsistenteEspacio.getState().set({ cargando: null, preparado: null, error: errorTexto(e) });
@@ -87,17 +89,22 @@ export function AsistenteEspacio({ tipo }: { tipo: TipoEspacio }) {
         {st.cargando && <div className="t-info inc-progreso" role="status"><span className="inc-spinner" /> {st.cargando}</div>}
         {st.error && <div className="t-info error" role="alert"><AlertTriangle size={15} /> {st.error}</div>}
 
-        {st.etapa === 1 && <EtapaArchivo tipo={tipo} onAnalizar={async () => { await recalcular(st.decisiones, true); if (!useAsistenteEspacio.getState().error) useAsistenteEspacio.getState().set({ etapa: 2 }); }} />}
-        {st.etapa === 2 && st.preparado && <EtapaDiagnostico tipo={tipo} />}
-        {st.etapa === 3 && st.preparado && <Decisiones resultado={st.preparado.resultado} plan={st.preparado.plan} decisiones={st.decisiones} onCambiar={(d) => recalcular(d)} />}
-        {st.etapa === 4 && st.preparado && <EtapaVistaPrevia tipo={tipo} destino={destino} />}
-        {st.etapa === 5 && st.aplicado && <EtapaResultado />}
+        {st.etapa === 1 && <EtapaArchivo tipo={tipo} onAnalizar={() => st.set({ etapa: 2, error: null })} />}
+        {st.etapa === 2 && st.archivo && <PasoColumnas onContinuar={async (lectura) => {
+          useAsistenteEspacio.getState().set({ lectura });
+          await recalcular(useAsistenteEspacio.getState().decisiones, true, lectura);
+          if (!useAsistenteEspacio.getState().error) useAsistenteEspacio.getState().set({ etapa: 3 });
+        }} />}
+        {st.etapa === 3 && st.preparado && <EtapaDiagnostico tipo={tipo} />}
+        {st.etapa === 4 && st.preparado && <Decisiones resultado={st.preparado.resultado} plan={st.preparado.plan} decisiones={st.decisiones} onCambiar={(d) => recalcular(d)} />}
+        {st.etapa === 5 && st.preparado && <EtapaVistaPrevia tipo={tipo} destino={destino} />}
+        {st.etapa === 6 && st.aplicado && <EtapaResultado />}
 
-        {st.etapa > 1 && st.etapa < 5 && (
+        {st.etapa > 2 && st.etapa < 6 && (
           <div className="inc-nav fila">
             <button className="btn" onClick={() => st.set({ etapa: (st.etapa - 1) as EtapaEspacio })}><ArrowLeft size={15} /> Anterior</button>
             <span className="esp" />
-            {st.etapa < 4 && <button className="btn primario" onClick={() => st.set({ etapa: (st.etapa + 1) as EtapaEspacio })}>Siguiente: {ETAPAS[st.etapa].t} <ArrowRight size={15} /></button>}
+            {st.etapa < 5 && <button className="btn primario" onClick={() => st.set({ etapa: (st.etapa + 1) as EtapaEspacio })}>Siguiente: {ETAPAS[st.etapa].t} <ArrowRight size={15} /></button>}
           </div>
         )}
       </div>
@@ -164,17 +171,18 @@ function EtapaArchivo({ tipo, onAnalizar }: { tipo: TipoEspacio; onAnalizar: () 
 
       <div className="inc-nav fila inc-ancho">
         <span className="muted esp">Persona: {personaEspacio(db)?.nombre}</span>
-        <button className="btn primario" disabled={!a || !!bloqueo || !!st.cargando} onClick={onAnalizar}>Analizar el archivo <ArrowRight size={15} /></button>
+        <button className="btn primario" disabled={!a || !!bloqueo || !!st.cargando} onClick={onAnalizar}>Siguiente: columnas <ArrowRight size={15} /></button>
       </div>
     </div>
   );
 }
 
 function EtapaDiagnostico({ tipo }: { tipo: TipoEspacio }) {
-  const { preparado, decisiones } = useAsistenteEspacio();
+  const { preparado, decisiones, lectura } = useAsistenteEspacio();
   const db = useEspacios((s) => s.db!);
   const { resultado, plan } = preparado!;
-  const diag = useMemo(() => diagnosticoAgregado(resultado), [resultado]);
+  const ref = lectura?.referencia;
+  const diag = useMemo(() => diagnosticoAgregado(resultado, ref), [resultado, ref]);
   const calles = useMemo(() => conciliacionCalles(db, resultado, municipioDeEspacio(tipo), decisiones), [db, resultado, tipo, decisiones]);
   const sen = useMemo(() => senales(resultado), [resultado]);
   const items = useMemo(() => itemsRevision(resultado, plan, decisiones), [resultado, plan, decisiones]);
@@ -182,17 +190,21 @@ function EtapaDiagnostico({ tipo }: { tipo: TipoEspacio }) {
   return (
     <div className="col" style={{ gap: 12 }}>
       <section className="tarjeta inc-bloque" aria-label="Diagnóstico agregado">
-        <h3>Diagnóstico agregado frente al informe de la Cátedra</h3>
-        <p className="muted">Recuentos sobre los valores ORIGINALES del archivo, sin depurar. Hojas: {diag.hojas.map((h) => `«${h.nombre}» (${h.rol}${h.usada ? ', origen de los registros' : ', no se importa'})`).join(' · ')}.</p>
-        {diag.diferencias.length === 0
-          ? <div className="t-info ok"><CheckCircle2 size={15} /> Los {diag.indicadores.filter((i) => i.esperado !== undefined).length} indicadores coinciden con el informe agregado.</div>
-          : <div className="t-info aviso" role="alert"><AlertTriangle size={15} /> {diag.diferencias.length} indicador(es) no coinciden con el informe agregado: revíselos antes de continuar.</div>}
-        <table className="tabla ap-tabla" aria-label="Indicadores del archivo">
-          <thead><tr><th>Indicador</th><th className="num">Archivo</th><th className="num">Informe</th><th /></tr></thead>
-          <tbody>{diag.indicadores.map((i) => (
-            <tr key={i.clave} className={i.coincide === false ? 'aviso' : ''}><td>{i.etiqueta}{i.nota && <div className="muted ind-nota">{i.nota}</div>}</td><td className="num">{typeof i.valor === 'number' ? fmt(i.valor) : i.valor}</td><td className="num muted">{i.esperado === undefined ? '—' : typeof i.esperado === 'number' ? fmt(i.esperado) : i.esperado}</td><td>{i.coincide === undefined ? null : i.coincide ? <CheckCircle2 size={14} aria-label="coincide" /> : <AlertTriangle size={14} aria-label="no coincide" />}</td></tr>
-          ))}</tbody>
-        </table>
+        <h3>{ref ? 'Diagnóstico frente al informe de referencia' : 'Diagnóstico del archivo'}</h3>
+        <p className="muted">Recuentos sobre los valores ORIGINALES del archivo, sin depurar. Hojas: {diag.hojas.map((h) => `«${h.nombre}» (${h.rol}${h.usada ? ', origen de los registros' : ', no se importa'})`).join(' · ')}. Perfil: {lectura?.perfil.nombre ?? '—'}.</p>
+        {!ref
+          ? <p className="muted" style={{ margin: 0 }}>Sin informe de referencia con el que comparar: se muestran los recuentos del archivo.</p>
+          : diag.diferencias.length === 0
+            ? <div className="t-info ok"><CheckCircle2 size={15} /> Los {diag.indicadores.filter((i) => i.esperado !== undefined).length} indicadores coinciden con el informe de referencia.</div>
+            : <div className="t-info aviso" role="alert"><AlertTriangle size={15} /> {diag.diferencias.length} indicador(es) no coinciden con el informe de referencia: revíselos antes de continuar.</div>}
+        <div className="tabla-scroll">
+          <table className="tabla ap-tabla" aria-label="Indicadores del archivo">
+            <thead><tr><th>Indicador</th><th className="num">Archivo</th>{ref && <><th className="num">Informe</th><th /></>}</tr></thead>
+            <tbody>{diag.indicadores.map((i) => (
+              <tr key={i.clave} className={i.coincide === false ? 'aviso' : ''}><td>{i.etiqueta}{i.nota && <div className="muted ind-nota">{i.nota}</div>}</td><td className="num">{typeof i.valor === 'number' ? fmt(i.valor) : i.valor}</td>{ref && <><td className="num muted">{i.esperado === undefined ? '—' : typeof i.esperado === 'number' ? fmt(i.esperado) : i.esperado}</td><td>{i.coincide === undefined ? null : i.coincide ? <CheckCircle2 size={14} aria-label="coincide" /> : <AlertTriangle size={14} aria-label="no coincide" />}</td></>}</tr>
+            ))}</tbody>
+          </table>
+        </div>
       </section>
 
       <section className="tarjeta inc-bloque" aria-label="Conciliación de calles">
@@ -239,7 +251,8 @@ function EtapaVistaPrevia({ tipo, destino }: { tipo: TipoEspacio; destino: Desti
   const { resultado, plan } = st.preparado!;
   const a = st.archivo!;
   const rec = recuentoRegistros(plan);
-  const diag = useMemo(() => diagnosticoAgregado(resultado), [resultado]);
+  const ref = st.lectura?.referencia;
+  const diag = useMemo(() => diagnosticoAgregado(resultado, ref), [resultado, ref]);
   const req = requisitosIncorporacion({ tipo, db: esp.db!, huella: esp.huella, respaldoVerificado: esp.respaldoVerificado, almacenamiento: esp.almacenamiento, plan, vistaPreviaRevisada: st.revisada, sintetico: a.sintetico, soloMemoria: esp.soloMemoria });
   const listo = req.every((r) => r.ok);
   const per = periodoDe(destino.anio, st.decisiones);
@@ -248,7 +261,7 @@ function EtapaVistaPrevia({ tipo, destino }: { tipo: TipoEspacio; destino: Desti
     st.set({ error: null });
     const r = await esp.incorporar({ resultado, destino, decisiones: st.decisiones, plan, requisitos: req });
     if (!r.ok) return st.set({ error: r.error ?? 'No se ha incorporado nada.' });
-    st.set({ etapa: 5, aplicado: { importacionId: r.importacionId!, campanaId: r.campanaId!, creadas: r.creadas! } });
+    st.set({ etapa: 6, aplicado: { importacionId: r.importacionId!, campanaId: r.campanaId!, creadas: r.creadas! } });
   };
   return (
     <div className="inc-rejilla">

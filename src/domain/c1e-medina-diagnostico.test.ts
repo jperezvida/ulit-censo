@@ -5,7 +5,7 @@ import { webcrypto } from 'node:crypto';
 import { validarInstantanea } from '../data/instantaneaOsm';
 import { ARCHIVO_SINTETICO_C1E, CALLE_SN, libroSinteticoC1e, PORTALES_VARIANTE } from '../data/xlsxSinteticoC1e';
 import { crearBaseEspacio, municipioDeEspacio } from './espacios';
-import { conciliacionCalles, denominacionesPorConciliar, diagnosticoAgregado, senales } from './c1e';
+import { conciliacionCalles, denominacionesPorConciliar, diagnosticoAgregado, INFORME_AGREGADO_MEDINA_2025, senales } from './c1e';
 import { FUENTE_TXT, proponer } from './conciliacionCalles';
 import { prepararIncorporacion } from './incorporacionXlsx';
 import { aplicarIncorporacion, planificarIncorporacion, type DecisionesIncorporacion } from './incorporacion';
@@ -41,7 +41,7 @@ describe('Diagnóstico corregido · calles normalizadas y «S/N»', () => {
   it('pares y portales compartidos con la calle normalizada coinciden con la referencia (625 / 445); sin normalizar serían 630 / 440', async () => {
     const db = base();
     const { resultado } = await prepararIncorporacion(db, bytes, ARCHIVO_SINTETICO_C1E, destino, {});
-    const d = diagnosticoAgregado(resultado);
+    const d = diagnosticoAgregado(resultado, INFORME_AGREGADO_MEDINA_2025);
     const v = (k: string) => d.indicadores.find((i) => i.clave === k);
     expect(d.diferencias).toEqual([]);
     expect(v('pares')).toMatchObject({ valor: 625, esperado: 625, coincide: true });

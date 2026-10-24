@@ -10,7 +10,7 @@
 @keyframes inc-giro { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .inc-spinner { animation: none; } }
 
-.inc-pasos { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.inc-pasos { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; }
 .inc-pasos button {
   width: 100%; display: flex; gap: 8px; align-items: center; text-align: left; padding: 8px 10px; border-radius: 8px;
   border: 1px solid var(--linea); background: var(--superficie); cursor: pointer; font: inherit; color: inherit; min-width: 0;
@@ -88,7 +88,6 @@
 .dec-tarjeta .tabla td { white-space: normal; }
 
 @media (max-width: 1100px) {
-  .inc-pasos { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .inc-pasos button > span:last-child .muted { display: none; }
   .rev-cuerpo { grid-template-columns: 1fr; }
   .rev-grupos { max-height: 220px; }
