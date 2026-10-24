@@ -169,7 +169,8 @@ describe('C1a · Tipos, formatos y filas', () => {
     expect(col('seguidoresInstagram').discordantes).toEqual({ 'texto u otro tipo en columna numérica': 1 });
     expect(col('numero').variantes).toEqual({ 'S/N': 1, 'número con sufijo': 1 });
     // El informe no contiene valores: ni nombres, ni direcciones, ni los números imposibles
-    const json = JSON.stringify(inf);
+    // (sin la huella ni la fecha de generación, que varían en cada ejecución y podrían contener «247» o «379»)
+    const json = JSON.stringify({ ...inf, generado: '', archivo: { ...inf.archivo, sha256: '' } });
     expect(json).not.toMatch(/FICTICIO 0|VÍA FICTICIA|247|379|sin dato/);
   });
 
