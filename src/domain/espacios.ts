@@ -4,6 +4,7 @@ import { MEDINA } from '../data/callejero';
 import type { Calle, Id, Persona, Rol } from './types';
 import { CONFIG_TERRITORIAL, territorioComoDato } from './territorio';
 import { verificarSeparacionMunicipios } from './municipios';
+import { referenciasIniciales } from './callejeros';
 
 /**
  * C1e · ESPACIOS DE TRABAJO independientes.
@@ -73,8 +74,12 @@ const slug = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCa
 
 export interface DatosCreacion {
   persona: { nombre: string; roles: Rol[] };
-  /** Callejero REAL de Medina (instantánea OSM validada). Sin él no se crea el espacio. */
+  /**
+   * Callejero REAL de Medina (instantánea OSM validada). G3: Medina es OPCIONAL (caso de prueba, no la base
+   * obligatoria): con `incluirMedina: false` el espacio se crea sin ningún municipio.
+   */
   calles: Calle[];
+  incluirMedina?: boolean;
   detalleCallejero: string;
   /** Identificador aleatorio del espacio (lo da quien llama; en pruebas, fijo). */
   espacioId: string;
@@ -90,7 +95,8 @@ export function crearBaseEspacio(tipo: TipoEspacio, d: DatosCreacion): BaseDatos
   const nombre = d.persona.nombre.trim();
   if (nombre.length < 3) throw new ErrorDominio('regla', 'Indique el nombre de la persona responsable (al menos 3 caracteres).');
   if (!d.persona.roles.length) throw new ErrorDominio('regla', 'Indique al menos un rol.');
-  if (d.calles.length < 20 || d.calles.some((c) => c.procedencia !== 'osm')) {
+  const conMedina = d.incluirMedina !== false;
+  if (conMedina && (d.calles.length < 20 || d.calles.some((c) => c.procedencia !== 'osm'))) {
     throw new ErrorDominio('bloqueado', 'Hace falta el callejero real de Medina del Campo (instantánea OSM validada): no se crea el espacio con un callejero simulado.');
   }
   const p = PREFIJO[tipo];
@@ -99,6 +105,10 @@ export function crearBaseEspacio(tipo: TipoEspacio, d: DatosCreacion): BaseDatos
   const munId = municipioDeEspacio(tipo);
   const persona: Persona = { id: `${p}-p-${slug(nombre)}`, nombre, iniciales: iniciales(nombre), roles: d.persona.roles, color: tipo === 'real' ? '#8a1c1c' : '#5a48c9' };
   db.personas[persona.id] = persona;
+  if (!conMedina) {
+    db.meta = { espacio: tipo, espacioId: d.espacioId, espacioCreado: ahora, espacioCreadoPorId: persona.id };
+    return db;
+  }
   db.municipios[munId] = {
     id: munId, nombre: 'Medina del Campo', provincia: 'Valladolid', centro: MEDINA.centro, fuenteCallejero: 'osm',
     nota: tipo === 'real'
@@ -106,7 +116,8 @@ export function crearBaseEspacio(tipo: TipoEspacio, d: DatosCreacion): BaseDatos
       : 'Espacio de ENSAYO con archivos sintéticos. Separado de la demostración y del espacio real.',
     // G2: la configuración territorial y el estado del callejero se guardan como datos del municipio.
     territorio: territorioComoDato(CONFIG_TERRITORIAL['mun-medina']),
-    callejero: { estado: 'disponible', fuente: 'osm-instantanea', detalle: d.detalleCallejero, actualizado: ahora },
+    // G3: las referencias de denominación de partida (con su fuente) quedan como datos del callejero.
+    callejero: { estado: 'disponible', fuente: 'osm-instantanea', detalle: d.detalleCallejero, actualizado: ahora, referencias: referenciasIniciales(munId) },
   };
   for (const c of d.calles) {
     const id = `${p}-${c.id}`;
@@ -156,7 +167,8 @@ export function verificarEspacio(db: BaseDatos, tipo: TipoEspacio): string[] {
   for (const col of ['locales', 'negocios', 'campanas', 'importaciones'] as const) {
     for (const x of Object.values(db[col]) as { id: string; procedencia?: string }[]) if (x.procedencia === 'simulado') e.push(`${col} «${x.id}» procede de la demostración (simulado).`);
   }
-  for (const c of Object.values(db.calles)) if (c.procedencia !== 'osm' && c.procedencia !== 'manual') e.push(`Calle «${c.id}» no procede del callejero real.`);
+  // G3: OSM, callejero oficial («importado») o alta manual supervisada; nunca simulado.
+  for (const c of Object.values(db.calles)) if (c.procedencia !== 'osm' && c.procedencia !== 'manual' && c.procedencia !== 'importado') e.push(`Calle «${c.id}» no procede de un callejero real.`);
   // Coordenadas: en un espacio real no se generan ni se guardan posiciones simuladas.
   for (const l of Object.values(db.locales)) if (l.coord && !l.coordVerificada) e.push(`Local «${l.id}» con coordenadas sin verificar.`);
   return e.slice(0, 50);

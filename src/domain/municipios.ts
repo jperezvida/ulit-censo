@@ -1,5 +1,6 @@
 import { ErrorDominio, type BaseDatos } from './db';
 import { claveCalle } from './text';
+import { callesVigentes } from './callejeros';
 import type { Campana, ConfigTerritorialMunicipio, Id, Municipio, TipoCampana } from './types';
 import type { ReglaTerritorial } from './territorio';
 
@@ -108,7 +109,8 @@ export interface ResumenCallejero {
 /** Estado del callejero de un municipio, para mostrarlo y para decidir si se puede conciliar. */
 export function callejeroDe(db: BaseDatos, municipioId: Id): ResumenCallejero {
   const m = db.municipios[municipioId];
-  const calles = Object.values(db.calles).filter((c) => c.municipioId === municipioId).length;
+  // G3: solo las vías vigentes (un alta manual cuenta una vez validada).
+  const calles = callesVigentes(db, municipioId).length;
   if (!calles) return { disponible: false, calles: 0, texto: 'Sin callejero todavía: la conciliación territorial quedará pendiente (los registros se conservan sin vínculo con calles ni locales).' };
   const detalle = m?.callejero?.detalle ?? db.meta?.detalleCallejero;
   return { disponible: true, calles, texto: detalle ?? `${calles.toLocaleString('es-ES')} calles` };

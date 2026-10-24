@@ -4,6 +4,7 @@ import { fmt } from '../../../components/ui';
 import type { DecisionesIncorporacion } from '../../../domain/incorporacion';
 import { denominacionesPorConciliar, ESTADO_CALLE_TXT } from '../../../domain/c1e';
 import { FUENTE_TXT, type DecisionCalle, type Propuesta } from '../../../domain/conciliacionCalles';
+import { callesVigentes } from '../../../domain/callejeros';
 import type { ResultadoInterpretacion } from '../../../domain/xlsx/interpretacion';
 import { ChipEstado } from './RevisionGrupos';
 import { useCtxIncorporacion } from './contextoIncorporacion';
@@ -26,7 +27,7 @@ export function ConciliacionCalles({ resultado, decisiones, onCambiar, firma, si
 }) {
   const { db, destino } = useCtxIncorporacion();
   const lista = useMemo(() => denominacionesPorConciliar(db, resultado, destino.municipioId, decisiones), [db, resultado, destino, decisiones]);
-  const calles = useMemo(() => Object.values(db.calles).filter((c) => c.municipioId === destino.municipioId).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')), [db, destino]);
+  const calles = useMemo(() => callesVigentes(db, destino.municipioId).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')), [db, destino]);
   const decisionDe = (d: string) => decisiones.calles?.find((x) => x.denominacion === d);
   const fijar = (denominacion: string, dec: DecisionCalle | null) => {
     const resto = (decisiones.calles ?? []).filter((x) => x.denominacion !== denominacion);
@@ -70,11 +71,11 @@ export function ConciliacionCalles({ resultado, decisiones, onCambiar, firma, si
                     {dec ? (
                       <div className="col" style={{ gap: 3 }}>
                         <span><ChipEstado e="resuelto" /> {dec.accion === 'vincular' ? <>→ <b>{db.calles[dec.calleId]?.nombre ?? dec.calleId}</b></> : ESTADO_CALLE_TXT['sin-correspondencia']}</span>
-                        <span className="muted dec-nota"><CheckCircle2 size={13} /> {db.personas[dec.porId]?.nombre ?? dec.porId} · {dec.fecha}{dec.motivo ? ` · «${dec.motivo}»` : ''}{dec.accion === 'vincular' ? ` · fuente: ${dec.fuente === 'eleccion-manual' ? 'elección manual' : FUENTE_TXT[dec.fuente].titulo}` : ''}</span>
+                        <span className="muted dec-nota"><CheckCircle2 size={13} /> {db.personas[dec.porId]?.nombre ?? dec.porId} · {dec.fecha}{dec.motivo ? ` · «${dec.motivo}»` : ''}{dec.justificacion ? ` · justificación: ${dec.justificacion}` : ''}{dec.accion === 'vincular' ? ` · fuente: ${dec.fuente === 'eleccion-manual' ? 'elección manual' : FUENTE_TXT[dec.fuente].titulo}` : ''}</span>
                         <div><button className="btn s" onClick={() => fijar(d.denominacion, null)}><Undo2 size={13} /> Retirar la decisión</button></div>
                       </div>
                     ) : sinPermiso ? <span className="muted dec-nota">Pendiente · {sinPermiso}</span> : (
-                      <Decidir denominacion={d.denominacion} propuestas={d.propuestas} ausente={!!d.ausente} calles={calles} onDecidir={(x) => fijar(d.denominacion, { ...x, ...firma } as DecisionCalle)} />
+                      <Decidir denominacion={d.denominacion} propuestas={d.propuestas} ausente={d.ausente?.nota} calles={calles} onDecidir={(x) => fijar(d.denominacion, { ...x, ...firma } as DecisionCalle)} />
                     )}
                   </td>
                 </tr>
@@ -101,7 +102,7 @@ type Opcion = '' | 'sin' | 'otra' | Id;
 type SinFirma = DecisionCalle extends infer T ? (T extends unknown ? Omit<T, 'porId' | 'fecha'> : never) : never;
 
 function Decidir({ denominacion, propuestas, ausente, calles, onDecidir }: {
-  denominacion: string; propuestas: Propuesta[]; ausente: boolean; calles: { id: Id; nombre: string }[];
+  denominacion: string; propuestas: Propuesta[]; ausente?: string; calles: { id: Id; nombre: string }[];
   onDecidir: (d: SinFirma) => void;
 }) {
   const [opcion, setOpcion] = useState<Opcion>('');
@@ -110,9 +111,10 @@ function Decidir({ denominacion, propuestas, ausente, calles, onDecidir }: {
   const debil = opcion === 'otra' || (prop && !FUENTE_TXT[prop.fuente].solida);
   const listo = opcion === 'sin' || !!prop || (opcion === 'otra' && !!otra);
   const confirmar = () => {
-    if (opcion === 'sin') onDecidir({ denominacion, accion: 'sin-correspondencia' });
-    else if (prop) onDecidir({ denominacion, accion: 'vincular', calleId: prop.calleId, fuente: prop.fuente });
-    else if (opcion === 'otra' && otra) onDecidir({ denominacion, accion: 'vincular', calleId: otra, fuente: 'eleccion-manual' });
+    // G3: la justificación se conserva sola, con su procedencia (no hay que escribirla).
+    if (opcion === 'sin') onDecidir({ denominacion, accion: 'sin-correspondencia', justificacion: ausente ?? 'Ninguna vía del callejero corresponde a esta denominación (revisión de la persona).' });
+    else if (prop) onDecidir({ denominacion, accion: 'vincular', calleId: prop.calleId, fuente: prop.fuente, justificacion: `${FUENTE_TXT[prop.fuente].titulo}: ${prop.explicacion}` });
+    else if (opcion === 'otra' && otra) onDecidir({ denominacion, accion: 'vincular', calleId: otra, fuente: 'eleccion-manual', justificacion: `Elección manual de «${calles.find((c) => c.id === otra)?.nombre ?? otra}» entre las vías del callejero.` });
   };
   return (
     <div className="col dec-elegir" style={{ gap: 4 }}>

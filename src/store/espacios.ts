@@ -78,7 +78,8 @@ interface Estado {
   abrir: (tipo: TipoEspacio) => Promise<void>;
   abrirEnMemoria: (tipo: TipoEspacio, persona: { nombre: string; roles: Rol[] }) => Promise<{ ok: boolean; error?: string }>;
   cerrar: () => void;
-  crear: (persona: { nombre: string; roles: Rol[] }) => Promise<{ ok: boolean; error?: string }>;
+  /** `incluirMedina` (G3): Medina del Campo con su callejero OSM es opcional (por defecto, sí). */
+  crear: (persona: { nombre: string; roles: Rol[] }, opciones?: { incluirMedina?: boolean }) => Promise<{ ok: boolean; error?: string }>;
   medirAlmacenamiento: () => Promise<Almacenamiento>;
   solicitarPersistencia: () => Promise<boolean>;
   prepararRespaldo: () => Respaldo;
@@ -91,6 +92,11 @@ interface Estado {
   altaMunicipio: (d: DatosMunicipio) => Promise<{ ok: boolean; error?: string; municipioId?: Id }>;
   /** G2 · Campaña nueva (histórica u operativa) de un municipio del espacio. */
   crearCampana: (d: DatosCampana) => Promise<{ ok: boolean; error?: string; campanaId?: Id }>;
+  /**
+   * G3 · Cambio de configuración del espacio (callejero: cargas, altas, validaciones, alias, referencias),
+   * guardado con escritura VERIFICADA. `cambio` recibe la base, el prefijo del espacio y la persona responsable.
+   */
+  modificar: (mensaje: string, cambio: (db: BaseDatos, ctx: { prefijo: string; porId: Id }) => BaseDatos) => Promise<{ ok: boolean; error?: string }>;
 }
 
 const texto = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -219,7 +225,7 @@ export const useEspacios = create<Estado>((set, get) => ({
     }
   },
 
-  crear: async (persona) => {
+  crear: async (persona, opciones = {}) => {
     if (get().soloMemoria) return { ok: false, error: 'Análisis sin guardar: no se escribe nada en el navegador.' };
     const { tipo } = get();
     if (!tipo) return { ok: false, error: 'No hay espacio seleccionado.' };
@@ -227,10 +233,11 @@ export const useEspacios = create<Estado>((set, get) => ({
     try {
       const st = almacen(tipo);
       if (await idbGet(CLAVE_DB, st)) return { ok: false, error: 'El espacio ya existe: no se sobrescribe.' };
-      const inst = await cargarInstantaneaMedina();
-      if (!inst.ok) return { ok: false, error: `Hace falta el callejero real de Medina del Campo (instantánea OSM del proyecto). ${inst.motivo ?? ''}`.trim() };
+      const conMedina = opciones.incluirMedina !== false;
+      const inst = conMedina ? await cargarInstantaneaMedina() : null;
+      if (inst && !inst.ok) return { ok: false, error: `Hace falta el callejero real de Medina del Campo (instantánea OSM del proyecto). ${inst.motivo ?? ''}`.trim() };
       const espacioId = globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-      const db = crearBaseEspacio(tipo, { persona, calles: inst.calles, detalleCallejero: inst.detalle, espacioId });
+      const db = crearBaseEspacio(tipo, { persona, calles: inst?.ok ? inst.calles : [], detalleCallejero: inst?.ok ? inst.detalle : '', espacioId, incluirMedina: conMedina });
       const huella = await escribirVerificado(tipo, db, null);
       set({ db, huella, fase: 'listo', respaldoVerificado: null });
       return { ok: true };
@@ -362,6 +369,11 @@ export const useEspacios = create<Estado>((set, get) => ({
       return { db: x.db, id: x.municipioId };
     });
     return r.ok ? { ok: true, municipioId: r.id } : r;
+  },
+
+  modificar: async (mensaje, cambio) => {
+    const r = await guardarCambio(get, set, mensaje, (db, tipo) => ({ db: cambio(db, { prefijo: PREFIJO[tipo], porId: personaEspacio(db)!.id }), id: '' }));
+    return r.ok ? { ok: true } : r;
   },
 
   crearCampana: async (d) => {

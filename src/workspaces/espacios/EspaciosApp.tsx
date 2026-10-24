@@ -207,18 +207,23 @@ function Crear({ tipo }: { tipo: TipoEspacio }) {
   const crear = useEspacios((s) => s.crear);
   const ocupado = useEspacios((s) => s.ocupado);
   const [nombre, setNombre] = useState('');
+  const [conMedina, setConMedina] = useState(true);
   const [error, setError] = useState<string | null>(null);
   return (
     <section className="tarjeta inc-bloque" aria-label="Crear el espacio" style={{ maxWidth: 720 }}>
       <h3>Crear el {ESPACIO_TXT[tipo].nombre.toLowerCase()}</h3>
-      <p className="muted">Se crea vacío, con Medina del Campo y su callejero real (OpenStreetMap) y la persona responsable. Después podrá dar de alta otros municipios y sus campañas. No se copia nada de la demostración. Si ya existiera, no se sobrescribe.</p>
+      <p className="muted">Se crea vacío, con la persona responsable. Después podrá dar de alta municipios, sus callejeros y sus campañas. No se copia nada de la demostración. Si ya existiera, no se sobrescribe.</p>
       <label className="campo">
         <span>Persona responsable (coordinación)</span>
         <input className="input" aria-label="Persona responsable" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre y apellidos" />
       </label>
+      <label className="fila" style={{ gap: 8, alignItems: 'flex-start' }}>
+        <input type="checkbox" aria-label="Incluir Medina del Campo" checked={conMedina} onChange={(e) => setConMedina(e.target.checked)} />
+        <span>Incluir <b>Medina del Campo</b> con su callejero real (instantánea de OpenStreetMap del proyecto). Es el caso de prueba del importador, no un requisito: puede trabajar solo con otros municipios.</span>
+      </label>
       {error && <div className="t-info error" role="alert">{error}</div>}
       <button className="btn primario" disabled={nombre.trim().length < 3 || !!ocupado} onClick={async () => {
-        const r = await crear({ nombre, roles: ['coordinador'] });
+        const r = await crear({ nombre, roles: ['coordinador'] }, { incluirMedina: conMedina });
         setError(r.ok ? null : r.error ?? 'No se ha creado.');
       }}>{ocupado ?? 'Crear el espacio'}</button>
     </section>

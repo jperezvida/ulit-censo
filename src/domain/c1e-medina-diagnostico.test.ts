@@ -99,7 +99,7 @@ describe('Conciliación supervisada de calles', () => {
     const [plaza, farolas, gracia, flores] = lista;
     expect(plaza.propuestas).toEqual([]);
     expect(plaza.ausente?.oficial).toBe('Plaza Mayor de la Hispanidad');
-    expect(plaza.ausente?.nota).toMatch(/NO figura en el callejero OSM actual.*ni se inventa su geometría/);
+    expect(plaza.ausente?.nota).toMatch(/NO figura en el callejero actual del municipio.*ni se inventa su geometría/);
     expect(farolas.propuestas.map((p) => [p.calle, p.fuente])).toEqual([['Calle de las Farolas', 'denominacion-actual-y-antigua']]);
     expect(gracia.propuestas.map((p) => [p.calle, p.fuente])).toEqual([['Ronda de Gracia', 'abreviatura-tipo-via']]);
     expect(flores.propuestas.map((p) => [p.calle, p.fuente])).toEqual([['Ronda de las Flores', 'abreviatura-tipo-via']]);

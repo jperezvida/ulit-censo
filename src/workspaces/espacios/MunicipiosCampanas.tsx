@@ -12,6 +12,7 @@ import type { ReglaTerritorial } from '../../domain/territorio';
 import type { BaseDatos } from '../../domain/db';
 import type { Campana, ConfigTerritorialMunicipio, Id } from '../../domain/types';
 import { useAsistenteEspacio, useSeleccionEspacio } from './estadoAsistenteEspacio';
+import { CallejeroMunicipio } from './CallejeroMunicipio';
 
 /**
  * G2 · Municipios y campañas de un espacio. Todo se guarda en la base del espacio en ESTE navegador:
@@ -76,6 +77,8 @@ export function MunicipiosCampanas({ tipo }: { tipo: TipoEspacio }) {
           })}
         </div>
       </section>
+
+      {mun && <CallejeroMunicipio key={mun.id} municipioId={mun.id} />}
 
       {mun && (
         <section className="tarjeta inc-bloque" aria-label="Campañas">

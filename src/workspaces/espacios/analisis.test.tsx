@@ -84,7 +84,7 @@ describe('C1e-B · Análisis del Excel real SIN GUARDAR', () => {
     fireEvent.click(screen.getByRole('button', { name: /Siguiente: Decisiones/ }));
     // Conciliación supervisada: la Plaza Mayor no se puede vincular; Farolas se confirma (sin justificación)
     const conc = screen.getByLabelText('Conciliación de calles');
-    expect(within(conc).getByLabelText('Denominación Plaza Mayor')).toHaveTextContent(/Plaza Mayor de la Hispanidad.*NO figura en el callejero OSM actual/);
+    expect(within(conc).getByLabelText('Denominación Plaza Mayor')).toHaveTextContent(/Plaza Mayor de la Hispanidad.*NO figura en el callejero actual del municipio/);
     const farolas = within(conc).getByLabelText('Denominación Calle de las Farolas Antigua Ángel Molina');
     expect(farolas).toHaveTextContent(/42/);
     expect(farolas).toHaveTextContent(/Calle de las Farolas.*nombre actual y el antiguo/);

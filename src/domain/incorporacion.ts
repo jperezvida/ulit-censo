@@ -7,6 +7,7 @@ import { sha256Texto } from './sha256';
 import { TAXONOMIA_POR_ID, catalogoDeNodo } from './taxonomy';
 import { configTerritorialDe } from './territorio';
 import { motivoNoDestino } from './municipios';
+import { callesVigentes } from './callejeros';
 import { REGLAS, TIPOS_INCIDENCIA } from './xlsx/reglasInterpretacion';
 import { validarDecisionesCalle, type DecisionCalle } from './conciliacionCalles';
 import { denominacionCalle, localizacionDe, type FilaInterpretada, type OpcionesInterpretacion, type ResultadoInterpretacion } from './xlsx/interpretacion';
@@ -334,7 +335,8 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
 
   // Callejero del municipio: correspondencia SOLO por nombre único (sin aproximaciones).
   const porClave = new Map<string, Id[]>();
-  for (const c of Object.values(db.calles)) if (c.municipioId === destino.municipioId) porClave.set(claveCalle(c.nombre), [...(porClave.get(claveCalle(c.nombre)) ?? []), c.id]);
+  // G3: solo las vías vigentes del municipio (un alta manual cuenta una vez validada).
+  for (const c of callesVigentes(db, destino.municipioId)) porClave.set(claveCalle(c.nombre), [...(porClave.get(claveCalle(c.nombre)) ?? []), c.id]);
   // Locales existentes por dirección exacta (calle|número|sufijo).
   const existentes = new Map<string, Id[]>();
   for (const l of Object.values(db.locales)) {

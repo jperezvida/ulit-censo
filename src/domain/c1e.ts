@@ -2,6 +2,7 @@ import type { BaseDatos } from './db';
 import { claveCalle, normalizar } from './text';
 import type { DecisionesIncorporacion, MotivoSinLocal, PlanIncorporacion } from './incorporacion';
 import { proponer, type DenominacionPendiente } from './conciliacionCalles';
+import { callesVigentes, referenciasDe } from './callejeros';
 import { claveDenominacion, denominacionCalle, type ResultadoInterpretacion, type ValorOriginal } from './xlsx/interpretacion';
 import type { InformeEstructural } from './xlsx/analisis';
 import { TIPOS_INCIDENCIA } from './xlsx/reglasInterpretacion';
@@ -241,7 +242,8 @@ export interface DenominacionCalle {
  */
 export function conciliacionCalles(db: BaseDatos, resultado: ResultadoInterpretacion, municipioId: Id, decisiones: DecisionesIncorporacion = {}): { denominaciones: DenominacionCalle[]; porEstado: Record<EstadoCalle, { denominaciones: number; filas: number }> } {
   const porClave = new Map<string, Id[]>();
-  for (const c of Object.values(db.calles)) if (c.municipioId === municipioId) porClave.set(claveCalle(c.nombre), [...(porClave.get(claveCalle(c.nombre)) ?? []), c.id]);
+  // G3: solo las vías vigentes (las altas manuales, una vez validadas).
+  for (const c of callesVigentes(db, municipioId)) porClave.set(claveCalle(c.nombre), [...(porClave.get(claveCalle(c.nombre)) ?? []), c.id]);
   const decididas = new Map((decisiones.calles ?? []).map((d) => [d.denominacion, d]));
   const m = new Map<string, DenominacionCalle>();
   const interpretadas = new Map(resultado.filas.map((fi) => [fi.fila, fi]));
@@ -268,10 +270,11 @@ export function conciliacionCalles(db: BaseDatos, resultado: ResultadoInterpreta
 
 /** Denominaciones por conciliar (o ya decididas), con sus propuestas, de más a menos registros. */
 export function denominacionesPorConciliar(db: BaseDatos, resultado: ResultadoInterpretacion, municipioId: Id, decisiones: DecisionesIncorporacion = {}): (DenominacionPendiente & { estado: EstadoCalle; calleId?: Id; calle?: string })[] {
-  const calles = Object.values(db.calles).filter((c) => c.municipioId === municipioId);
+  const calles = callesVigentes(db, municipioId);
+  const referencias = referenciasDe(db, municipioId);
   return conciliacionCalles(db, resultado, municipioId, decisiones).denominaciones
     .filter((d) => d.estado === 'pendiente' || d.estado === 'conciliada' || d.estado === 'sin-correspondencia')
-    .map((d) => ({ ...d, denominacion: d.literal, ...proponer(d.literal, calles) }))
+    .map((d) => ({ ...d, denominacion: d.literal, ...proponer(d.literal, calles, referencias) }))
     .sort((a, b) => b.filas - a.filas || a.denominacion.localeCompare(b.denominacion, 'es'));
 }
 

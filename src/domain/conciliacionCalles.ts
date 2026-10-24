@@ -1,6 +1,7 @@
 import type { BaseDatos } from './db';
 import { claveCalle, normalizar, similitud } from './text';
-import type { Calle, Id } from './types';
+import type { Calle, Id, ReferenciaDenominacion } from './types';
+import { calleVigente } from './callejeros';
 
 /**
  * Conciliación SUPERVISADA de denominaciones de calle (censo histórico → callejero del municipio).
@@ -19,6 +20,7 @@ export type FuentePropuesta =
   | 'abreviatura-tipo-via'
   | 'mismo-nombre-otro-tipo'
   | 'referencia-catedra'
+  | 'alias-callejero'
   | 'similitud-textual';
 
 export const FUENTE_TXT: Record<FuentePropuesta, { titulo: string; solida: boolean }> = {
@@ -26,7 +28,8 @@ export const FUENTE_TXT: Record<FuentePropuesta, { titulo: string; solida: boole
   'contiene-nombre-callejero': { titulo: 'La denominación contiene el nombre completo de una calle del callejero', solida: true },
   'abreviatura-tipo-via': { titulo: 'Abreviatura del tipo de vía no reconocida automáticamente', solida: true },
   'mismo-nombre-otro-tipo': { titulo: 'Mismo nombre con otro tipo de vía (o sin él)', solida: false },
-  'referencia-catedra': { titulo: 'Referencia comunicada por la Cátedra', solida: true },
+  'referencia-catedra': { titulo: 'Referencia de denominación registrada en el callejero', solida: true },
+  'alias-callejero': { titulo: 'Alias o nombre histórico registrado en el callejero', solida: true },
   'similitud-textual': { titulo: 'Solo parecido del texto: NO basta para confirmar', solida: false },
 };
 
@@ -37,18 +40,11 @@ export interface Propuesta {
   explicacion: string;
 }
 
-/**
- * Referencias de denominaciones comunicadas por la Cátedra (no son equivalencias aprobadas: solo
- * orientan la revisión). `oficial` es la denominación oficial que habría que encontrar en el callejero.
+/*
+ * G3: las referencias de denominación («Plaza Mayor» → «Plaza Mayor de la Hispanidad») ya no están en el
+ * código: son datos del callejero de cada municipio (`referenciasDe`), con su fuente, y se gestionan desde
+ * la interfaz. Igual los alias y nombres históricos de cada vía (`Calle.alias`).
  */
-export const REFERENCIAS_CATEDRA: { denominacion: string; oficial: string; nota: string; fecha: string }[] = [
-  {
-    denominacion: 'Plaza Mayor',
-    oficial: 'Plaza Mayor de la Hispanidad',
-    nota: 'Indicado por la Cátedra al revisar el censo 2025: «Plaza Mayor» corresponde a la Plaza Mayor de la Hispanidad.',
-    fecha: '2026-10-24',
-  },
-];
 
 /** Abreviaturas de tipo de vía que el reconocimiento automático NO expande (solo se proponen). */
 const ABREVIATURAS: Record<string, string> = {
@@ -67,8 +63,12 @@ export interface DenominacionPendiente {
   ausente?: { oficial: string; nota: string };
 }
 
-/** Propuestas para UNA denominación sin correspondencia automática. */
-export function proponer(denominacion: string, calles: Calle[]): Pick<DenominacionPendiente, 'propuestas' | 'ausente'> {
+/**
+ * Propuestas para UNA denominación sin correspondencia automática. `calles`: el callejero del municipio
+ * (solo las vías vigentes cuentan); `referencias`: las referencias de denominación del municipio.
+ */
+export function proponer(denominacion: string, callesMunicipio: Calle[], referencias: ReferenciaDenominacion[] = []): Pick<DenominacionPendiente, 'propuestas' | 'ausente'> {
+  const calles = callesMunicipio.filter(calleVigente);
   const props: Propuesta[] = [];
   const unicas = new Map<string, Calle[]>();
   for (const c of calles) unicas.set(claveCalle(c.nombre), [...(unicas.get(claveCalle(c.nombre)) ?? []), c]);
@@ -79,12 +79,21 @@ export function proponer(denominacion: string, calles: Calle[]): Pick<Denominaci
   const n = normalizar(denominacion);
   let ausente: DenominacionPendiente['ausente'];
 
-  // 1. Referencia de la Cátedra (denominación oficial): se busca en el callejero; si no está, se dice.
-  for (const r of REFERENCIAS_CATEDRA) {
+  // 0. Alias o nombre histórico registrado en el callejero (dato con su fuente): se propone, no se aplica.
+  for (const c of calles) {
+    for (const a of c.alias ?? []) {
+      if (a.retirado || claveCalle(a.nombre) !== claveCalle(denominacion)) continue;
+      const tipo = { historico: 'nombre histórico', alternativo: 'denominación alternativa', alias: 'alias' }[a.tipo];
+      add(c, 'alias-callejero', `«${a.nombre}» figura en el callejero como ${tipo} de «${c.nombre}» (fuente: ${a.fuente}; registrado el ${a.fecha.slice(0, 10)}).`);
+    }
+  }
+
+  // 1. Referencia de denominación del municipio (dato con su fuente): se busca la vía oficial; si no está, se dice.
+  for (const r of referencias) {
     if (normalizar(r.denominacion) !== n) continue;
     const c = unica(claveCalle(r.oficial));
-    if (c) add(c, 'referencia-catedra', `${r.nota} «${r.oficial}» figura en el callejero.`);
-    else ausente = { oficial: r.oficial, nota: `${r.nota} «${r.oficial}» NO figura en el callejero OSM actual: no se puede vincular ni se inventa su geometría.` };
+    if (c) add(c, 'referencia-catedra', `${r.nota} «${r.oficial}» figura en el callejero (fuente de la referencia: ${r.fuente}).`);
+    else ausente = { oficial: r.oficial, nota: `${r.nota} «${r.oficial}» NO figura en el callejero actual del municipio: no se puede vincular ni se inventa su geometría. Puede añadirse con una alta supervisada en «Callejero».` };
   }
 
   // 2. «Nombre actual antigua Nombre anterior».
@@ -122,9 +131,14 @@ export function proponer(denominacion: string, calles: Calle[]): Pick<Denominaci
 
 // ───────────── Decisiones de conciliación (trazadas) ─────────────
 
+/**
+ * `justificacion` (G3): la razón que respalda la decisión, conservada con su procedencia (la explicación
+ * de la propuesta confirmada, la referencia del municipio…). Se registra sola: no hay que escribirla.
+ * `motivo` es una nota opcional de la persona.
+ */
 export type DecisionCalle =
-  | { denominacion: string; accion: 'vincular'; calleId: Id; fuente: FuentePropuesta | 'eleccion-manual'; porId: Id; fecha: string; motivo?: string }
-  | { denominacion: string; accion: 'sin-correspondencia'; porId: Id; fecha: string; motivo?: string };
+  | { denominacion: string; accion: 'vincular'; calleId: Id; fuente: FuentePropuesta | 'eleccion-manual'; porId: Id; fecha: string; motivo?: string; justificacion?: string }
+  | { denominacion: string; accion: 'sin-correspondencia'; porId: Id; fecha: string; motivo?: string; justificacion?: string };
 
 /** Validación de las decisiones de calle frente al callejero y al archivo. */
 export function validarDecisionesCalle(db: BaseDatos, ds: DecisionCalle[], municipioId: Id, denominaciones: Set<string>): string[] {
@@ -140,6 +154,7 @@ export function validarDecisionesCalle(db: BaseDatos, ds: DecisionCalle[], munic
     if (d.accion === 'vincular') {
       const c = db.calles[d.calleId];
       if (!c || c.municipioId !== municipioId) errores.push(`${que}: la calle «${d.calleId}» no existe en el callejero del municipio.`);
+      else if (!calleVigente(c)) errores.push(`${que}: «${c.nombre}» es un alta manual sin validar (o rechazada): no se puede vincular.`);
     }
   }
   return errores;

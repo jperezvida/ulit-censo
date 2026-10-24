@@ -81,3 +81,23 @@ tr.aviso td { background: #fff6e0; }
   .camp-tabla td:nth-child(2), .camp-tabla td:nth-child(4) { text-align: right; }
   .camp-tabla td:nth-child(5):not(:empty) { grid-column: 1 / -1; margin-top: 6px; }
 }
+
+/* G3 · Callejero */
+.cj-acciones { flex-wrap: wrap; gap: 6px; }
+.cj-pasos { margin: 0; }
+.cj-consulta { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.cj-consulta textarea { width: 100%; font-size: 12px; resize: vertical; }
+.cj-lista { max-height: 420px; overflow-y: auto; }
+.cj-resumen { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+.cj-archivo { font-size: 11px; overflow-wrap: anywhere; }
+.cj-alias { font-size: 12px; }
+.cj-ficha { display: flex; flex-direction: column; gap: 10px; padding: 8px 4px; white-space: normal; }
+.cj-ficha .inc-dl dd { overflow-wrap: anywhere; }
+.cj-ficha-fila td { background: var(--superficie-2, #f8f9fb); }
+.cj-fila-acc { flex-wrap: wrap; gap: 6px; }
+.cj-fila-acc .input { flex: 1 1 180px; min-width: 0; }
+.mun-form textarea.input { width: 100%; }
+@media (max-width: 640px) {
+  .cj-vias th:nth-child(2), .cj-vias td:nth-child(2) { display: none; }
+  .cj-cargas th:nth-child(3), .cj-cargas td:nth-child(3), .cj-cargas th:nth-child(4), .cj-cargas td:nth-child(4) { display: none; }
+}

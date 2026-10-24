@@ -61,17 +61,60 @@ export interface ConfigTerritorialMunicipio {
  */
 export interface EstadoCallejero {
   estado: 'sin-callejero' | 'disponible';
-  fuente?: 'osm-instantanea' | 'oficial' | 'manual';
+  fuente?: 'osm-instantanea' | 'osm' | 'oficial' | 'manual';
   version?: string;
   detalle?: string;
   actualizado?: string;
+  /** G3 · Cargas aplicadas (fuente, fecha, versión, procedencia y resumen), de la más antigua a la más reciente. */
+  cargas?: CargaCallejero[];
+  /** G3 · Límite administrativo verificado (rectángulo envolvente [sur, oeste, norte, este]) de la última carga OSM. */
+  limite?: { bbox: [number, number, number, number]; fuente: string; ine?: string; nombre?: string };
+  /**
+   * G3 · Referencias de denominación (p. ej. «Plaza Mayor» → «Plaza Mayor de la Hispanidad»). Orientan la
+   * conciliación; nunca vinculan solas. `undefined` = el municipio aún no tiene la lista guardada.
+   */
+  referencias?: ReferenciaDenominacion[];
+}
+
+export interface CargaCallejero {
+  id: Id;
+  tipo: 'osm' | 'oficial';
+  /** Origen declarado: «OpenStreetMap (Overpass)», «Ayuntamiento de…», URL… */
+  fuente: string;
+  archivo: string;
+  sha256: string;
+  /** Fecha de los datos según la fuente (aaaa-mm-dd o ISO). */
+  fechaDatos?: string;
+  version?: string;
+  licencia?: string;
+  porId: Id;
+  fecha: string;
+  resumen: Record<string, number>;
+}
+
+export interface ReferenciaDenominacion {
+  denominacion: string;
+  oficial: string;
+  nota: string;
+  fuente: string;
+  porId?: Id;
+  fecha: string;
+  retirada?: { porId: Id; fecha: string };
 }
 
 /** Segmento cartográfico (p. ej. una "way" de OSM). Una calle suele tener varios. */
 export interface Segmento {
+  /**
+   * Identificador ESTABLE del segmento (p. ej. `w123` para la vía 123 de OSM). Se conserva al actualizar
+   * el callejero: los futuros itinerarios sobre mapa seleccionarán calles y tramos por este identificador.
+   */
   id: Id;
   coords: LngLat[];
   longitudM: number;
+  /** G3 · Forma del segmento: tramo lineal (por defecto), contorno de un área (plaza) o un punto. */
+  tipo?: 'linea' | 'area' | 'punto';
+  /** G3 · Elemento de la fuente del que procede («osm:way/123», «geojson:4», «manual»). */
+  fuente?: string;
 }
 
 export interface Calle {
@@ -84,6 +127,52 @@ export interface Calle {
   procedencia: Procedencia;
   /** Identificadores en la fuente (OSM way ids…), para trazabilidad. */
   refsFuente: string[];
+  /** G3 · Forma con la que figura (deducida de sus segmentos). Sin geometría no significa que no exista. */
+  forma?: FormaVia;
+  /** G3 · Código de la vía en el callejero oficial, si lo trae. */
+  codigoVia?: string;
+  /** G3 · Cargas del callejero que la incluyeron (de la más antigua a la más reciente). */
+  cargas?: Id[];
+  /** G3 · Nombres históricos, denominaciones alternativas y alias (datos, no código). */
+  alias?: AliasCalle[];
+  /** G3 · Alta manual SUPERVISADA: fuente documental, quién la propone y quién la valida. */
+  alta?: AltaCalle;
+  /** G3 · Cambios registrados (correcciones, validación, alias…), para auditar. */
+  historial?: CambioCalle[];
+}
+
+export type FormaVia = 'linea' | 'area' | 'punto' | 'mixta' | 'sin-geometria';
+
+export interface AliasCalle {
+  nombre: string;
+  tipo: 'historico' | 'alternativo' | 'alias';
+  fuente: string;
+  porId: Id;
+  fecha: string;
+  /** Vigencia del nombre, si se conoce (p. ej. un nombre histórico hasta 1980). */
+  desde?: string;
+  hasta?: string;
+  nota?: string;
+  /** Retirado (se conserva para la auditoría). */
+  retirado?: { porId: Id; fecha: string; motivo?: string };
+}
+
+export interface AltaCalle {
+  estado: 'propuesta' | 'validada' | 'rechazada';
+  fuenteDocumental: string;
+  porId: Id;
+  fecha: string;
+  validacion?: { porId: Id; fecha: string; nota?: string };
+  nota?: string;
+}
+
+export interface CambioCalle {
+  fecha: string;
+  porId: Id;
+  accion: 'alta' | 'validacion' | 'rechazo' | 'correccion' | 'alias' | 'alias-retirado' | 'carga';
+  detalle: string;
+  /** Valores anteriores de lo que se corrigió. */
+  antes?: Record<string, unknown>;
 }
 
 export type Acera = 'ambas' | 'par' | 'impar';
