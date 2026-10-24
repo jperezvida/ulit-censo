@@ -2,6 +2,7 @@
 # Se ejecuta únicamente al publicar en la rama de desarrollo indicada. No hay integración Git de Vercel,
 # así que `main` nunca se despliega. Antes de publicar se pasan TypeScript, las pruebas y el control de
 # datos reales; se publica exactamente lo compilado aquí.
+# El token está SOLO en el entorno «preview» de GitHub, restringido a esta rama (ver docs/fase2/PREVIEW-VERCEL.md).
 name: Vista previa en Vercel (pruebas)
 
 on:
@@ -19,11 +20,15 @@ env:
   VERCEL_CLI: vercel@63.1.0
   PROYECTO: ulit-censo-pruebas
   DIRECCION_FIJA: ulit-censo-pruebas-vista.vercel.app
+  RAMA_PERMITIDA: claude/fase2-oficina-itinerarios
   VERCEL_TELEMETRY_DISABLED: '1'
 
 jobs:
   preview:
     runs-on: ubuntu-latest
+    environment:
+      name: preview
+      url: https://ulit-censo-pruebas-vista.vercel.app
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -44,5 +49,6 @@ jobs:
         run: node scripts/vercel/preparar-vercel.mjs
       - name: Desplegar PREVIEW protegida
         env:
+          # Secreto del ENTORNO «preview» (no del repositorio).
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: bash scripts/vercel/desplegar-preview.sh
