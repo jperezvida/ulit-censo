@@ -715,3 +715,78 @@
     min-width: 0;
   }
 }
+
+/* Eventos individuales dentro de una campaña */
+.hist-evento {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0 8px;
+  border-bottom: 1px dashed var(--linea);
+}
+.hist-evento:last-child {
+  border-bottom: 0;
+}
+.hist-ocupaciones {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+}
+.hist-ocu {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.hist-ocu .mono {
+  min-width: 80px;
+  color: var(--tinta-3);
+}
+
+/* Respuestas digitales */
+.of-resp {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.of-r {
+  min-width: 30px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid var(--linea-2);
+  background: #fff;
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--tinta-2);
+}
+.of-r.on.r-si {
+  background: #12a873;
+  border-color: #12a873;
+  color: #fff;
+}
+.of-r.on.r-no {
+  background: #3b4a61;
+  border-color: #3b4a61;
+  color: #fff;
+}
+.of-r.on.r-na,
+.of-r.on.r-sin-info {
+  background: #eef1f5;
+  border-color: #8a97ab;
+  color: var(--tinta);
+}
+.of-r.on.r-pendiente {
+  background: #fff7e6;
+  border-color: #e0a24a;
+  color: #9a5b00;
+}
+.of-req {
+  color: var(--e-aviso);
+  font-weight: 800;
+  margin-left: 4px;
+}
+.of-dig-opcional td:first-child {
+  opacity: 0.6;
+}

@@ -1,0 +1,3 @@
+#!/bin/sh
+# Activar con: npm run hooks
+node scripts/comprobar-datos-reales.mjs || exit 1

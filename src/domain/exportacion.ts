@@ -1,8 +1,9 @@
 import type { BaseDatos } from './db';
-import { kMet } from './db';
+import { kNC } from './db';
+import { codificarRespuesta } from './respuesta';
 import { direccionVigente, indiceObservaciones, indiceOcupaciones, observacionEn, ocupacionEn } from './consultas';
-import { rutaActividad } from './taxonomy';
-import type { Id } from './types';
+import { nivelesDe } from './taxonomy';
+import type { Id, VariableDigital } from './types';
 
 /** Columnas con la estructura del censo tradicional (provisional hasta recibir el Excel real). */
 export const COLUMNAS_TRADICIONALES = [
@@ -34,21 +35,26 @@ export function filasExport(db: BaseDatos, campanaId: Id, filtro: FiltroExport =
     if (calles && !calles.has(d.calleId)) continue;
     const oc = ocupacionEn(db, l.id, campanaId, ixOc);
     const neg = oc?.negocioId ? db.negocios[oc.negocioId] : undefined;
-    const r = rutaActividad(neg?.actividadId);
-    const m = neg ? db.metricas[kMet(neg.id, campanaId)] : undefined;
+    const cla = neg ? db.clasificaciones[kNC(neg.id, campanaId)] : undefined;
+    // Por nivel (no por posición): Hostelería y Servicios no tienen grupo de comercio. Sin
+    // actividad, la columna «Actividad» lleva la breve descripción (procedimiento 2026).
+    const r = nivelesDe(cla?.actividadId);
+    const m = neg ? db.digital[kNC(neg.id, campanaId)] : undefined;
     const rev = db.revisiones[`${campanaId}|${l.id}`];
-    const b = (v?: boolean) => (v === undefined ? '' : v ? 'Sí' : 'No');
+    // Pendiente / no aplicable / sin información → vacío (nunca «No»).
+    const b = (v: VariableDigital) => codificarRespuesta(m?.datos[v]?.respuesta, { si: 'Sí', no: 'No' }) ?? '';
+    const n = (v: VariableDigital) => (m?.datos[v]?.respuesta === 'si' && m.datos[v]!.valor !== undefined ? String(m.datos[v]!.valor).replace('.', ',') : '');
     const calle = db.calles[d.calleId]?.nombre ?? '';
     out.push({
       orden: [calle, d.numero ?? 9999, d.sufijo ?? ''],
       fila: {
         Calle: calle, 'Número': `${d.numero ?? 's/n'}${d.sufijo ? ' ' + d.sufijo : ''}`, Nombre: neg?.nombre ?? '', Estado: neg ? 'Ocupado' : 'Vacío',
-        'Metros fachada': oc?.metrosFachada ? String(oc.metrosFachada) : '', 'Grupo de actividad': r[0]?.nombre ?? '', 'Grupo de comercio': r[1]?.nombre ?? '',
-        'Subgrupo de actividad': r[2]?.nombre ?? '', Actividad: r[3]?.nombre ?? '', Cadena: neg?.cadena ?? '',
-        Web: m?.web ?? '', 'Venta online': b(m?.ventaOnline), 'Google Business': b(m?.googleBusiness), 'Valoración': m?.valoracion ? String(m.valoracion).replace('.', ',') : '',
-        'Reseñas Google': m?.numResenas !== undefined ? String(m.numResenas) : '', 'Responde reseñas': b(m?.respondeResenas), Instagram: m?.instagram ?? '',
-        'Seguidores IG': m?.seguidoresInstagram !== undefined ? String(m.seguidoresInstagram) : '', Facebook: m?.facebook ?? '',
-        'Digital verificada': m ? (m.verificada ? 'Sí' : 'No') : '', 'Fecha comprobación digital': m?.fechaComprobacion?.slice(0, 10) ?? '',
+        'Metros fachada': oc?.metrosFachada ? String(oc.metrosFachada) : '', 'Grupo de actividad': r.grupo?.nombre ?? '', 'Grupo de comercio': r.grupoComercio?.nombre ?? '',
+        'Subgrupo de actividad': r.subgrupo?.nombre ?? '', Actividad: r.actividad?.nombre ?? cla?.descripcion ?? '', Cadena: neg?.cadena ?? '',
+        Web: b('web'), 'Venta online': b('ventaOnline'), 'Google Business': b('googleBusiness'), 'Valoración': n('valoracion'),
+        'Reseñas Google': n('numResenas'), 'Responde reseñas': b('respondeResenas'), Instagram: b('instagram'),
+        'Seguidores IG': n('seguidoresInstagram'), Facebook: b('facebook'),
+        'Digital verificada': m ? (m.estado === 'verificada' ? 'Sí' : 'No') : '', 'Fecha comprobación digital': m?.verificadaEn?.slice(0, 10) ?? '',
         Itinerario: itPorCalle.get(d.calleId) ?? '', Fuente: o.fuente, 'Validación': rev?.validacion ?? 'pendiente',
       },
     });

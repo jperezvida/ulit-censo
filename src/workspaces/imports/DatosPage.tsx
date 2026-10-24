@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, FileCheck2, FileSpreadsheet, FileUp, FlaskConical, GitMerge, Map as MapIcon, Upload } from 'lucide-react';
+import { ArrowRight, FileCheck2, FileScan, FileSearch, FileSpreadsheet, FileUp, FlaskConical, GitMerge, Map as MapIcon, Undo2, Upload, Workflow } from 'lucide-react';
+import { DeshacerIncorporacion } from './incorporacion/DeshacerIncorporacion';
+import { InspectorExcel } from './InspectorExcel';
+import { AnalisisPrevio } from './AnalisisPrevio';
 import { useContexto } from '../../store/contexto';
 import { useStore } from '../../store/store';
 import { CAMPOS, compararImportacion, interpretarFilas, mapearCabecera, parsearCSV, type CampoCanonico, type ClaseDiff, type FilaDiff } from '../../domain/importacion';
@@ -31,8 +34,11 @@ const CLASE_TXT: Record<ClaseDiff, { t: string; c: string }> = {
 
 export default function DatosPage() {
   const { db, municipio, campana } = useContexto();
+  const nav = useNavigate();
   const [sel, setSel] = useState<string | null>(null);
   const [asistente, setAsistente] = useState(false);
+  const [inspector, setInspector] = useState(false);
+  const [analisis, setAnalisis] = useState(false);
   const imps = useMemo(() => Object.values(db.importaciones).filter((i) => i.municipioId === municipio.id).sort((a, b) => b.fecha.localeCompare(a.fecha)), [db.importaciones, municipio.id]);
   const imp = sel ? db.importaciones[sel] : imps[0];
 
@@ -44,7 +50,12 @@ export default function DatosPage() {
           <h1>Procedencia de los datos</h1>
           <p>Todo lo que entra se revisa antes de incorporarse. Los archivos originales se conservan fila a fila; una fila que desaparece nunca se interpreta como un cierre.</p>
         </div>
-        <button className="btn primario" onClick={() => setAsistente(true)}><Upload size={16} /> Nueva importación</button>
+        <button className="btn" onClick={() => setInspector(true)}><FileSearch size={16} /> Inspeccionar estructura de Excel</button>
+        <button className="btn primario" onClick={() => setAnalisis(true)} title="Lector XLSX de C1a: solo lectura, para los Excel de la Cátedra"><FileScan size={16} /> Análisis previo de importación</button>
+        <button className="btn" onClick={() => nav('/datos/incorporar')} title="Asistente de incorporación controlada (C1d): solo escenarios ficticios generados por la aplicación"><Workflow size={16} /> Incorporación controlada <span className="tag naranja">demostración</span></button>
+        <button className="btn fantasma" onClick={() => setAsistente(true)} title="Importador CSV antiguo con problemas conocidos de interpretación: solo para los ejemplos ficticios">
+          <FlaskConical size={16} /> Importador CSV provisional <span className="tag naranja">demostración</span>
+        </button>
       </div>
 
       <div className="dat-rejilla">
@@ -69,12 +80,15 @@ export default function DatosPage() {
         {imp && <DetalleImportacion imp={imp} />}
       </div>
       {asistente && campana && <Asistente onCerrar={() => setAsistente(false)} />}
+      {inspector && <InspectorExcel onCerrar={() => setInspector(false)} />}
+      {analisis && <AnalisisPrevio municipioId={municipio.id} onCerrar={() => setAnalisis(false)} />}
     </div>
   );
 }
 
 function DetalleImportacion({ imp }: { imp: Importacion }) {
   const { db } = useContexto();
+  const [deshacer, setDeshacer] = useState(false);
   const registros = useMemo(() => Object.values(db.registros).filter((r) => r.importacionId === imp.id).sort((a, b) => a.fila - b.fila), [db.registros, imp.id]);
   const vincPorReg = useMemo(() => {
     const m = new Map<string, string>();
@@ -91,6 +105,18 @@ function DetalleImportacion({ imp }: { imp: Importacion }) {
         <span className="chip ok">{imp.estado}</span>
       </div>
       {imp.nota && <p className="muted" style={{ fontSize: 13, margin: '6px 0 0' }}>{imp.nota}</p>}
+      {imp.c1 && (
+        <div className="dat-c1" aria-label="Traza de la incorporación">
+          <span className="chip">Perfil {imp.c1.perfil.id} v{imp.c1.perfil.version}</span>
+          <span className="chip">Año {imp.c1.anio}</span>
+          <span className="chip">Por {db.personas[imp.c1.porId]?.nombre ?? imp.c1.porId}</span>
+          <span className="chip">Huellas {imp.c1.algoritmoHuellas ?? 'FNV-1a 32 bits'}</span>
+          {imp.c1.deshecha ? <span className="chip aviso">Deshecha por {db.personas[imp.c1.deshecha.porId]?.nombre ?? imp.c1.deshecha.porId} · {fmtFecha(imp.c1.deshecha.fecha)}</span> : (
+            <button className="btn s peligro" onClick={() => setDeshacer(true)}><Undo2 size={14} /> Deshacer la incorporación…</button>
+          )}
+        </div>
+      )}
+      {deshacer && <DeshacerIncorporacion importacionId={imp.id} onCerrar={() => setDeshacer(false)} />}
       <div className="dat-cifras">
         <div><b className="num">{fmt(imp.filas)}</b><span>filas del archivo</span></div>
         <div><b className="num">{fmt(registros.length)}</b><span>registros de origen conservados</span></div>
@@ -149,7 +175,8 @@ function Asistente({ onCerrar }: { onCerrar: () => void }) {
   };
 
   const confirmar = () => {
-    if (!campana || !archivo) return;
+    // Importador provisional: nunca incorpora archivos subidos (solo los ejemplos simulados).
+    if (!campana || !archivo || !archivo.simulado) return;
     if (tipo === 'A-censo-historico') {
       let nueva = '';
       aplicar((d) => {
@@ -168,21 +195,39 @@ function Asistente({ onCerrar }: { onCerrar: () => void }) {
   return (
     <Modal
       ancho
-      titulo="Nueva importación"
-      sub={`${municipio.nombre} · ${campana?.nombre} · nada se incorpora sin revisar la previsualización`}
+      titulo="Importador CSV provisional · solo demostración"
+      sub={`${municipio.nombre} · ${campana?.nombre} · solo se pueden incorporar los archivos de ejemplo simulados`}
       onCerrar={onCerrar}
       pie={
         paso === 3 && (
           <>
             <span className="muted esp">
-              {tipo === 'A-censo-historico' ? `Se creará la campaña «Censo ${anio} (importado)» con ${cuentas.nuevo ?? 0} locales.` : `Se aplicarán ${(cuentas.nuevo ?? 0) + (cuentas.modificado ?? 0) + (cuentas['sin-cambios'] ?? 0)} filas${cuentas.ambiguo ? ` y ${cuentas.ambiguo} quedarán pendientes de conciliación` : ''}; ${(cuentas['fuera-ambito'] ?? 0) + (cuentas['calle-desconocida'] ?? 0) + (cuentas['posible-duplicado'] ?? 0)} quedan sin aplicar.`}
+              {!archivo?.simulado ? 'Solo previsualización: con el importador provisional no se incorporará nada.' : tipo === 'A-censo-historico' ? `Se creará la campaña «Censo ${anio} (importado)» con ${cuentas.nuevo ?? 0} locales.` : `Se aplicarán ${(cuentas.nuevo ?? 0) + (cuentas.modificado ?? 0) + (cuentas['sin-cambios'] ?? 0)} filas${cuentas.ambiguo ? ` y ${cuentas.ambiguo} quedarán pendientes de conciliación` : ''}; ${(cuentas['fuera-ambito'] ?? 0) + (cuentas['calle-desconocida'] ?? 0) + (cuentas['posible-duplicado'] ?? 0)} quedan sin aplicar.`}
             </span>
             <button className="btn" onClick={() => setArchivo(null)}>Atrás</button>
-            <button className="btn primario" onClick={confirmar} disabled={!diff.length || (tipo === 'C-excel-itinerario' && !itId)}>Confirmar incorporación</button>
+            <button
+              className="btn primario"
+              onClick={confirmar}
+              disabled={!archivo?.simulado || !diff.length || (tipo === 'C-excel-itinerario' && !itId)}
+              title={archivo?.simulado ? undefined : 'El importador provisional no incorpora archivos subidos: solo los ejemplos simulados'}
+            >
+              Confirmar incorporación
+            </button>
           </>
         )
       }
     >
+      <div className="t-info aviso" role="note" aria-label="Importador provisional" style={{ marginTop: 0 }}>
+        <div>
+        <b>Importador provisional de demostración: no apto para censos reales.</b> Tiene problemas conocidos de interpretación:
+        <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+          <li>convierte cualquier número distinto de 0 en «Sí» (p. ej. 83) y el vacío en «No»;</li>
+          <li>asigna la columna «Franquicia» al nombre de cadena;</li>
+          <li>deduce si un local está vacío a partir del nombre.</li>
+        </ul>
+        Solo se pueden <b>incorporar los archivos de ejemplo simulados</b>. Un archivo subido se puede previsualizar, pero no aplicar. Para los Excel de la Cátedra usa «Análisis previo de importación» (C1a); la importación real llegará con C1b–C1d.
+        </div>
+      </div>
       <ol className="dat-pasos">
         <li className={paso >= 1 ? 'on' : ''}>Tipo</li>
         <li className={paso >= 2 ? 'on' : ''}>Archivo</li>
@@ -243,14 +288,14 @@ function Asistente({ onCerrar }: { onCerrar: () => void }) {
           >
             <FlaskConical size={15} /> Usar un archivo de ejemplo (simulado)
           </button>
-          <p className="muted" style={{ fontSize: 12 }}>Preparado para el CSV real del censo 2025: las columnas se reconocen por su nombre y se pueden reasignar antes de confirmar.</p>
+          <p className="muted" style={{ fontSize: 12 }}>Un CSV subido solo se previsualiza: este importador provisional no lo incorpora a la base de datos.</p>
         </div>
       )}
       {paso === 3 && parsed && (
         <div className="col" style={{ gap: 12 }}>
           <div className="fila" style={{ flexWrap: 'wrap' }}>
             <b>{archivo!.nombre}</b>
-            {archivo!.simulado && <Sim texto="Archivo simulado" />}
+            {archivo!.simulado ? <Sim texto="Archivo simulado" /> : <span className="chip aviso" role="status">Solo previsualización: un archivo subido no se puede incorporar con el importador provisional</span>}
             <span className="muted">{parsed.filas.length} filas · separador «{parsed.separador === '\t' ? 'tab' : parsed.separador}»</span>
           </div>
           <details open={Object.keys(mapa).length < 4}>

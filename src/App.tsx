@@ -7,9 +7,12 @@ import CampanasPage from './workspaces/campaigns/CampanasPage';
 import TerritorioPage from './workspaces/territory/TerritorioPage';
 import OficinaPage from './workspaces/office/OficinaPage';
 import DatosPage from './workspaces/imports/DatosPage';
+import IncorporacionPage from './workspaces/imports/incorporacion/IncorporacionPage';
 import AnalisisPage from './workspaces/analysis/AnalisisPage';
+import VisualizacionPage from './workspaces/visualizacion/VisualizacionPage';
 import HojaCampo from './workspaces/print/HojaCampo';
 import CampoApp from './workspaces/field/CampoApp';
+import EspaciosApp from './workspaces/espacios/EspaciosApp';
 
 function Arranque() {
   const carga = useStore((s) => s.carga);
@@ -49,9 +52,18 @@ export default function App() {
 
   return (
     <HashRouter>
-      {fase !== 'lista' ? (
-        <Arranque />
-      ) : (
+      <Routes>
+        {/* C1e · Espacios aislados (ensayo y datos reales): no dependen de la demostración ni de su carga. */}
+        <Route path="/espacios/*" element={<EspaciosApp />} />
+        <Route path="*" element={fase !== 'lista' ? <Arranque /> : <RutasDemo />} />
+      </Routes>
+      <Avisos />
+    </HashRouter>
+  );
+}
+
+function RutasDemo() {
+  return (
         <Routes>
           <Route path="/campo/*" element={<CampoApp />} />
           <Route path="/imprimir/:itId" element={<HojaCampo />} />
@@ -59,14 +71,13 @@ export default function App() {
             <Route path="/" element={<Navigate to="/campanas" replace />} />
             <Route path="/campanas" element={<CampanasPage />} />
             <Route path="/territorio" element={<TerritorioPage />} />
-            <Route path="/oficina" element={<OficinaPage />} />
+            <Route path="/oficina/*" element={<OficinaPage />} />
             <Route path="/datos" element={<DatosPage />} />
+            <Route path="/datos/incorporar" element={<IncorporacionPage />} />
             <Route path="/analisis" element={<AnalisisPage />} />
+            <Route path="/visualizacion" element={<VisualizacionPage />} />
             <Route path="*" element={<Navigate to="/campanas" replace />} />
           </Route>
         </Routes>
-      )}
-      <Avisos />
-    </HashRouter>
   );
 }

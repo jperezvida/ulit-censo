@@ -1,0 +1,41 @@
+{
+  "status": "ok",
+  "deployment": {
+    "id": "dpl_5wBBNu998QbWfURDUtHgy5FSKgJV",
+    "url": "https://ulit-censo-pruebas-8t37jarwt-jaimes-projects-e2a33d1a.vercel.app",
+    "productionUrl": "https://ulit-censo-pruebas.vercel.app",
+    "inspectorUrl": "https://vercel.com/jaimes-projects-e2a33d1a/ulit-censo-pruebas/5wBBNu998QbWfURDUtHgy5FSKgJV",
+    "readyState": "READY",
+    "target": "production",
+    "deploymentApiUrl": "https://api.vercel.com/v13/deployments/dpl_5wBBNu998QbWfURDUtHgy5FSKgJV",
+    "buildMachine": {
+      "cores": 2,
+      "memory": 8192,
+      "machine": "basic",
+      "selectionType": "fixed",
+      "selectionSource": "plan-default"
+    },
+    "deploymentProtection": [
+      "vercel_authentication"
+    ]
+  },
+  "message": "Deployment ulit-censo-pruebas-8t37jarwt-jaimes-projects-e2a33d1a.vercel.app ready. Production URL: https://ulit-censo-pruebas.vercel.app",
+  "next": [
+    {
+      "command": "vercel git connect --non-interactive",
+      "when": "Automatically deploy changes on every push"
+    },
+    {
+      "command": "vercel curl https://ulit-censo-pruebas.vercel.app",
+      "when": "Verify deployment, including when Deployment Protection is enabled"
+    },
+    {
+      "command": "vercel inspect ulit-censo-pruebas-8t37jarwt-jaimes-projects-e2a33d1a.vercel.app --non-interactive",
+      "when": "Inspect deployment"
+    },
+    {
+      "command": "vercel deploy --prod --non-interactive",
+      "when": "Promote to production"
+    }
+  ]
+}

@@ -277,7 +277,7 @@ function MapaActividad() {
         </div>
       </div>
       <div className="an-mapa-lienzo">
-        <MapaBase centro={municipio.centro} zoom={15} onListo={alListo} />
+        <MapaBase centro={municipio.centro!} zoom={15} onListo={alListo} />
       </div>
       <p className="muted" style={{ fontSize: 12, padding: '8px 14px', margin: 0 }}>
         <Info size={12} /> {fmt(n)} locales de {campana?.nombre} (o de su campaña de referencia si aún no se han visitado). Mapa de actividad independiente del mapa de cobertura territorial (Territorio → Cobertura). Posiciones ficticias.
