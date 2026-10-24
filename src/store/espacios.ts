@@ -3,7 +3,8 @@ import { createStore, get as idbGet, set as idbSet, type UseStore } from 'idb-ke
 import { VERSION_DATOS, type BaseDatos } from '../domain/db';
 import { migrarALaActual } from '../domain/migraciones';
 import { PERFIL_ITINERARIO_28 } from '../domain/xlsx/perfilesImportacion';
-import { BASE_INDEXEDDB, crearBaseEspacio, huellaBase, municipioDeEspacio, personaEspacio, SHA256_ORIGINAL_MEDINA_2025, verificarEspacio, type TipoEspacio } from '../domain/espacios';
+import { BASE_INDEXEDDB, crearBaseEspacio, huellaBase, municipioDeEspacio, personaEspacio, PREFIJO, SHA256_ORIGINAL_MEDINA_2025, verificarEspacio, type TipoEspacio } from '../domain/espacios';
+import { altaMunicipio, crearCampana, type DatosCampana, type DatosMunicipio } from '../domain/municipios';
 import { aplicarIncorporacion, deshacerIncorporacion, type DecisionesIncorporacion, type DestinoIncorporacion, type PlanIncorporacion } from '../domain/incorporacion';
 import { comprobarRespaldo, crearRespaldo, type Respaldo } from '../domain/respaldo';
 import { cargarInstantaneaMedina } from '../data/callejero';
@@ -86,6 +87,10 @@ interface Estado {
   restaurar: (texto: string) => Promise<{ ok: boolean; error?: string }>;
   incorporar: (p: { resultado: ResultadoInterpretacion; destino: DestinoIncorporacion; decisiones: DecisionesIncorporacion; plan: PlanIncorporacion; requisitos: Requisito[] }) => Promise<{ ok: boolean; error?: string; importacionId?: Id; campanaId?: Id; creadas?: Record<string, number> }>;
   deshacer: (importacionId: Id) => Promise<{ ok: boolean; error?: string }>;
+  /** G2 · Alta de un municipio (sin callejero) en el espacio abierto. */
+  altaMunicipio: (d: DatosMunicipio) => Promise<{ ok: boolean; error?: string; municipioId?: Id }>;
+  /** G2 · Campaña nueva (histórica u operativa) de un municipio del espacio. */
+  crearCampana: (d: DatosCampana) => Promise<{ ok: boolean; error?: string; campanaId?: Id }>;
 }
 
 const texto = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -131,11 +136,11 @@ export function requisitosIncorporacion(p: {
     {
       id: 'perfil',
       // G1: cualquier perfil de CENSO histórico (de referencia o creado con la correspondencia de columnas);
-      // los itinerarios de campo 2026 no se importan como histórico.
-      ok: !p.plan || (p.plan.perfil.id !== PERFIL_ITINERARIO_28.id && p.plan.destino.anio === 2025),
-      texto: !p.plan || (p.plan.perfil.id !== PERFIL_ITINERARIO_28.id && p.plan.destino.anio === 2025)
-        ? `Censo histórico (perfil «${p.plan?.perfil.id ?? '—'}»), como campaña histórica de 2025.`
-        : 'En esta fase solo se incorpora un censo histórico como campaña de 2025. Los itinerarios y datos de campo de 2026 no se importan todavía.',
+      // los itinerarios de campo 2026 no se importan como histórico. G2: en la campaña histórica elegida.
+      ok: !p.plan || p.plan.perfil.id !== PERFIL_ITINERARIO_28.id,
+      texto: !p.plan || p.plan.perfil.id !== PERFIL_ITINERARIO_28.id
+        ? `Censo histórico (perfil «${p.plan?.perfil.id ?? '—'}») en la campaña histórica «${p.plan?.destino.nombre ?? '—'}» (${p.plan?.destino.anio ?? '—'}).`
+        : 'Los itinerarios y datos de campo de 2026 no se importan como censo histórico.',
     },
     {
       id: 'archivo',
@@ -203,7 +208,9 @@ export const useEspacios = create<Estado>((set, get) => ({
         return { ok: false, error: 'Falta el callejero real.' };
       }
       // Solo en memoria: no se lee ni se escribe ninguna base del navegador.
-      const db = crearBaseEspacio(tipo, { persona, calles: inst.calles, detalleCallejero: inst.detalle, espacioId: `memoria-${Date.now().toString(36)}` });
+      const base = crearBaseEspacio(tipo, { persona, calles: inst.calles, detalleCallejero: inst.detalle, espacioId: `memoria-${Date.now().toString(36)}` });
+      // G2: destino de la vista previa, una campaña histórica 2025 de Medina que tampoco se guarda.
+      const { db } = crearCampana(base, { municipioId: municipioDeEspacio(tipo), anio: 2025, nombre: 'Censo 2025 · histórico (vista previa sin guardar)', clase: 'historica' }, { prefijo: PREFIJO[tipo], porId: personaEspacio(base)!.id });
       set({ db, fase: 'listo' });
       return { ok: true };
     } catch (e) {
@@ -316,7 +323,7 @@ export const useEspacios = create<Estado>((set, get) => ({
     if (pendientes.length) return { ok: false, error: `No se incorpora nada: ${pendientes.map((r) => r.texto).join(' ')}` };
     // Doble seguro en el espacio real (C1e-B), independiente de lo que muestre la interfaz.
     if (tipo === 'real' && !CONFIRMACION_REAL_HABILITADA) return { ok: false, error: 'C1e-B: la incorporación real está bloqueada hasta revisar la vista previa.' };
-    if (destino.municipioId !== municipioDeEspacio(tipo)) return { ok: false, error: 'El destino no es el municipio de este espacio.' };
+    if (!db.municipios[destino.municipioId]) return { ok: false, error: 'El destino no es un municipio de este espacio.' };
     set({ ocupado: 'Incorporando…' });
     try {
       const persona = personaEspacio(db)!;
@@ -348,4 +355,47 @@ export const useEspacios = create<Estado>((set, get) => ({
       set({ ocupado: null });
     }
   },
+
+  altaMunicipio: async (d) => {
+    const r = await guardarCambio(get, set, 'Dando de alta el municipio…', (db, tipo) => {
+      const x = altaMunicipio(db, d, { prefijo: PREFIJO[tipo], porId: personaEspacio(db)!.id });
+      return { db: x.db, id: x.municipioId };
+    });
+    return r.ok ? { ok: true, municipioId: r.id } : r;
+  },
+
+  crearCampana: async (d) => {
+    const r = await guardarCambio(get, set, 'Creando la campaña…', (db, tipo) => {
+      const x = crearCampana(db, d, { prefijo: PREFIJO[tipo], porId: personaEspacio(db)!.id });
+      return { db: x.db, id: x.campanaId };
+    });
+    return r.ok ? { ok: true, campanaId: r.id } : r;
+  },
 }));
+
+/**
+ * G2 · Aplica un cambio de configuración (municipio o campaña) al espacio abierto y lo guarda con
+ * escritura VERIFICADA. En el análisis sin guardar (C1e-B) el cambio se queda solo en memoria.
+ */
+async function guardarCambio(
+  get: () => Estado, set: (p: Partial<Estado>) => void, mensaje: string, cambio: (db: BaseDatos, tipo: TipoEspacio) => { db: BaseDatos; id: Id },
+): Promise<{ ok: true; id: Id } | { ok: false; error: string }> {
+  const { tipo, db, huella, ocupado, soloMemoria } = get();
+  if (!tipo || !db) return { ok: false, error: 'No hay espacio abierto.' };
+  if (ocupado) return { ok: false, error: 'Ya hay una operación en curso.' };
+  set({ ocupado: mensaje });
+  try {
+    const r = cambio(db, tipo);
+    if (soloMemoria) {
+      set({ db: r.db });
+      return { ok: true, id: r.id };
+    }
+    const h = await escribirVerificado(tipo, r.db, huella);
+    set({ db: r.db, huella: h });
+    return { ok: true, id: r.id };
+  } catch (e) {
+    return { ok: false, error: texto(e) };
+  } finally {
+    set({ ocupado: null });
+  }
+}

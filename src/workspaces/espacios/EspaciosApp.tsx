@@ -6,7 +6,8 @@ import { useEspacios } from '../../store/espacios';
 import { BASE_INDEXEDDB, ESPACIO_TXT, personaEspacio, type TipoEspacio } from '../../domain/espacios';
 import { ARCHIVO_SINTETICO_C1E, libroSinteticoC1e } from '../../data/xlsxSinteticoC1e';
 import { AsistenteEspacio } from './AsistenteEspacio';
-import { useAsistenteEspacio } from './estadoAsistenteEspacio';
+import { useAsistenteEspacio, useSeleccionEspacio } from './estadoAsistenteEspacio';
+import { MunicipiosCampanas } from './MunicipiosCampanas';
 import { leerTexto } from './leerArchivo';
 import { comprobarGarantias, VERSION_EMBEBIDA, type ResultadoGarantias } from './garantiasNavegador';
 import { entornoDe } from '../../domain/garantias';
@@ -110,6 +111,7 @@ function AnalisisSinGuardar() {
   useEffect(() => {
     esp.cerrar();
     reiniciarAsistente();
+    useSeleccionEspacio.getState().reiniciar();
     void comprobarGarantias().then(setG);
     return () => {
       // Al salir no queda nada: ni el archivo, ni la interpretación, ni la base temporal.
@@ -175,6 +177,7 @@ function EspacioPage() {
     if (bloqueado) return;
     if (esp.tipo !== tipo || esp.soloMemoria) {
       reiniciarAsistente();
+      useSeleccionEspacio.getState().reiniciar();
       void esp.abrir(tipo);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -190,7 +193,7 @@ function EspacioPage() {
       <div className={`esp-banda esp-${tipo}`} role="banner" aria-label="Espacio activo">
         {tipo === 'real' ? <ShieldCheck size={18} /> : <FlaskConical size={18} />}
         <b>{ESPACIO_TXT[tipo].nombre.toUpperCase()}</b>
-        <span>{tipo === 'real' ? 'Censo auténtico de Medina del Campo · separado de la demostración y del ensayo' : 'Solo archivos SINTÉTICOS · separado de la demostración y del espacio real'}</span>
+        <span>{tipo === 'real' ? 'Censos auténticos · separado de la demostración y del ensayo' : 'Solo archivos SINTÉTICOS · separado de la demostración y del espacio real'}</span>
       </div>
       {esp.fase === 'cargando' && <div className="t-info" role="status">Abriendo el espacio…</div>}
       {esp.fase === 'error' && <div className="t-info error" role="alert"><AlertTriangle size={15} /> {esp.error}</div>}
@@ -208,7 +211,7 @@ function Crear({ tipo }: { tipo: TipoEspacio }) {
   return (
     <section className="tarjeta inc-bloque" aria-label="Crear el espacio" style={{ maxWidth: 720 }}>
       <h3>Crear el {ESPACIO_TXT[tipo].nombre.toLowerCase()}</h3>
-      <p className="muted">Se crea vacío, con el callejero real de Medina del Campo (OpenStreetMap) y la persona responsable. No se copia nada de la demostración. Si ya existiera, no se sobrescribe.</p>
+      <p className="muted">Se crea vacío, con Medina del Campo y su callejero real (OpenStreetMap) y la persona responsable. Después podrá dar de alta otros municipios y sus campañas. No se copia nada de la demostración. Si ya existiera, no se sobrescribe.</p>
       <label className="campo">
         <span>Persona responsable (coordinación)</span>
         <input className="input" aria-label="Persona responsable" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre y apellidos" />
@@ -231,14 +234,15 @@ function Espacio({ tipo }: { tipo: TipoEspacio }) {
   const [generando, setGenerando] = useState(false);
   return (
     <div className="col" style={{ gap: 14 }}>
+      <MunicipiosCampanas tipo={tipo} />
       <div className="inc-rejilla">
         <section className="tarjeta inc-bloque" aria-label="Estado del espacio">
           <h3>Estado</h3>
           <dl className="inc-dl">
             <dt>Responsable</dt><dd>{persona?.nombre}</dd>
             <dt>Creado</dt><dd>{db.meta.espacioCreado?.slice(0, 10)} · <span className="mono muted">{db.meta.espacioId?.slice(0, 8)}</span></dd>
-            <dt>Callejero</dt><dd>{db.meta.detalleCallejero}</dd>
-            <dt>Campañas</dt><dd>{campanas.length ? campanas.map((c) => `${c.nombre} (${c.anio})`).join(' · ') : 'Ninguna todavía'}</dd>
+            <dt>Municipios</dt><dd>{Object.keys(db.municipios).length}</dd>
+            <dt>Campañas</dt><dd>{campanas.length || 'Ninguna todavía'}</dd>
             <dt>Registros</dt><dd>{fmt(Object.keys(db.registros).length)} · locales {fmt(Object.keys(db.locales).length)} · negocios {fmt(Object.keys(db.negocios).length)}</dd>
           </dl>
           {tipo === 'ensayo' && (
@@ -259,9 +263,9 @@ function Espacio({ tipo }: { tipo: TipoEspacio }) {
           )}
         </section>
       </div>
-      <section className="tarjeta inc-bloque" aria-label="Incorporar el censo histórico 2025">
-        <h2 style={{ margin: 0 }}>Incorporar el censo histórico 2025</h2>
-        <p className="muted">Un único importador: lectura segura (C1a), interpretación (C1b), plan atómico y reversible (C1c) y decisiones trazadas (C1d). {tipo === 'real' ? 'En esta fase (C1e-B) se llega hasta la vista previa: la confirmación está bloqueada.' : 'Use el archivo SINTÉTICO de ensayo.'}</p>
+      <section className="tarjeta inc-bloque" aria-label="Incorporar un censo">
+        <h2 style={{ margin: 0 }}>Incorporar un censo histórico (Excel)</h2>
+        <p className="muted">Primero el destino (municipio y campaña histórica), después el archivo. Un único importador: lectura segura (C1a), columnas (G1), interpretación (C1b), plan atómico y reversible (C1c) y decisiones trazadas (C1d). {tipo === 'real' ? 'En esta fase (C1e-B) se llega hasta la vista previa: la confirmación está bloqueada.' : 'Use archivos SINTÉTICOS.'}</p>
         <AsistenteEspacio tipo={tipo} />
       </section>
     </div>

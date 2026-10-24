@@ -6,19 +6,21 @@ import { prepararIncorporacion } from '../../domain/incorporacionXlsx';
 import { periodoDe, planificarIncorporacion, type DecisionesIncorporacion, type DestinoIncorporacion } from '../../domain/incorporacion';
 import { itemsRevision, MOTIVO_TXT, previsualizarDeshacer } from '../../domain/incorporacionDemo';
 import { conciliacionCalles, diagnosticoAgregado, ESTADO_CALLE_TXT, recuentoRegistros, senales, type EstadoCalle } from '../../domain/c1e';
-import { ESPACIO_TXT, municipioDeEspacio, personaEspacio, SHA256_ORIGINAL_MEDINA_2025, type TipoEspacio } from '../../domain/espacios';
+import { municipioDeEspacio, personaEspacio, SHA256_ORIGINAL_MEDINA_2025, type TipoEspacio } from '../../domain/espacios';
 import { esArchivoSintetico } from '../../data/xlsxSinteticoC1e';
 import { RevisionGrupos } from '../imports/incorporacion/RevisionGrupos';
 import { Decisiones } from '../imports/incorporacion/Decisiones';
 import { ContextoIncorporacion } from '../imports/incorporacion/contextoIncorporacion';
 import { firmaInterpretacion, hoy } from '../imports/incorporacion/estadoAsistente';
-import { useAsistenteEspacio, type EtapaEspacio } from './estadoAsistenteEspacio';
+import { useAsistenteEspacio, useSeleccionEspacio, type EtapaEspacio } from './estadoAsistenteEspacio';
+import { campanasDestino, destinoElegido, FormCampana } from './MunicipiosCampanas';
+import { callejeroDe } from '../../domain/municipios';
 import { leerBytes } from './leerArchivo';
 import { PasoColumnas } from './PasoColumnas';
 import type { BaseDatos } from '../../domain/db';
 
 const ETAPAS: { n: EtapaEspacio; t: string; d: string }[] = [
-  { n: 1, t: 'Archivo', d: 'Elegir el Excel' },
+  { n: 1, t: 'Destino y archivo', d: 'Dónde y qué Excel' },
   { n: 2, t: 'Columnas', d: 'Cómo se lee' },
   { n: 3, t: 'Diagnóstico', d: 'Recuentos y avisos' },
   { n: 4, t: 'Decisiones', d: 'Resolver lo pendiente' },
@@ -34,11 +36,29 @@ async function sha256(bytes: Uint8Array): Promise<string> {
   return [...new Uint8Array(h)].map((x) => x.toString(16).padStart(2, '0')).join('');
 }
 
-/** Decisión de periodo propuesta: autorizada en la solicitud C1e (fechas de 2024 en el censo 2025). */
-const periodoPropuesto = (db: BaseDatos, desde = '2024-01-01'): DecisionesIncorporacion['periodoTrabajo'] => ({
-  porId: personaEspacio(db)?.id ?? '', fecha: hoy(), desde, hasta: '2025-12-31',
-  motivo: 'Autorizado por la Cátedra en la solicitud C1e (23-10-2026): el censo 2025 incluye visitas de 2024; se conservan las fechas originales.',
+/** ¿Es el censo histórico 2025 de Medina del Campo (el caso de la solicitud C1e)? */
+const esCasoC1e = (tipo: TipoEspacio, d: DestinoIncorporacion | null) => !!d && d.municipioId === municipioDeEspacio(tipo) && d.anio === 2025;
+
+/**
+ * Decisión de periodo de trabajo de campo. Para Medina 2025 es la autorizada en la solicitud C1e
+ * (fechas de 2024 en el censo 2025); para otro destino la toma, si la marca, la persona responsable.
+ */
+const periodoPropuesto = (db: BaseDatos, tipo: TipoEspacio, d: DestinoIncorporacion, desde?: string): DecisionesIncorporacion['periodoTrabajo'] => ({
+  porId: personaEspacio(db)?.id ?? '', fecha: hoy(), desde: desde ?? (esCasoC1e(tipo, d) ? '2024-01-01' : `${d.anio}-01-01`), hasta: `${d.anio}-12-31`,
+  motivo: esCasoC1e(tipo, d)
+    ? 'Autorizado por la Cátedra en la solicitud C1e (23-10-2026): el censo 2025 incluye visitas de 2024; se conservan las fechas originales.'
+    : `Decisión de ${personaEspacio(db)?.nombre ?? 'la persona responsable'}: el trabajo de campo del censo ${d.anio} empezó antes del año natural; se conservan las fechas originales.`,
 });
+
+/** G2 · Destino del asistente: municipio y campaña histórica elegidos (o null si no hay ninguna disponible). */
+function useDestino(tipo: TipoEspacio): DestinoIncorporacion | null {
+  const db = useEspacios((s) => s.db!);
+  const sel = useSeleccionEspacio();
+  return useMemo(() => {
+    const { municipioId, campana } = destinoElegido(db, tipo, sel);
+    return municipioId && campana ? { municipioId, anio: campana.anio, nombre: campana.nombre, campanaId: campana.id } : null;
+  }, [db, tipo, sel]);
+}
 
 /**
  * C1e · Asistente de incorporación en un espacio aislado. Reutiliza C1a (lectura segura), C1b
@@ -49,12 +69,13 @@ export function AsistenteEspacio({ tipo }: { tipo: TipoEspacio }) {
   const st = useAsistenteEspacio();
   const db = useEspacios((s) => s.db!);
   const persona = personaEspacio(db);
-  const destino = useMemo<DestinoIncorporacion>(() => ({ municipioId: municipioDeEspacio(tipo), anio: 2025, nombre: `Censo 2025 · histórico importado${tipo === 'real' ? '' : ' (ENSAYO)'}` }), [tipo]);
+  const elegido = useDestino(tipo);
+  const destino = useMemo<DestinoIncorporacion>(() => elegido ?? { municipioId: '', anio: 0 }, [elegido]);
   const autorizado = !!persona && (persona.roles.includes('coordinador') || persona.roles.includes('administrador'));
-  const puedeIr = (n: EtapaEspacio) => n === 1 || (n === 2 && !!st.archivo && !st.aplicado) || (n <= 5 && !!st.preparado && !st.aplicado) || (n === 6 && !!st.aplicado);
+  const puedeIr = (n: EtapaEspacio) => n === 1 || (n === 2 && !!st.archivo && !!elegido && !st.aplicado) || (n <= 5 && !!st.preparado && !st.aplicado) || (n === 6 && !!st.aplicado);
 
   const recalcular = async (decisiones: DecisionesIncorporacion = st.decisiones, forzar = false, lectura = st.lectura) => {
-    const firma = `${firmaInterpretacion(decisiones)}|${lectura ? JSON.stringify([lectura.perfil.id, lectura.perfil.version, lectura.perfil.columnas, lectura.hoja, lectura.filaCabecera]) : ''}`;
+    const firma = `${destino.campanaId}|${firmaInterpretacion(decisiones)}|${lectura ? JSON.stringify([lectura.perfil.id, lectura.perfil.version, lectura.perfil.columnas, lectura.hoja, lectura.filaCabecera]) : ''}`;
     if (!forzar && st.preparado && firma === st.interpretadoCon) {
       try {
         st.set({ decisiones, preparado: { ...st.preparado, plan: planificarIncorporacion(useEspacios.getState().db!, st.preparado.resultado, destino, decisiones) }, error: null, revisada: false });
@@ -89,13 +110,13 @@ export function AsistenteEspacio({ tipo }: { tipo: TipoEspacio }) {
         {st.cargando && <div className="t-info inc-progreso" role="status"><span className="inc-spinner" /> {st.cargando}</div>}
         {st.error && <div className="t-info error" role="alert"><AlertTriangle size={15} /> {st.error}</div>}
 
-        {st.etapa === 1 && <EtapaArchivo tipo={tipo} onAnalizar={() => st.set({ etapa: 2, error: null })} />}
+        {st.etapa === 1 && <EtapaArchivo tipo={tipo} destino={elegido} onAnalizar={() => st.set({ etapa: 2, error: null })} />}
         {st.etapa === 2 && st.archivo && <PasoColumnas onContinuar={async (lectura) => {
           useAsistenteEspacio.getState().set({ lectura });
           await recalcular(useAsistenteEspacio.getState().decisiones, true, lectura);
           if (!useAsistenteEspacio.getState().error) useAsistenteEspacio.getState().set({ etapa: 3 });
         }} />}
-        {st.etapa === 3 && st.preparado && <EtapaDiagnostico tipo={tipo} />}
+        {st.etapa === 3 && st.preparado && <EtapaDiagnostico destino={destino} />}
         {st.etapa === 4 && st.preparado && <Decisiones resultado={st.preparado.resultado} plan={st.preparado.plan} decisiones={st.decisiones} onCambiar={(d) => recalcular(d)} />}
         {st.etapa === 5 && st.preparado && <EtapaVistaPrevia tipo={tipo} destino={destino} />}
         {st.etapa === 6 && st.aplicado && <EtapaResultado />}
@@ -112,7 +133,7 @@ export function AsistenteEspacio({ tipo }: { tipo: TipoEspacio }) {
   );
 }
 
-function EtapaArchivo({ tipo, onAnalizar }: { tipo: TipoEspacio; onAnalizar: () => void }) {
+function EtapaArchivo({ tipo, destino, onAnalizar }: { tipo: TipoEspacio; destino: DestinoIncorporacion | null; onAnalizar: () => void }) {
   const st = useAsistenteEspacio();
   const db = useEspacios((s) => s.db!);
   const a = st.archivo;
@@ -120,7 +141,7 @@ function EtapaArchivo({ tipo, onAnalizar }: { tipo: TipoEspacio; onAnalizar: () 
   const elegir = async (f?: File) => {
     st.reiniciar();
     if (!f) return;
-    useAsistenteEspacio.getState().set({ cargando: 'Calculando la huella SHA-256 en este navegador…', decisiones: { periodoTrabajo: periodoPropuesto(db) } });
+    useAsistenteEspacio.getState().set({ cargando: 'Calculando la huella SHA-256 en este navegador…', decisiones: { periodoTrabajo: destino && esCasoC1e(tipo, destino) ? periodoPropuesto(db, tipo, destino) : undefined } });
     try {
       const bytes = await leerBytes(f);
       useAsistenteEspacio.getState().set({ archivo: { nombre: f.name, tamano: f.size, sha256: await sha256(bytes), sintetico: esArchivoSintetico(bytes), bytes }, cargando: null });
@@ -134,10 +155,11 @@ function EtapaArchivo({ tipo, onAnalizar }: { tipo: TipoEspacio; onAnalizar: () 
     : null;
   return (
     <div className="inc-rejilla">
+      <Destino tipo={tipo} destino={destino} />
       <section className="tarjeta inc-bloque" aria-label="Archivo de origen">
-        <h3><FileSpreadsheet size={16} /> Archivo de origen</h3>
+        <h3><FileSpreadsheet size={16} /> 2. Archivo de origen</h3>
         <label className="campo">
-          <span>Seleccione el XLSX {tipo === 'real' ? 'auténtico del censo de Medina del Campo 2025' : 'sintético de ensayo'}</span>
+          <span>Seleccione el XLSX {tipo === 'real' ? 'auténtico del censo' : 'sintético de ensayo'}</span>
           <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Archivo XLSX del censo" onChange={(e) => void elegir(e.target.files?.[0])} />
         </label>
         <p className="muted">El archivo se lee y se procesa <b>en este navegador</b>: no se sube a ningún servidor. Sus bytes solo se mantienen en memoria mientras dure esta sesión y nunca se guardan.</p>
@@ -154,36 +176,85 @@ function EtapaArchivo({ tipo, onAnalizar }: { tipo: TipoEspacio; onAnalizar: () 
         {bloqueo && <div className="t-info error" role="alert"><XCircle size={15} /> {bloqueo}</div>}
       </section>
 
-      <section className="tarjeta inc-bloque" aria-label="Destino">
-        <h3>Destino: campaña histórica 2025 nueva</h3>
-        <ul className="inc-lista">
-          <li>Municipio del {ESPACIO_TXT[tipo].nombre.toLowerCase()}: Medina del Campo. No se toca la demostración ni el otro espacio.</li>
-          <li>Se crea una campaña <b>histórica</b> nueva; <b>2026 no se modifica</b> ni se completa ninguna de sus tareas.</li>
-          <li>Clasificaciones, franquicias, Google, redes y comercio electrónico se conservan como <b>históricos</b>: no son comprobaciones de 2026.</li>
-          <li>Cada fila conserva sus valores originales. Varios establecimientos en el mismo portal son <b>locales independientes</b>.</li>
-        </ul>
-        <label className="fila" style={{ alignItems: 'flex-start', gap: 8 }}>
-          <input type="checkbox" aria-label="Aplicar el periodo de trabajo de campo" checked={!!p} onChange={(e) => st.set({ decisiones: { ...st.decisiones, periodoTrabajo: e.target.checked ? periodoPropuesto(db) : undefined }, preparado: null })} />
-          <span><b>Periodo de trabajo de campo:</b> del <input className="input" style={{ width: 140, display: 'inline-block' }} type="date" aria-label="Inicio del periodo" value={p?.desde ?? '2024-01-01'} disabled={!p} onChange={(e) => st.set({ decisiones: { ...st.decisiones, periodoTrabajo: periodoPropuesto(db, e.target.value) }, preparado: null })} /> al 2025-12-31.
-            <span className="muted"> Conserva como fecha de observación las fechas originales de 2024. Decisión trazada: {personaEspacio(db)?.nombre}, {hoy()}.</span></span>
-        </label>
-      </section>
+      {destino && (
+        <section className="tarjeta inc-bloque" aria-label="Qué se hará">
+          <h3>Qué se hará</h3>
+          <ul className="inc-lista">
+            <li>Se incorpora en la campaña histórica <b>«{destino.nombre}»</b> ({destino.anio}) de <b>{db.municipios[destino.municipioId]?.nombre}</b>. No se toca la demostración, el otro espacio ni otros municipios.</li>
+            <li><b>Ninguna campaña operativa se modifica</b> (en Medina del Campo, 2026 sigue intacta).</li>
+            <li>Clasificaciones, franquicias, Google, redes y comercio electrónico se conservan como <b>históricos</b>.</li>
+            <li>Cada fila conserva sus valores originales. Varios establecimientos en el mismo portal son <b>locales independientes</b>.</li>
+          </ul>
+          <label className="fila" style={{ alignItems: 'flex-start', gap: 8 }}>
+            <input type="checkbox" aria-label="Aplicar el periodo de trabajo de campo" checked={!!p} onChange={(e) => st.set({ decisiones: { ...st.decisiones, periodoTrabajo: e.target.checked ? periodoPropuesto(db, tipo, destino) : undefined }, preparado: null })} />
+            <span><b>Periodo de trabajo de campo:</b> del <input className="input" style={{ width: 140, display: 'inline-block' }} type="date" aria-label="Inicio del periodo" value={p?.desde ?? periodoPropuesto(db, tipo, destino)!.desde} disabled={!p} onChange={(e) => st.set({ decisiones: { ...st.decisiones, periodoTrabajo: periodoPropuesto(db, tipo, destino, e.target.value) }, preparado: null })} /> al {destino.anio}-12-31.
+              <span className="muted"> Marque esta opción si el censo incluye visitas anteriores a {destino.anio}: se conservan sus fechas originales. Decisión trazada: {personaEspacio(db)?.nombre}, {hoy()}.</span></span>
+          </label>
+        </section>
+      )}
 
       <div className="inc-nav fila inc-ancho">
         <span className="muted esp">Persona: {personaEspacio(db)?.nombre}</span>
-        <button className="btn primario" disabled={!a || !!bloqueo || !!st.cargando} onClick={onAnalizar}>Siguiente: columnas <ArrowRight size={15} /></button>
+        <button className="btn primario" disabled={!destino || !a || !!bloqueo || !!st.cargando} onClick={onAnalizar}>Siguiente: columnas <ArrowRight size={15} /></button>
       </div>
     </div>
   );
 }
 
-function EtapaDiagnostico({ tipo }: { tipo: TipoEspacio }) {
+/** G2 · Paso 1: municipio y campaña histórica de destino, ANTES de elegir el archivo. */
+function Destino({ tipo, destino }: { tipo: TipoEspacio; destino: DestinoIncorporacion | null }) {
+  const db = useEspacios((s) => s.db!);
+  const soloMemoria = useEspacios((s) => s.soloMemoria);
+  const sel = useSeleccionEspacio();
+  const st = useAsistenteEspacio();
+  const [nueva, setNueva] = useState(false);
+  const { municipioId } = destinoElegido(db, tipo, sel);
+  const opciones = municipioId ? campanasDestino(db, municipioId) : [];
+  const cj = municipioId ? callejeroDe(db, municipioId) : null;
+  const cambiar = (p: { municipioId?: string; campanaId?: string | null }) => {
+    sel.elegir(p);
+    // Otro destino: hay que volver a analizar; el periodo propuesto depende del destino.
+    const d = destinoElegido(db, tipo, { ...useSeleccionEspacio.getState() });
+    const nuevo = d.municipioId && d.campana ? { municipioId: d.municipioId, anio: d.campana.anio, campanaId: d.campana.id } : null;
+    st.set({ preparado: null, decisiones: { ...st.decisiones, periodoTrabajo: nuevo && esCasoC1e(tipo, nuevo) ? periodoPropuesto(db, tipo, nuevo) : undefined } });
+  };
+  return (
+    <section className="tarjeta inc-bloque" aria-label="Destino">
+      <h3>1. Destino</h3>
+      <div className="destino-ctrl">
+        <label className="campo">
+          <span>Municipio</span>
+          <select className="input" aria-label="Municipio de destino" value={municipioId ?? ''} disabled={soloMemoria} onChange={(e) => cambiar({ municipioId: e.target.value, campanaId: null })}>
+            {Object.values(db.municipios).map((m) => <option key={m.id} value={m.id}>{m.nombre} ({m.provincia})</option>)}
+          </select>
+        </label>
+        <label className="campo">
+          <span>Campaña histórica</span>
+          <select className="input" aria-label="Campaña de destino" value={destino?.campanaId ?? ''} disabled={!opciones.length} onChange={(e) => cambiar({ campanaId: e.target.value })}>
+            {!destino && <option value="">— No hay ninguna campaña histórica vacía —</option>}
+            {opciones.map(({ c, motivo }) => <option key={c.id} value={c.id} disabled={!!motivo}>{c.nombre} ({c.anio}){motivo ? ' · ya tiene datos' : ''}</option>)}
+          </select>
+        </label>
+      </div>
+      {cj && (cj.disponible
+        ? <p className="muted" style={{ margin: 0 }}>Callejero: {cj.texto}.</p>
+        : <div className="t-info aviso" role="note"><AlertTriangle size={15} /> <div><b>Este municipio no tiene callejero todavía.</b> Los registros se incorporan y se conservan, pero sin vínculo con calles ni locales: la conciliación territorial queda pendiente.</div></div>)}
+      {municipioId && !soloMemoria && (nueva
+        ? <FormCampana municipioId={municipioId} soloHistorica onCerrar={(id) => { setNueva(false); if (id) cambiar({ municipioId, campanaId: id }); }} />
+        : <button className="btn s" style={{ alignSelf: 'flex-start' }} onClick={() => setNueva(true)}>Crear una campaña histórica</button>)}
+      {!destino && !nueva && <p className="muted" style={{ margin: 0 }}>Cree primero la campaña histórica en la que se incorporará el Excel (por ejemplo, «Censo 2023 · histórico»).</p>}
+    </section>
+  );
+}
+
+function EtapaDiagnostico({ destino }: { destino: DestinoIncorporacion }) {
   const { preparado, decisiones, lectura } = useAsistenteEspacio();
   const db = useEspacios((s) => s.db!);
   const { resultado, plan } = preparado!;
   const ref = lectura?.referencia;
   const diag = useMemo(() => diagnosticoAgregado(resultado, ref), [resultado, ref]);
-  const calles = useMemo(() => conciliacionCalles(db, resultado, municipioDeEspacio(tipo), decisiones), [db, resultado, tipo, decisiones]);
+  const calles = useMemo(() => conciliacionCalles(db, resultado, destino.municipioId, decisiones), [db, resultado, destino.municipioId, decisiones]);
+  const cj = callejeroDe(db, destino.municipioId);
   const sen = useMemo(() => senales(resultado), [resultado]);
   const items = useMemo(() => itemsRevision(resultado, plan, decisiones), [resultado, plan, decisiones]);
   const [verCalles, setVerCalles] = useState<EstadoCalle | null>('pendiente');
@@ -209,7 +280,9 @@ function EtapaDiagnostico({ tipo }: { tipo: TipoEspacio }) {
 
       <section className="tarjeta inc-bloque" aria-label="Conciliación de calles">
         <h3>Calles: coincidencias y denominaciones pendientes</h3>
-        <p className="muted">Callejero real de Medina del Campo (OpenStreetMap). No se aproxima ni se inventa ninguna correspondencia: lo que no coincide queda pendiente y su registro se conserva sin vínculo territorial. Las propuestas, con su fuente, se revisan y confirman en <b>Decisiones → Calles</b>.</p>
+        {cj.disponible
+          ? <p className="muted">Callejero de {db.municipios[destino.municipioId]?.nombre}: {cj.texto}. No se aproxima ni se inventa ninguna correspondencia: lo que no coincide queda pendiente y su registro se conserva sin vínculo territorial. Las propuestas, con su fuente, se revisan y confirman en <b>Decisiones → Calles</b>.</p>
+          : <div className="t-info aviso" role="note"><AlertTriangle size={15} /> <div><b>{db.municipios[destino.municipioId]?.nombre} no tiene callejero todavía:</b> ninguna denominación se puede conciliar. Todos los registros se conservan y su vínculo territorial queda pendiente.</div></div>}
         <div className="ap-resumen">
           {(['literal', 'normalizada', 'conciliada', 'pendiente', 'sin-correspondencia', 'ambigua', 'vacia'] as EstadoCalle[]).filter((e) => calles.porEstado[e].denominaciones || e === 'pendiente').map((e) => (
             <button key={e} className={`ap-celda ${verCalles === e ? 'on' : ''}`} onClick={() => setVerCalles(verCalles === e ? null : e)} aria-pressed={verCalles === e}>
@@ -311,7 +384,7 @@ function EtapaVistaPrevia({ tipo, destino }: { tipo: TipoEspacio; destino: Desti
           {plan.pendientes.map((x) => <li key={x}>{x}</li>)}
           {diag.diferencias.map((d) => <li key={d.clave} className="aviso">No coincide con el informe: {d.etiqueta} ({String(d.valor)} frente a {String(d.esperado)}).</li>)}
           {a.sha256 !== SHA256_ORIGINAL_MEDINA_2025 && tipo === 'real' && <li className="aviso">El SHA-256 del archivo no es el del diagnóstico agregado.</li>}
-          <li>2026 no se toca: categorización, franquicias, web, Google y redes y la validación final del itinerario 1 siguen pendientes.</li>
+          <li>No se toca ninguna campaña operativa (en Medina del Campo, 2026 sigue intacta).</li>
         </ul>
       </section>
 

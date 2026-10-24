@@ -37,11 +37,22 @@ async function abrirEnsayoCon(bytes: Uint8Array, nombre: string) {
     fireEvent.click(screen.getByRole('button', { name: 'Crear el espacio' }));
     await screen.findByRole('region', { name: 'Estado del espacio' }, { timeout: 20000 });
   }
+  await crearCampanaHistorica();
   fireEvent.change(screen.getByLabelText('Archivo XLSX del censo'), { target: { files: [new File([bytes as BlobPart], nombre)] } });
   await screen.findByLabelText('Identificación del archivo', undefined, { timeout: 20000 });
   fireEvent.click(screen.getByRole('button', { name: /Siguiente: columnas/ }));
   return screen.findByRole('table', { name: 'Correspondencia de columnas' }, { timeout: 20000 });
 }
+/** G2 · Destino: crea (desde el asistente) la campaña histórica en la que se incorporará el Excel. */
+async function crearCampanaHistorica(anio = 2025, nombre = `Censo ${anio} · histórico`) {
+  const destino = await screen.findByRole('region', { name: 'Destino' }, { timeout: 20000 });
+  fireEvent.click(within(destino).getByRole('button', { name: 'Crear una campaña histórica' }));
+  fireEvent.change(within(destino).getByLabelText('Año de la campaña'), { target: { value: String(anio) } });
+  fireEvent.change(within(destino).getByLabelText('Nombre de la campaña'), { target: { value: nombre } });
+  fireEvent.click(within(destino).getByRole('button', { name: /Crear la campaña/ }));
+  await waitFor(() => expect((within(screen.getByRole('region', { name: 'Destino' })).getByLabelText('Campaña de destino') as HTMLSelectElement).selectedOptions[0]?.textContent).toMatch(new RegExp(`${anio}`)), { timeout: 20000 });
+}
+
 const datoDe = (cabecera: string) => screen.getByLabelText(`Dato de ULIT para «${cabecera}»`) as HTMLSelectElement;
 
 describe('G1 · Paso «Columnas» (interfaz)', () => {

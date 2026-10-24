@@ -5,9 +5,13 @@
  * completarse con una correspondencia territorial VERIFICADA (fuente, versión y fecha) o con una
  * asignación manual autorizada y trazada. Si un archivo no los trae, se conservan ausentes.
  *
- * En C1a la configuración solo se usa para INFORMAR sobre lo que trae un archivo; no se guarda en
- * la base de datos ni modifica campañas.
+ * En C1a la configuración solo se usa para INFORMAR sobre lo que trae un archivo. Desde G2 cada
+ * municipio de un espacio guarda la suya como dato (`Municipio.territorio`); las constantes de abajo
+ * quedan como referencia de la demostración y de las bases creadas antes de G2.
  */
+
+import type { BaseDatos } from './db';
+import type { ConfigTerritorialMunicipio } from './types';
 
 export type UsoCampoTerritorial =
   | 'no-se-usa' // el municipio no utiliza el campo (Medina: Distrito y Zona)
@@ -78,6 +82,26 @@ export const CONFIG_TERRITORIAL_ESPACIOS: Record<string, ConfigTerritorial> = {
 
 /** Configuración territorial de cualquier municipio (demostración o espacios aislados). */
 export const configTerritorial = (municipioId: string): ConfigTerritorial | undefined => CONFIG_TERRITORIAL[municipioId] ?? CONFIG_TERRITORIAL_ESPACIOS[municipioId];
+
+/**
+ * G2 · Configuración territorial de un municipio de una base: la guardada como DATO en el municipio
+ * (municipios dados de alta y espacios creados desde G2) o, en bases anteriores que no la tienen, la de
+ * referencia de arriba (Medina del Campo). Así ningún municipio nuevo exige tocar estas constantes.
+ */
+export function configTerritorialDe(db: Pick<BaseDatos, 'municipios'>, municipioId: string): ConfigTerritorial | undefined {
+  const m = db.municipios[municipioId];
+  if (m?.territorio) {
+    const t = m.territorio;
+    return {
+      municipioId, municipio: m.nombre, version: t.version, distrito: t.distrito, zona: t.zona, cp: t.cp, aceras: t.aceras,
+      resultado: 'por-confirmar', nota: t.nota ?? 'Configuración territorial guardada con el municipio.',
+    };
+  }
+  return configTerritorial(municipioId);
+}
+
+/** Reglas de una configuración de referencia, en la forma en que se guardan con el municipio (G2). */
+export const territorioComoDato = (c: ConfigTerritorial): ConfigTerritorialMunicipio => ({ version: c.version, distrito: c.distrito, zona: c.zona, cp: c.cp, aceras: c.aceras, nota: c.nota });
 
 export type CampoTerritorial = 'distrito' | 'zona' | 'cp';
 

@@ -2,6 +2,8 @@ import { baseVacia, ErrorDominio, type BaseDatos } from './db';
 import { sha256Texto } from './sha256';
 import { MEDINA } from '../data/callejero';
 import type { Calle, Id, Persona, Rol } from './types';
+import { CONFIG_TERRITORIAL, territorioComoDato } from './territorio';
+import { verificarSeparacionMunicipios } from './municipios';
 
 /**
  * C1e · ESPACIOS DE TRABAJO independientes.
@@ -36,6 +38,10 @@ export const ESPACIO_TXT: Record<TipoEspacio, { nombre: string; corto: string; d
 
 /** Prefijo de los identificadores propios de cada espacio. */
 export const PREFIJO: Record<TipoEspacio, string> = { ensayo: 'ensayo', real: 'real' };
+/**
+ * Municipio PILOTO de cada espacio (Medina del Campo, con el callejero real). Desde G2 un espacio puede
+ * tener más municipios, dados de alta como datos (`altaMunicipio`), todos con el prefijo del espacio.
+ */
 export const municipioDeEspacio = (tipo: TipoEspacio): Id => `${PREFIJO[tipo]}-mun-medina`;
 /** Nombre de la base de IndexedDB de cada espacio (la demostración usa otra: «keyval-store»). */
 export const BASE_INDEXEDDB: Record<TipoEspacio, string> = { ensayo: 'ulit-censo-ensayo', real: 'ulit-censo-real' };
@@ -98,6 +104,9 @@ export function crearBaseEspacio(tipo: TipoEspacio, d: DatosCreacion): BaseDatos
     nota: tipo === 'real'
       ? 'Espacio de datos REALES. Separado de la demostración y del ensayo.'
       : 'Espacio de ENSAYO con archivos sintéticos. Separado de la demostración y del espacio real.',
+    // G2: la configuración territorial y el estado del callejero se guardan como datos del municipio.
+    territorio: territorioComoDato(CONFIG_TERRITORIAL['mun-medina']),
+    callejero: { estado: 'disponible', fuente: 'osm-instantanea', detalle: d.detalleCallejero, actualizado: ahora },
   };
   for (const c of d.calles) {
     const id = `${p}-${c.id}`;
@@ -124,13 +133,13 @@ export function verificarEspacio(db: BaseDatos, tipo: TipoEspacio): string[] {
   if (m.espacio !== tipo) return [`La base es del espacio «${m.espacio}», no del espacio «${tipo}».`];
   if (!m.espacioId) e.push('Falta el identificador del espacio.');
   const pref = `${PREFIJO[tipo]}-`;
-  const munId = municipioDeEspacio(tipo);
+  // G2: varios municipios por espacio, todos con el prefijo del espacio y ninguno de la demostración.
   for (const mun of Object.values(db.municipios)) {
-    if (mun.id !== munId) e.push(`Municipio ajeno al espacio: «${mun.id}».`);
+    if (!mun.id.startsWith(`${pref}mun-`)) e.push(`Municipio ajeno al espacio: «${mun.id}».`);
     if (mun.escenarioDemo) e.push(`Municipio de demostración: «${mun.id}».`);
   }
   const ajeno = (col: string, id: string, municipioId?: string) => {
-    if (municipioId !== undefined && municipioId !== munId) e.push(`${col} «${id}» de otro municipio («${municipioId}»).`);
+    if (municipioId !== undefined && !db.municipios[municipioId]) e.push(`${col} «${id}» de un municipio que no es del espacio («${municipioId}»).`);
   };
   for (const c of Object.values(db.calles)) {
     ajeno('Calle', c.id, c.municipioId);
@@ -139,7 +148,10 @@ export function verificarEspacio(db: BaseDatos, tipo: TipoEspacio): string[] {
   for (const c of Object.values(db.campanas)) ajeno('Campaña', c.id, c.municipioId);
   for (const l of Object.values(db.locales)) ajeno('Local', l.id, l.municipioId);
   for (const i of Object.values(db.importaciones)) ajeno('Importación', i.id, i.municipioId);
+  for (const c of Object.keys(db.campanas)) if (!c.startsWith(pref) && !c.startsWith(`camp-hist-${pref}`)) e.push(`Campaña sin el prefijo del espacio: «${c}».`);
   for (const p of Object.keys(db.personas)) if (!p.startsWith(pref)) e.push(`Persona sin el prefijo del espacio: «${p}».`);
+  // G2: ninguna entidad relaciona datos de municipios distintos.
+  e.push(...verificarSeparacionMunicipios(db));
   // Nada simulado en un espacio con datos reales o de ensayo (los sintéticos entran como «importado»).
   for (const col of ['locales', 'negocios', 'campanas', 'importaciones'] as const) {
     for (const x of Object.values(db[col]) as { id: string; procedencia?: string }[]) if (x.procedencia === 'simulado') e.push(`${col} «${x.id}» procede de la demostración (simulado).`);

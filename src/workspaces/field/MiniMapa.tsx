@@ -44,7 +44,7 @@ export function MiniMapa({ it, onCalle }: { it: Itinerario; onCalle: (id: Id) =>
   if (!municipio || municipio.fuenteCallejero === 'sin-geometria') return null;
   return (
     <div className="m-minimapa">
-      <MapaBase centro={municipio.centro} zoom={15} onListo={alListo} />
+      <MapaBase centro={municipio.centro!} zoom={15} onListo={alListo} />
     </div>
   );
 }

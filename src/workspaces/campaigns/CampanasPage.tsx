@@ -70,7 +70,7 @@ export default function CampanasPage() {
                 {m.id === 'mun-medina' ? <span className="chip azul">Caso piloto</span> : <Sim texto="Demo de volumen" />}
               </div>
               <div className="municipio-datos mono">
-                {m.centro[1].toFixed(4)}° N · {Math.abs(m.centro[0]).toFixed(4)}° O
+                {m.centro ? `${m.centro[1].toFixed(4)}° N · ${Math.abs(m.centro[0]).toFixed(4)}° O` : 'Sin coordenadas'}
               </div>
               <div className="fila" style={{ gap: 18, marginTop: 6 }}>
                 <span>

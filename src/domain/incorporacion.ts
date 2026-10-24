@@ -5,7 +5,8 @@ import { claveCalle, normalizar } from './text';
 import { huella } from '../data/rng';
 import { sha256Texto } from './sha256';
 import { TAXONOMIA_POR_ID, catalogoDeNodo } from './taxonomy';
-import { configTerritorial } from './territorio';
+import { configTerritorialDe } from './territorio';
+import { motivoNoDestino } from './municipios';
 import { REGLAS, TIPOS_INCIDENCIA } from './xlsx/reglasInterpretacion';
 import { validarDecisionesCalle, type DecisionCalle } from './conciliacionCalles';
 import { denominacionCalle, localizacionDe, type FilaInterpretada, type OpcionesInterpretacion, type ResultadoInterpretacion } from './xlsx/interpretacion';
@@ -78,9 +79,10 @@ export interface DecisionesIncorporacion {
 export const periodoDe = (anio: number, d: DecisionesIncorporacion = {}) => (d.periodoTrabajo ? { desde: d.periodoTrabajo.desde, hasta: d.periodoTrabajo.hasta } : { desde: `${anio}-01-01`, hasta: `${anio}-12-31` });
 
 /** Opciones de C1b que corresponden a las decisiones recibidas (nunca otras). */
-export function opcionesInterpretacion(municipioId: Id, anio: number, d: DecisionesIncorporacion = {}): OpcionesInterpretacion {
+export function opcionesInterpretacion(municipioId: Id, anio: number, d: DecisionesIncorporacion = {}, db?: Pick<BaseDatos, 'municipios'>): OpcionesInterpretacion {
   return {
-    territorio: configTerritorial(municipioId),
+    // G2: la configuración territorial guardada con el municipio (o la de referencia en bases anteriores).
+    territorio: configTerritorialDe(db ?? { municipios: {} }, municipioId),
     modo: 'historico',
     periodo: periodoDe(anio, d),
     reglasAutorizadas: (d.reglasAutorizadas ?? []).map((x) => x.regla),
@@ -94,7 +96,10 @@ export interface DestinoIncorporacion {
   municipioId: Id;
   anio: number;
   nombre?: string;
-  /** Identificadores opcionales (pruebas y trazas reproducibles). */
+  /**
+   * Campaña de destino. Si EXISTE, debe ser una campaña histórica del mismo municipio y año, todavía
+   * vacía (G2: se crea antes de elegir el archivo). Si no existe, la incorporación la crea (C1c).
+   */
   campanaId?: Id;
   importacionId?: Id;
 }
@@ -145,7 +150,8 @@ export interface PlanIncorporacion {
   perfil: { id: string; version: number };
   hoja: string;
   municipio: { id: Id; nombre: string };
-  destino: { campanaId: Id; importacionId: Id; anio: number; nombre: string; nueva: true };
+  /** `nueva`: la incorporación crea la campaña; si es false, se incorpora en una campaña ya preparada (G2). */
+  destino: { campanaId: Id; importacionId: Id; anio: number; nombre: string; nueva: boolean };
   aplicable: boolean;
   bloqueos: Bloqueo[];
   registros: { previstos: number; excluidos: number; candidatasExcluir: { fila: number; decidida: boolean }[] };
@@ -251,7 +257,10 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   // históricos distintos sin colisionar ni sobrescribir registros.
   const raizImp = `imp-c1-${destino.municipioId}-${destino.anio}-${sha.slice(0, 16)}`;
   let importacionId = destino.importacionId ?? raizImp;
-  for (let n = 2; !destino.importacionId && db.importaciones[importacionId]?.estado === 'descartada'; n++) importacionId = `${raizImp}-${n}`;
+  // G2: el mismo archivo puede incorporarse en otra campaña del mismo año (p. ej., dos campañas de 2024):
+  // también entonces se usa otro identificador.
+  const ocupado = (id: Id) => db.importaciones[id] && (db.importaciones[id].estado === 'descartada' || db.importaciones[id].campanaId !== campanaId);
+  for (let n = 2; !destino.importacionId && ocupado(importacionId); n++) importacionId = `${raizImp}-${n}`;
 
   if (!mun) bloqueos.push({ codigo: 'destino-invalido', mensaje: `El municipio «${destino.municipioId}» no existe.`, detalles: [] });
   if (!sha) bloqueos.push({ codigo: 'destino-invalido', mensaje: 'Falta la huella SHA-256 del archivo.', detalles: [] });
@@ -261,7 +270,7 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   }
 
   // Coherencia entre la interpretación y las decisiones: C1b no puede haber aplicado nada no decidido.
-  const op = opcionesInterpretacion(destino.municipioId, destino.anio, decisiones);
+  const op = opcionesInterpretacion(destino.municipioId, destino.anio, decisiones, db);
   const igualLista = (a: string[] = [], b: string[] = []) => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
   if (!igualLista(resultado.opciones.reglasAutorizadas, op.reglasAutorizadas) || !igualLista((resultado.opciones.diccionarioAprobado ?? []).map(normalizar), (op.diccionarioAprobado ?? []).map(normalizar))
     || resultado.opciones.territorio?.municipioId !== op.territorio?.municipioId || resultado.opciones.modo !== 'historico'
@@ -315,7 +324,11 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   }
 
   if (!bloqueos.some((b) => b.codigo === 'reimportacion-identica')) {
-    if (db.campanas[campanaId]) bloqueos.push({ codigo: 'destino-invalido', mensaje: `La campaña «${campanaId}» ya existe: la incorporación siempre crea una campaña histórica nueva.`, detalles: [] });
+    if (db.campanas[campanaId]) {
+      // G2: una campaña elegida como destino debe ser histórica, del mismo municipio y año, y estar vacía.
+      const motivo = destino.campanaId ? motivoNoDestino(db, campanaId, destino.municipioId, destino.anio) : `La campaña «${campanaId}» ya existe.`;
+      if (motivo) bloqueos.push({ codigo: 'destino-invalido', mensaje: motivo, detalles: [] });
+    }
     if (db.importaciones[importacionId]) bloqueos.push({ codigo: 'destino-invalido', mensaje: `La importación «${importacionId}» ya existe.`, detalles: [] });
   }
 
@@ -403,6 +416,7 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
     ...enOtroAnio.map((i) => `El mismo archivo ya se incorporó como histórico de ${i.c1!.anio} (importación «${i.id}»): comprobar que ${destino.anio} es el año correcto`),
     ...Object.values(REGLAS).filter((r) => r.clase === 'propuesta' && !(op.reglasAutorizadas ?? []).includes(r.id) && resultado.filas.some((f) => Object.values(f.celdas).some((c) => c.regla === r.id && c.estado === 'pendiente')))
       .map((r) => `Regla no autorizada: ${r.id} (${r.descripcion})`),
+    ...previas.filter((i) => i.c1!.sha256 === sha && i.c1!.anio === destino.anio && i.campanaId !== campanaId).map((i) => `El mismo archivo ya se incorporó en otra campaña de ${destino.anio} («${db.campanas[i.campanaId ?? '']?.nombre ?? i.campanaId}»): compruebe que no es un duplicado`),
     ...(candidatas.some((c) => !c.decidida) ? [`${candidatas.filter((c) => !c.decidida).length} posible(s) fila(s) de totales sin decidir: se incorporan como registros, sin excluir`] : []),
     ...((corr.ambigua ?? 0) ? [`${corr.ambigua} fila(s) con correspondencia ambigua: registro y observación sin local, pendientes de conciliación`] : []),
     ...((corr['sin-vinculo'] ?? 0) ? [`${corr['sin-vinculo']} fila(s) sin vínculo: solo registro de origen`] : []),
@@ -411,7 +425,7 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   const plan: Omit<PlanIncorporacion, 'firma'> = {
     archivo: { nombre: capa.archivo.nombre, sha256: sha }, perfil: capa.perfil, hoja: capa.hoja,
     municipio: { id: destino.municipioId, nombre: mun?.nombre ?? destino.municipioId },
-    destino: { campanaId, importacionId, anio: destino.anio, nombre: destino.nombre ?? `Censo ${destino.anio} · histórico importado`, nueva: true },
+    destino: { campanaId, importacionId, anio: destino.anio, nombre: db.campanas[campanaId]?.nombre ?? destino.nombre ?? `Censo ${destino.anio} · histórico importado`, nueva: !db.campanas[campanaId] },
     aplicable: bloqueos.length === 0, bloqueos,
     registros: { previstos: capa.filas.length, excluidos: excluidas.size, candidatasExcluir: candidatas },
     nuevas: {
@@ -511,13 +525,19 @@ export function aplicarIncorporacion(
     creadas[col].push(id);
   };
 
-  const campana: Campana = {
-    id: campanaId, municipioId: destino.municipioId, anio: destino.anio, nombre: plan.destino.nombre, tipo: 'historico-importado',
-    periodo: { inicio: periodoDe(destino.anio, decisiones).desde, fin: periodoDe(destino.anio, decisiones).hasta }, ambitoCalleIds: [], ampliacionCalleIds: [],
-    // Nada queda revisado ni validado.
-    estados: { planificacion: 'no-aplica', campo: 'terminado', revision: 'pendiente', validacion: 'pendiente' }, procedencia: 'importado',
-  };
-  crear('campanas', campanaId, campana);
+  const per = periodoDe(destino.anio, decisiones);
+  // Nada queda revisado ni validado.
+  const estados: Campana['estados'] = { planificacion: 'no-aplica', campo: 'terminado', revision: 'pendiente', validacion: 'pendiente' };
+  const previa = plan.destino.nueva ? undefined : db0.campanas[campanaId];
+  const campana: Campana = previa
+    // G2: campaña preparada (vacía): se completa sin perder su identificación ni quién la creó.
+    ? { ...previa, periodo: { inicio: per.desde, fin: per.hasta }, estados }
+    : {
+      id: campanaId, municipioId: destino.municipioId, anio: destino.anio, nombre: plan.destino.nombre, tipo: 'historico-importado',
+      periodo: { inicio: per.desde, fin: per.hasta }, ambitoCalleIds: [], ampliacionCalleIds: [], estados, procedencia: 'importado',
+    };
+  if (previa) db.campanas[campanaId] = campana;
+  else crear('campanas', campanaId, campana);
 
   const porFila = new Map(resultado.filas.map((f) => [f.fila, f]));
   const exclusiones = new Map((decisiones.exclusiones ?? []).map((e) => [e.fila, e]));
@@ -655,7 +675,8 @@ export function aplicarIncorporacion(
     columnas: capa.columnas.map((c) => ({ clave: c.clave, letra: c.letra, cabecera: c.cabecera, tipo: c.tipo })), porId: opciones.porId,
     decisiones: decisiones as Record<string, unknown>, firmaPlan: plan.firma,
     creadas: Object.fromEntries(COLECCIONES.map((col) => [col, Object.fromEntries(creadas[col].map((id) => [id, huellaEntidad(db, col, id)]))])),
-    modificadas: {},
+    modificadas: previa ? { campanas: [campanaId] } : {},
+    ...(previa ? { campanaPrevia: { valor: previa, huellaDespues: huellaEntidad(db, 'campanas', campanaId) } } : {}),
   };
   const imp: Importacion = {
     id: importacionId, municipioId: destino.municipioId, campanaId, tipo: 'A-censo-historico', archivo: plan.archivo.nombre, huella: plan.archivo.sha256, fecha: ahora,
@@ -677,11 +698,16 @@ export function comprobarIntegridad(db: BaseDatos, creadas: Partial<Record<Colec
   for (const id of creadas.locales ?? []) {
     const l = db.locales[id];
     if (!db.municipios[l.municipioId]) e.push(`Local ${id}: municipio inexistente`);
-    for (const d of l.direcciones) if (!db.calles[d.calleId]) e.push(`Local ${id}: calle inexistente`);
+    for (const d of l.direcciones) {
+      if (!db.calles[d.calleId]) e.push(`Local ${id}: calle inexistente`);
+      // G2: nunca un local con una calle de otro municipio.
+      else if (db.calles[d.calleId].municipioId !== l.municipioId) e.push(`Local ${id}: calle de otro municipio`);
+    }
   }
   for (const id of creadas.observaciones ?? []) {
     const o = db.observaciones[id];
     if (!db.campanas[o.campanaId]) e.push(`Observación ${id}: campaña inexistente`);
+    else if (db.calles[o.calleId] && db.calles[o.calleId].municipioId !== db.campanas[o.campanaId].municipioId) e.push(`Observación ${id}: calle y campaña de municipios distintos`);
     if (!db.calles[o.calleId]) e.push(`Observación ${id}: calle inexistente`);
     if (o.localId && !db.locales[o.localId]) e.push(`Observación ${id}: local inexistente`);
     if (o.datos.negocioId && !db.negocios[o.datos.negocioId]) e.push(`Observación ${id}: negocio inexistente`);
@@ -755,6 +781,11 @@ export function deshacerIncorporacion(db0: BaseDatos, importacionId: Id, porId: 
   for (const i of Object.values(db0.importaciones)) if (i.id !== importacionId && i.campanaId === campanaId && i.estado === 'confirmada') conflictos.push(`Otra importación «${i.id}» en la misma campaña`);
   for (const k of [...Object.keys(db0.coberturas), ...Object.keys(db0.situacionesPrevias), ...Object.keys(db0.callesRevisadasPlan)]) if (k.startsWith(`${campanaId}|`)) conflictos.push(`Dato de planificación posterior «${k}» en la campaña histórica`);
   for (const c of Object.values(db0.campanas)) if (c.campanaReferenciaId === campanaId) conflictos.push(`La campaña «${c.nombre}» usa la campaña histórica como referencia`);
+  const previa = imp.c1.campanaPrevia;
+  if (previa) {
+    if (!db0.campanas[campanaId]) conflictos.push(`campanas «${campanaId}» ya no existe`);
+    else if (huellaEntidad(db0, 'campanas', campanaId, alg) !== previa.huellaDespues) conflictos.push(`campanas «${campanaId}» se ha modificado después de la incorporación`);
+  }
   if (conflictos.length) {
     throw new ErrorDominio('bloqueado', `No se puede deshacer la incorporación: hay ${conflictos.length} cambio(s) posterior(es) sobre los datos importados. Hay que revisarlos antes; no se ha modificado nada.`, conflictos.slice(0, 30));
   }
@@ -768,6 +799,8 @@ export function deshacerIncorporacion(db0: BaseDatos, importacionId: Id, porId: 
     for (const id of ids.get(col)!) delete copia[id];
     (db as unknown as Record<string, unknown>)[col] = copia;
   }
+  // G2: la campaña preparada vuelve a quedar exactamente como estaba antes de incorporar.
+  if (previa) db.campanas = { ...db.campanas, [campanaId]: previa.valor };
   db.importaciones = { ...db0.importaciones, [importacionId]: { ...imp, estado: 'descartada', c1: { ...imp.c1, deshecha: { porId, fecha: ahora } }, nota: `${imp.nota ?? ''} Deshecha por ${porId} el ${ahora.slice(0, 10)}.`.trim() } };
   return db;
 }

@@ -47,6 +47,16 @@ async function crearEspacio() {
   await screen.findByRole('region', { name: 'Estado del espacio' }, { timeout: 20000 });
 }
 
+/** G2 · Destino: crea (desde el asistente) la campaña histórica en la que se incorporará el Excel. */
+async function crearCampanaHistorica(anio = 2025, nombre = `Censo ${anio} · histórico`) {
+  const destino = await screen.findByRole('region', { name: 'Destino' }, { timeout: 20000 });
+  fireEvent.click(within(destino).getByRole('button', { name: 'Crear una campaña histórica' }));
+  fireEvent.change(within(destino).getByLabelText('Año de la campaña'), { target: { value: String(anio) } });
+  fireEvent.change(within(destino).getByLabelText('Nombre de la campaña'), { target: { value: nombre } });
+  fireEvent.click(within(destino).getByRole('button', { name: /Crear la campaña/ }));
+  await waitFor(() => expect((within(screen.getByRole('region', { name: 'Destino' })).getByLabelText('Campaña de destino') as HTMLSelectElement).selectedOptions[0]?.textContent).toMatch(new RegExp(`${anio}`)), { timeout: 20000 });
+}
+
 async function elegirYAnalizar(b: Uint8Array) {
   fireEvent.change(screen.getByLabelText('Archivo XLSX del censo'), { target: { files: [archivo(b)] } });
   await screen.findByLabelText('Identificación del archivo', undefined, { timeout: 20000 });
@@ -68,6 +78,7 @@ describe('C1e · Espacios aislados (interfaz)', () => {
     montar('/espacios/ensayo');
     expect(screen.getByRole('banner', { name: 'Espacio activo' })).toHaveTextContent(/ESPACIO DE ENSAYO.*SINTÉTICOS/);
     await crearEspacio();
+    await crearCampanaHistorica();
     await elegirYAnalizar(bytes);
     const ident = screen.getByLabelText('Identificación del archivo');
     expect(ident).toHaveTextContent(/Archivo SINTÉTICO/);
@@ -107,6 +118,7 @@ describe('C1e · Espacios aislados (interfaz)', () => {
     montar('/espacios/real');
     expect(screen.getByRole('banner', { name: 'Espacio activo' })).toHaveTextContent(/ESPACIO DE DATOS REALES/);
     await crearEspacio();
+    await crearCampanaHistorica();
     await elegirYAnalizar(bytes);
     expect(screen.getByRole('alert')).toHaveTextContent(/no se admite en el espacio de datos reales/);
     expect(screen.getByRole('button', { name: /Siguiente: columnas/ })).toBeDisabled();

@@ -140,7 +140,7 @@ export default function HojaCampo() {
 
           {o.mapa && (
             <div className="hoja-mapa">
-              <MapaBase centro={municipio.centro} zoom={15} onListo={alListo} interactivo={false} preservarDibujo />
+              <MapaBase centro={municipio.centro!} zoom={15} onListo={alListo} interactivo={false} preservarDibujo />
             </div>
           )}
 

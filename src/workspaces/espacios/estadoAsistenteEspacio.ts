@@ -53,3 +53,20 @@ export const useAsistenteEspacio = create<Estado>((set) => ({
   set: (p) => set(p),
   reiniciar: () => set({ ...INICIAL, decisiones: {} }),
 }));
+
+/**
+ * G2 · Municipio y campaña elegidos en el espacio. El panel «Municipios y campañas» y el destino del
+ * asistente comparten esta elección (solo en memoria; se reinicia al cambiar de espacio).
+ */
+interface Seleccion {
+  municipioId: Id | null;
+  campanaId: Id | null;
+  elegir: (p: { municipioId?: Id | null; campanaId?: Id | null }) => void;
+  reiniciar: () => void;
+}
+export const useSeleccionEspacio = create<Seleccion>((set) => ({
+  municipioId: null,
+  campanaId: null,
+  elegir: (p) => set(p),
+  reiniciar: () => set({ municipioId: null, campanaId: null }),
+}));

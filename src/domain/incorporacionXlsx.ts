@@ -11,6 +11,6 @@ import { opcionesInterpretacion, planificarIncorporacion, type DecisionesIncorpo
 export async function prepararIncorporacion(
   db: BaseDatos, datos: Uint8Array, nombreArchivo: string, destino: DestinoIncorporacion, decisiones: DecisionesIncorporacion = {}, eleccion: EleccionLectura = {},
 ): Promise<{ resultado: ResultadoInterpretacion; plan: PlanIncorporacion }> {
-  const resultado = await interpretarXlsx(datos, nombreArchivo, opcionesInterpretacion(destino.municipioId, destino.anio, decisiones), LIMITES_XLSX, eleccion);
+  const resultado = await interpretarXlsx(datos, nombreArchivo, opcionesInterpretacion(destino.municipioId, destino.anio, decisiones, db), LIMITES_XLSX, eleccion);
   return { resultado, plan: planificarIncorporacion(db, resultado, destino, decisiones) };
 }

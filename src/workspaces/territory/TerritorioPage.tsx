@@ -354,7 +354,7 @@ export default function TerritorioPage() {
       </aside>
 
       <section className="t-mapa">
-        <MapaBase centro={municipio.centro} zoom={15} onListo={alListo} />
+        <MapaBase centro={municipio.centro!} zoom={15} onListo={alListo} />
 
         <div className="t-barra panel-flotante">
           <div className="t-busca">

@@ -1,3 +1,5 @@
+import type { ReglaTerritorial } from './territorio';
+
 /**
  * Modelo de dominio del prototipo ULIT Censo.
  *
@@ -18,9 +20,18 @@ export interface Municipio {
   id: Id;
   nombre: string;
   provincia: string;
-  centro: LngLat;
+  /** Centro aproximado para los mapas. Ausente en los municipios dados de alta sin coordenadas (G2): no se inventan. */
+  centro?: LngLat;
   /** Fuente del callejero cargado para este municipio. */
   fuenteCallejero: 'osm' | 'simulado' | 'sin-geometria';
+  /** G2 · Código INE del municipio (5 cifras), si se conoce. */
+  ine?: string;
+  /** G2 · Configuración territorial guardada como DATO del municipio (Distrito, Zona, CP, aceras). */
+  territorio?: ConfigTerritorialMunicipio;
+  /** G2 · Estado del callejero del municipio (G3 gestionará sus fuentes y versiones). */
+  callejero?: EstadoCallejero;
+  /** G2 · Quién y cuándo dio de alta el municipio en el espacio. */
+  alta?: { porId: Id; fecha: string };
   nota?: string;
   /**
    * Tipo de ámbito de estudio (ausente = municipio). Barrios, ejes comerciales, zonas de estudio y
@@ -32,6 +43,29 @@ export interface Municipio {
 }
 
 export type TipoAmbito = 'municipio' | 'barrio' | 'eje-comercial' | 'zona-estudio' | 'mercado';
+
+/** G2 · Reglas territoriales de un municipio, guardadas como datos (mismo significado que `ConfigTerritorial`). */
+export interface ConfigTerritorialMunicipio {
+  version: number;
+  distrito: ReglaTerritorial;
+  zona: ReglaTerritorial;
+  cp: ReglaTerritorial;
+  aceras: 'ambas' | 'por-confirmar';
+  nota?: string;
+}
+
+/**
+ * G2 · Estado del callejero de un municipio. Sin callejero, la conciliación territorial queda PENDIENTE:
+ * nunca se crea un callejero ficticio para un municipio real. G3 añadirá la gestión de fuentes, versiones
+ * y cargas (de ahí `fuente` y `version`, que hoy solo describen la instantánea OSM de Medina del Campo).
+ */
+export interface EstadoCallejero {
+  estado: 'sin-callejero' | 'disponible';
+  fuente?: 'osm-instantanea' | 'oficial' | 'manual';
+  version?: string;
+  detalle?: string;
+  actualizado?: string;
+}
 
 /** Segmento cartográfico (p. ej. una "way" de OSM). Una calle suele tener varios. */
 export interface Segmento {
@@ -93,6 +127,8 @@ export interface Campana {
   itinerariosPrevistos?: number;
   estados: { planificacion: FaseEstado; campo: FaseEstado; revision: FaseEstado; validacion: FaseEstado };
   procedencia: Procedencia;
+  /** G2 · Campaña creada a mano (quién y cuándo). Una histórica creada así espera su incorporación. */
+  creada?: { porId: Id; fecha: string };
 }
 
 export interface Itinerario {
@@ -352,6 +388,11 @@ export interface TrazaIncorporacion {
   creadas: Partial<Record<ColeccionIncorporada, Record<Id, string>>>;
   /** Entidades existentes modificadas (C1c no modifica ninguna; se registra por completitud). */
   modificadas: Partial<Record<ColeccionIncorporada, Id[]>>;
+  /**
+   * G2 · La campaña de destino ya existía (preparada vacía): su contenido ANTES de incorporar y la huella
+   * DESPUÉS. Deshacer la restaura tal como estaba (si nadie la ha cambiado entretanto).
+   */
+  campanaPrevia?: { valor: Campana; huellaDespues: string };
   deshecha?: { porId: Id; fecha: string };
 }
 
