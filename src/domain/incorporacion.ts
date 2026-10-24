@@ -67,11 +67,11 @@ export interface DecisionesIncorporacion {
    */
   calles?: DecisionCalle[];
   /**
-   * Revisión EN BLOQUE de un grupo de incidencias (mismo tipo): la persona deja constancia, con su
-   * justificación, de que ha revisado esas filas y se conservan sus valores originales tal cual. No
-   * cambia ningún dato ni ninguna interpretación.
+   * Revisión EN BLOQUE de un grupo de incidencias (mismo tipo): la persona deja constancia (quién y
+   * cuándo; la nota es opcional) de que ha revisado esas filas y se conservan sus valores originales
+   * tal cual. No cambia ningún dato ni ninguna interpretación.
    */
-  revisionesBloque?: (Trazada & { tipo: string; filas: number[]; motivo: string })[];
+  revisionesBloque?: (Trazada & { tipo: string; filas: number[] })[];
 }
 
 /** Periodo con el que se interpretan las fechas: el decidido o el año natural. */
@@ -225,7 +225,6 @@ function validarDecisiones(db: BaseDatos, d: DecisionesIncorporacion, filas: Set
     const t = TIPOS_INCIDENCIA[r.tipo as keyof typeof TIPOS_INCIDENCIA];
     if (!t) errores.push(`${que}: tipo de incidencia desconocido.`);
     else if (t.decision === 'catedra') errores.push(`${que}: depende de una decisión de la Cátedra; no se puede dar por revisado en bloque.`);
-    if (!r.motivo?.trim()) errores.push(`${que}: falta la justificación.`);
     if (!r.filas?.length || r.filas.some((f) => !filas.has(f))) errores.push(`${que}: alguna fila no existe en el archivo.`);
     if (tiposVistos.has(r.tipo)) errores.push(`${que}: decisión duplicada.`);
     tiposVistos.add(r.tipo);

@@ -57,7 +57,7 @@ Los elementos de revisión (978 en el auténtico) se separan en tres clases, con
 - **Pendientes de comprobar:** avisos, conciliaciones de calle o número y reglas pendientes de la Cátedra.
 - **Informativos:** se registran sin exigir acción. Incluyen los portales numéricos compartidos y la **clasificación histórica 2025**, que se conserva literalmente y **no** tiene que equivaler a la de 2026 (la equivalencia, si se quiere, se registra aparte como propuesta sin confirmar).
 
-**Revisión en bloque (Decisiones → «Revisión en bloque»).** Un grupo del mismo tipo que solo requiere revisión humana se puede dar por revisado de una vez, con justificación obligatoria:
+**Revisión en bloque (Decisiones → «Revisión en bloque»).** Un grupo del mismo tipo que solo requiere revisión humana se puede marcar como revisado de una vez, con un clic y sin justificación (queda quién y cuándo):
 - **No cambia ningún dato** ni ninguna interpretación. El plan es idéntico; solo queda constancia trazada (`decisiones.revisionesBloque`).
 - **No se puede** para lo que depende de la Cátedra, ni para las posibles filas de totales o los duplicados exactos, que se deciden fila a fila.
 

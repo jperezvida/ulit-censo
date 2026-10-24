@@ -194,7 +194,7 @@ describe('Revisión de incidencias por clases y en bloque', () => {
     expect(historicas.every((i) => i.clase === 'informativo' && i.estado === 'no-aplica')).toBe(true);
   });
 
-  it('revisión en bloque: solo grupos de revisión humana, con justificación; no cambia ningún dato', async () => {
+  it('revisión en bloque: solo grupos de revisión humana, sin justificación obligatoria; no cambia ningún dato', async () => {
     const db = base();
     const dec = periodo(db);
     const { resultado, plan } = await prepararIncorporacion(db, bytes, ARCHIVO_SINTETICO_C1E, destino, dec);
@@ -203,18 +203,19 @@ describe('Revisión de incidencias por clases y en bloque', () => {
     expect(grupos.some((g) => ['posible-fila-de-totales', 'fila-duplicada-exacta', 'direccion-repetida'].includes(g.tipo))).toBe(false);
     const g = grupos.find((x) => x.tipo === 'local-vacio-ausente')!;
     expect(g.filas).toHaveLength(1);
-    const conBloque: DecisionesIncorporacion = { ...dec, revisionesBloque: [{ tipo: g.tipo, filas: g.filas, ...firma(db), motivo: 'Revisado: se conserva sin estado; se comprobará en campo en 2026.' }] };
+    // Sin justificación: basta con quién y cuándo
+    const conBloque: DecisionesIncorporacion = { ...dec, revisionesBloque: [{ tipo: g.tipo, filas: g.filas, ...firma(db) }] };
     const p2 = planificarIncorporacion(db, resultado, destino, conBloque);
     expect(p2.aplicable).toBe(true);
     expect(p2.filas).toEqual(plan.filas);
     expect(p2.decisiones.revisionesBloque).toBe(1);
     const items2 = itemsRevision(resultado, p2, conBloque);
     expect(items2.filter((i) => i.grupo === g.tipo).every((i) => i.estado === 'resuelto')).toBe(true);
-    // Sin justificación, o sobre algo que depende de la Cátedra: no válido
+    // Sin persona, sobre algo que depende de la Cátedra o con filas inexistentes: no válido
     for (const rb of [
-      { tipo: g.tipo, filas: g.filas, ...firma(db), motivo: '' },
-      { tipo: 'fachada-con-unidad', filas: g.filas, ...firma(db), motivo: 'x' },
-      { tipo: g.tipo, filas: [99999], ...firma(db), motivo: 'x' },
+      { tipo: g.tipo, filas: g.filas, porId: 'nadie', fecha: '2026-10-24' },
+      { tipo: 'fachada-con-unidad', filas: g.filas, ...firma(db) },
+      { tipo: g.tipo, filas: [99999], ...firma(db) },
     ]) {
       expect(planificarIncorporacion(db, resultado, destino, { ...dec, revisionesBloque: [rb] }).bloqueos.map((b) => b.codigo)).toContain('decision-invalida');
     }

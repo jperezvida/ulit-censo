@@ -82,12 +82,10 @@ describe('C1e-B · Análisis del Excel real SIN GUARDAR', () => {
     fireEvent.click(within(farolas).getByRole('button', { name: 'Confirmar decisión' }));
     await waitFor(() => expect(useAsistenteEspacio.getState().preparado!.plan.correspondencias.porMotivo['calle-sin-correspondencia']).toBe(135));
     expect(useAsistenteEspacio.getState().decisiones.calles![0]).toMatchObject({ denominacion: 'Calle de las Farolas Antigua Ángel Molina', accion: 'vincular', motivo: 'Nomenclátor: antigua calle de Ángel Molina.' });
-    // Revisión en bloque con justificación
+    // Revisión en bloque con un clic (sin justificación)
     fireEvent.click(screen.getByRole('tab', { name: 'Revisión en bloque' }));
     const bloque = screen.getByLabelText('Grupo «Local Vacío» sin valor');
-    fireEvent.click(within(bloque).getByRole('button', { name: /Dar por revisado en bloque/ }));
-    fireEvent.change(within(bloque).getByLabelText(/Justificación de la revisión en bloque/), { target: { value: 'Se comprobará en campo.' } });
-    fireEvent.click(within(bloque).getByRole('button', { name: 'Registrar la revisión' }));
+    fireEvent.click(within(bloque).getByRole('button', { name: /Marcar como revisado/ }));
     await waitFor(() => expect(within(screen.getByLabelText('Grupo «Local Vacío» sin valor')).getByText(/Revisado en bloque/)).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /Siguiente: Vista previa/ }));
     expect(screen.getByRole('region', { name: 'Recuento de registros' })).toHaveTextContent(/Preparados889/);
