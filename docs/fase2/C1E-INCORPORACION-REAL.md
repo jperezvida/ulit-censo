@@ -114,7 +114,15 @@ En la base se guarda lo mismo que en C1c: cada fila con sus celdas originales, l
 6. **Sin duplicados:** la reimportación del mismo archivo queda bloqueada (C1c) y no se admiten dos operaciones a la vez.
 7. **Supabase:** no se conecta. Una base de datos productiva requiere autorización.
 
-## 5. Probarlo en Codespaces
+## 4 bis. Vista previa web y análisis sin guardar
+
+Ya no hace falta Codespaces. La dirección fija de Vercel ([`PREVIEW-VERCEL.md`](PREVIEW-VERCEL.md)) incluye **«Analizar el Excel real SIN GUARDAR»**:
+- verifica en el navegador la protección, la ausencia de transmisión a terceros y la versión;
+- analiza el XLSX solo en memoria, hasta la vista previa.
+
+En la web, el espacio de datos reales **guardado** está desactivado.
+
+## 5. Probarlo en Codespaces (alternativa)
 
 ```bash
 git fetch origin && git checkout claude/fase2-oficina-itinerarios && git pull

@@ -67,6 +67,12 @@ Datos © colaboradores de OpenStreetMap, licencia ODbL. Mapa base de OpenFreeMap
 El mapa base solo sirve de fondo; para trabajar sin conexión, la versión definitiva necesitará un
 proveedor o unas teselas propias con licencia adecuada (nunca descargas masivas de servidores públicos).
 
+## Vista previa web (Vercel, solo pruebas)
+
+**https://ulit-censo-pruebas-vista.vercel.app** es una dirección fija y protegida con su cuenta de Vercel. Se actualiza sola en cada publicación en `claude/fase2-oficina-itinerarios`, siempre como preview y nunca en producción; `main` no se despliega. Allí se puede analizar el Excel real **sin guardar** (C1e-B), solo si el navegador verifica protección, ausencia de transmisión a terceros y versión revisada.
+
+Configuración inicial y garantías: [`docs/fase2/PREVIEW-VERCEL.md`](docs/fase2/PREVIEW-VERCEL.md).
+
 ## Espacios aislados: ensayo y datos reales (C1e)
 
 La demostración no cambia. Para el censo **auténtico** hay una pantalla aparte (`#/espacios`, botón «Datos reales» de la cabecera) con dos espacios:

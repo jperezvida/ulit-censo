@@ -82,6 +82,7 @@ export function Shell() {
         </nav>
 
         <div className="barra-der">
+          <span className="mono ocultar-m version-app" title={`Versión en ejecución: commit ${import.meta.env.VITE_COMMIT ?? '?'} · rama ${import.meta.env.VITE_RAMA ?? '?'}`}>v {String(import.meta.env.VITE_COMMIT ?? '').slice(0, 7)}</span>
           <span className="chip sim sim-global" title="Todos los locales, negocios, personas, itinerarios y resultados son ficticios">
             Datos simulados
           </span>

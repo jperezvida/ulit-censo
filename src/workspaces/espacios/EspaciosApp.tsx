@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Route, Routes, useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, CheckCircle2, Download, FileCheck2, FlaskConical, HardDrive, Lock, RotateCcw, ShieldCheck, Upload } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, Download, Eye, FileCheck2, FlaskConical, HardDrive, Lock, RotateCcw, ShieldCheck, Upload, XCircle } from 'lucide-react';
 import { fmt } from '../../components/ui';
 import { useEspacios } from '../../store/espacios';
 import { BASE_INDEXEDDB, ESPACIO_TXT, personaEspacio, type TipoEspacio } from '../../domain/espacios';
@@ -8,6 +8,8 @@ import { ARCHIVO_SINTETICO_C1E, libroSinteticoC1e } from '../../data/xlsxSinteti
 import { AsistenteEspacio } from './AsistenteEspacio';
 import { useAsistenteEspacio } from './estadoAsistenteEspacio';
 import { leerTexto } from './leerArchivo';
+import { comprobarGarantias, VERSION_EMBEBIDA, type ResultadoGarantias } from './garantiasNavegador';
+import { entornoDe } from '../../domain/garantias';
 import '../../styles/datos.css';
 import '../../styles/incorporacion.css';
 import '../../styles/espacios.css';
@@ -37,11 +39,13 @@ export default function EspaciosApp() {
         <Link to="/espacios" className="marca-ulit"><b>ULIT</b><span>Censo</span></Link>
         <span className="esp-cab-tit">Espacios aislados · incorporación del censo real</span>
         <span className="esp" />
+        <span className="mono esp-version" title={`Commit ${VERSION_EMBEBIDA.commit} · rama ${VERSION_EMBEBIDA.rama}`}>versión {VERSION_EMBEBIDA.commit.slice(0, 7)}</span>
         <NavLink to="/campanas" className="btn s oscuro-borde"><ArrowLeft size={14} /> Volver a la demostración</NavLink>
       </header>
       <main className="esp-cuerpo">
         <Routes>
           <Route index element={<Selector />} />
+          <Route path="analisis" element={<AnalisisSinGuardar />} />
           <Route path=":tipo" element={<EspacioPage />} />
         </Routes>
       </main>
@@ -49,7 +53,11 @@ export default function EspaciosApp() {
   );
 }
 
+/** En la vista previa web no se guardan datos reales: el espacio real persistente solo funciona en el equipo propio. */
+const REAL_PERSISTENTE_PERMITIDO = () => entornoDe(location.hostname) === 'local';
+
 function Selector() {
+  const realPersistente = REAL_PERSISTENTE_PERMITIDO();
   return (
     <div className="col" style={{ gap: 16 }}>
       <div>
@@ -57,15 +65,100 @@ function Selector() {
         <p className="muted">La <b>demostración</b> (datos ficticios) sigue intacta en su propio almacenamiento. Los espacios de abajo usan cada uno su <b>propia base de datos</b> en este navegador y nunca se mezclan entre sí ni con la demostración.</p>
       </div>
       <div className="esp-tarjetas">
-        {(['ensayo', 'real'] as TipoEspacio[]).map((t) => (
-          <Link key={t} to={`/espacios/${t}`} className={`tarjeta esp-tarjeta esp-${t}`}>
-            {t === 'real' ? <ShieldCheck size={22} /> : <FlaskConical size={22} />}
-            <b>{ESPACIO_TXT[t].nombre}</b>
-            <span className="muted">{ESPACIO_TXT[t].descripcion}</span>
-            <span className="mono muted">IndexedDB «{BASE_INDEXEDDB[t]}»</span>
+        <Link to="/espacios/analisis" className="tarjeta esp-tarjeta esp-real">
+          <Eye size={22} />
+          <b>Analizar el Excel real SIN GUARDAR (C1e-B)</b>
+          <span className="muted">Seleccione el XLSX auténtico, analícelo en este navegador y consulte la vista previa. No se sube, no se incorpora y no se guarda ningún registro.</span>
+          <span className="mono muted">solo en memoria</span>
+        </Link>
+        <Link to="/espacios/ensayo" className="tarjeta esp-tarjeta esp-ensayo">
+          <FlaskConical size={22} />
+          <b>{ESPACIO_TXT.ensayo.nombre}</b>
+          <span className="muted">{ESPACIO_TXT.ensayo.descripcion}</span>
+          <span className="mono muted">IndexedDB «{BASE_INDEXEDDB.ensayo}»</span>
+        </Link>
+        {realPersistente ? (
+          <Link to="/espacios/real" className="tarjeta esp-tarjeta esp-real">
+            <ShieldCheck size={22} />
+            <b>{ESPACIO_TXT.real.nombre}</b>
+            <span className="muted">{ESPACIO_TXT.real.descripcion}</span>
+            <span className="mono muted">IndexedDB «{BASE_INDEXEDDB.real}»</span>
           </Link>
-        ))}
+        ) : (
+          <div className="tarjeta esp-tarjeta esp-desactivada" aria-disabled="true">
+            <Lock size={22} />
+            <b>{ESPACIO_TXT.real.nombre} (guardado)</b>
+            <span className="muted">No disponible en la vista previa web: aquí no se guardan datos reales. Para revisar el Excel auténtico use «Analizar el Excel real SIN GUARDAR».</span>
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * C1e-B · Análisis del Excel REAL sin guardar: primero se verifican en el navegador las garantías del
+ * sitio (protección, sin transmisión a terceros, versión revisada); solo si se cumplen todas se permite
+ * elegir el archivo. La base es temporal y vive solo en memoria; al salir se descarta.
+ */
+function AnalisisSinGuardar() {
+  const esp = useEspacios();
+  const reiniciarAsistente = useAsistenteEspacio((s) => s.reiniciar);
+  const [g, setG] = useState<ResultadoGarantias | null>(null);
+  const [nombre, setNombre] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    esp.cerrar();
+    reiniciarAsistente();
+    void comprobarGarantias().then(setG);
+    return () => {
+      // Al salir no queda nada: ni el archivo, ni la interpretación, ni la base temporal.
+      useEspacios.getState().cerrar();
+      useAsistenteEspacio.getState().reiniciar();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const abierta = esp.soloMemoria && esp.fase === 'listo' && !!esp.db;
+  return (
+    <div className="col" style={{ gap: 14 }}>
+      <div className="esp-banda esp-real" role="banner" aria-label="Espacio activo">
+        <Eye size={18} />
+        <b>ANÁLISIS DEL EXCEL REAL SIN GUARDAR</b>
+        <span>Se procesa en este navegador · no se sube a ningún servidor · no se guarda ningún registro · la incorporación está bloqueada (C1e-B)</span>
+      </div>
+      <section className="tarjeta inc-bloque" aria-label="Garantías del sitio">
+        <h3><ShieldCheck size={16} /> Garantías comprobadas en este navegador</h3>
+        {!g ? <p className="muted" role="status">Comprobando protección, política de seguridad y versión…</p> : (
+          <>
+            <ul className="inc-lista req-lista">
+              {g.garantias.map((x) => <li key={x.id} className={x.ok ? 'ok' : 'no'}>{x.ok ? <CheckCircle2 size={14} aria-label="cumplida" /> : <XCircle size={14} aria-label="no cumplida" />} {x.texto}</li>)}
+            </ul>
+            {g.ok
+              ? <div className="t-info ok"><CheckCircle2 size={15} /> Garantías verificadas: puede analizar el Excel real en esta pestaña.</div>
+              : <div className="t-info error" role="alert"><AlertTriangle size={15} /> No se habilita el análisis del Excel real: alguna garantía no se ha podido verificar (detalle arriba). No seleccione el archivo auténtico aquí.</div>}
+            <p className="muted mono">Versión en ejecución: {VERSION_EMBEBIDA.commit} · rama {VERSION_EMBEBIDA.rama}</p>
+          </>
+        )}
+      </section>
+      {g?.ok && !abierta && (
+        <section className="tarjeta inc-bloque" aria-label="Persona que analiza" style={{ maxWidth: 720 }}>
+          <h3>Persona que analiza</h3>
+          <p className="muted">Solo para identificar la vista previa en pantalla; no se guarda.</p>
+          <label className="campo"><span>Nombre y apellidos</span><input className="input" aria-label="Nombre de quien analiza" value={nombre} onChange={(e) => setNombre(e.target.value)} /></label>
+          {error && <div className="t-info error" role="alert">{error}</div>}
+          <button className="btn primario" disabled={nombre.trim().length < 3 || esp.fase === 'cargando'} onClick={async () => {
+            const r = await esp.abrirEnMemoria('real', { nombre, roles: ['coordinador'] });
+            setError(r.ok ? null : r.error ?? 'No se ha podido preparar el análisis.');
+          }}>Empezar el análisis</button>
+        </section>
+      )}
+      {g?.ok && abierta && (
+        <section className="tarjeta inc-bloque" aria-label="Analizar el censo histórico 2025">
+          <h2 style={{ margin: 0 }}>Vista previa del censo histórico 2025</h2>
+          <p className="muted">Mismo procedimiento que la incorporación (C1a, C1b, C1c y decisiones de C1d), detenido en la vista previa.</p>
+          <AsistenteEspacio tipo="real" />
+        </section>
+      )}
     </div>
   );
 }
@@ -76,15 +169,22 @@ function EspacioPage() {
   const esp = useEspacios();
   const reiniciarAsistente = useAsistenteEspacio((s) => s.reiniciar);
   const nav = useNavigate();
+  const bloqueado = tipo === 'real' && !REAL_PERSISTENTE_PERMITIDO();
   useEffect(() => {
     if (!tipo) return void nav('/espacios', { replace: true });
-    if (esp.tipo !== tipo) {
+    if (bloqueado) return;
+    if (esp.tipo !== tipo || esp.soloMemoria) {
       reiniciarAsistente();
       void esp.abrir(tipo);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tipo]);
   if (!tipo) return null;
+  if (bloqueado) {
+    return (
+      <div className="t-info aviso" role="alert"><Lock size={15} /> <div><b>El espacio de datos reales (guardado) no está disponible en la vista previa web.</b> Aquí no se guardan datos reales. Para revisar el Excel auténtico use <Link to="/espacios/analisis">«Analizar el Excel real SIN GUARDAR»</Link>.</div></div>
+    );
+  }
   return (
     <div className="col" style={{ gap: 14 }}>
       <div className={`esp-banda esp-${tipo}`} role="banner" aria-label="Espacio activo">

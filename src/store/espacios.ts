@@ -51,7 +51,7 @@ export interface RespaldoVerificado {
 }
 
 export interface Requisito {
-  id: 'persona' | 'vista-previa' | 'plan' | 'perfil' | 'respaldo' | 'espacio-disco' | 'archivo' | 'espacio' | 'confirmacion-real';
+  id: 'persona' | 'vista-previa' | 'plan' | 'perfil' | 'respaldo' | 'espacio-disco' | 'archivo' | 'espacio' | 'confirmacion-real' | 'sin-guardar';
   ok: boolean;
   /** Cumplido, pero con algo que revisar (no bloquea). */
   aviso?: boolean;
@@ -68,7 +68,13 @@ interface Estado {
   respaldoVerificado: RespaldoVerificado | null;
   almacenamiento: Almacenamiento | null;
   ocupado: string | null;
+  /**
+   * C1e-B · Análisis SIN GUARDAR: la base solo existe en memoria (callejero real y la persona que analiza).
+   * Ninguna operación escribe en el navegador; al cerrar la pestaña no queda nada.
+   */
+  soloMemoria: boolean;
   abrir: (tipo: TipoEspacio) => Promise<void>;
+  abrirEnMemoria: (tipo: TipoEspacio, persona: { nombre: string; roles: Rol[] }) => Promise<{ ok: boolean; error?: string }>;
   cerrar: () => void;
   crear: (persona: { nombre: string; roles: Rol[] }) => Promise<{ ok: boolean; error?: string }>;
   medirAlmacenamiento: () => Promise<Almacenamiento>;
@@ -107,7 +113,7 @@ async function escribirVerificado(tipo: TipoEspacio, db: BaseDatos, huellaEspera
 /** Evalúa los requisitos para incorporar (puros: se muestran en pantalla y se vuelven a comprobar al confirmar). */
 export function requisitosIncorporacion(p: {
   tipo: TipoEspacio; db: BaseDatos; huella: string | null; respaldoVerificado: RespaldoVerificado | null; almacenamiento: Almacenamiento | null;
-  plan: PlanIncorporacion | null; vistaPreviaRevisada: boolean; sintetico: boolean;
+  plan: PlanIncorporacion | null; vistaPreviaRevisada: boolean; sintetico: boolean; soloMemoria?: boolean;
 }): Requisito[] {
   const persona = personaEspacio(p.db);
   const autorizada = !!persona && (persona.roles.includes('coordinador') || persona.roles.includes('administrador'));
@@ -149,6 +155,10 @@ export function requisitosIncorporacion(p: {
       texto: libre === undefined ? 'El navegador no informa del espacio disponible: la escritura se verificará al guardar.' : libre >= necesario ? `Espacio disponible suficiente (${Math.round(libre / MiB)} MB libres).` : `Espacio insuficiente: ${Math.round(libre / MiB)} MB libres; hacen falta al menos ${Math.round(necesario / MiB)} MB.`,
     },
   ];
+  if (p.soloMemoria) {
+    r.push({ id: 'sin-guardar', ok: false, texto: 'Análisis SIN GUARDAR (C1e-B): solo vista previa; no se incorpora ni se guarda nada.' });
+    return r.filter((x) => x.id !== 'respaldo' && x.id !== 'espacio-disco');
+  }
   if (p.tipo === 'real') {
     r.push({ id: 'confirmacion-real', ok: CONFIRMACION_REAL_HABILITADA, texto: CONFIRMACION_REAL_HABILITADA ? 'Confirmación real habilitada.' : 'C1e-B: la confirmación de la incorporación real está BLOQUEADA hasta revisar juntos la vista previa. No se incorporará nada.' });
   }
@@ -156,10 +166,10 @@ export function requisitosIncorporacion(p: {
 }
 
 export const useEspacios = create<Estado>((set, get) => ({
-  tipo: null, db: null, fase: 'cerrado', huella: null, respaldoVerificado: null, almacenamiento: null, ocupado: null,
+  tipo: null, db: null, fase: 'cerrado', huella: null, respaldoVerificado: null, almacenamiento: null, ocupado: null, soloMemoria: false,
 
   abrir: async (tipo) => {
-    set({ tipo, db: null, fase: 'cargando', error: undefined, huella: null, respaldoVerificado: null });
+    set({ tipo, db: null, fase: 'cargando', error: undefined, huella: null, respaldoVerificado: null, soloMemoria: false });
     try {
       const st = almacen(tipo);
       let db = await idbGet<BaseDatos>(CLAVE_DB, st);
@@ -179,9 +189,28 @@ export const useEspacios = create<Estado>((set, get) => ({
     }
   },
 
-  cerrar: () => set({ tipo: null, db: null, fase: 'cerrado', huella: null, respaldoVerificado: null, error: undefined }),
+  cerrar: () => set({ tipo: null, db: null, fase: 'cerrado', huella: null, respaldoVerificado: null, error: undefined, soloMemoria: false }),
+
+  abrirEnMemoria: async (tipo, persona) => {
+    set({ tipo, db: null, fase: 'cargando', error: undefined, huella: null, respaldoVerificado: null, soloMemoria: true });
+    try {
+      const inst = await cargarInstantaneaMedina();
+      if (!inst.ok) {
+        set({ fase: 'error', error: 'Hace falta el callejero real de Medina del Campo (instantánea OSM del proyecto).' });
+        return { ok: false, error: 'Falta el callejero real.' };
+      }
+      // Solo en memoria: no se lee ni se escribe ninguna base del navegador.
+      const db = crearBaseEspacio(tipo, { persona, calles: inst.calles, detalleCallejero: inst.detalle, espacioId: `memoria-${Date.now().toString(36)}` });
+      set({ db, fase: 'listo' });
+      return { ok: true };
+    } catch (e) {
+      set({ fase: 'error', error: texto(e) });
+      return { ok: false, error: texto(e) };
+    }
+  },
 
   crear: async (persona) => {
+    if (get().soloMemoria) return { ok: false, error: 'Análisis sin guardar: no se escribe nada en el navegador.' };
     const { tipo } = get();
     if (!tipo) return { ok: false, error: 'No hay espacio seleccionado.' };
     set({ ocupado: 'Creando el espacio…' });
@@ -227,12 +256,14 @@ export const useEspacios = create<Estado>((set, get) => ({
   },
 
   prepararRespaldo: () => {
+    if (get().soloMemoria) throw new Error('Análisis sin guardar: no hay nada que respaldar.');
     const { db, tipo } = get();
     if (!db || !tipo) throw new Error('No hay espacio abierto.');
     return crearRespaldo(db, tipo);
   },
 
   verificarRespaldo: async (contenido, archivo) => {
+    if (get().soloMemoria) return { ok: false, error: 'Análisis sin guardar: no se escribe nada en el navegador.' };
     const { db, tipo, huella } = get();
     if (!db || !tipo) return { ok: false, error: 'No hay espacio abierto.' };
     const c = comprobarRespaldo(contenido, tipo);
@@ -251,6 +282,7 @@ export const useEspacios = create<Estado>((set, get) => ({
   },
 
   restaurar: async (contenido) => {
+    if (get().soloMemoria) return { ok: false, error: 'Análisis sin guardar: no se escribe nada en el navegador.' };
     const { tipo, db, huella } = get();
     if (!tipo) return { ok: false, error: 'No hay espacio abierto.' };
     const c = comprobarRespaldo(contenido, tipo);
@@ -273,6 +305,7 @@ export const useEspacios = create<Estado>((set, get) => ({
   },
 
   incorporar: async ({ resultado, destino, decisiones, plan, requisitos }) => {
+    if (get().soloMemoria) return { ok: false, error: 'Análisis sin guardar: no se escribe nada en el navegador.' };
     const { tipo, db, huella, ocupado } = get();
     if (!tipo || !db) return { ok: false, error: 'No hay espacio abierto.' };
     if (ocupado) return { ok: false, error: 'Ya hay una operación en curso.' };
@@ -297,6 +330,7 @@ export const useEspacios = create<Estado>((set, get) => ({
   },
 
   deshacer: async (importacionId) => {
+    if (get().soloMemoria) return { ok: false, error: 'Análisis sin guardar: no se escribe nada en el navegador.' };
     const { tipo, db, huella } = get();
     if (!tipo || !db) return { ok: false, error: 'No hay espacio abierto.' };
     set({ ocupado: 'Deshaciendo…' });

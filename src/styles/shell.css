@@ -428,3 +428,4 @@
   }
 }
 .guia-transicion { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; padding: 8px 10px; border-radius: 8px; background: var(--azul-suave, #eef4ff); border: 1px solid var(--azul-borde, #c9dcf7); font-size: 12px; }
+.version-app { font-size: 11px; color: rgba(255,255,255,.6); }

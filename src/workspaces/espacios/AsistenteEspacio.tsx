@@ -240,7 +240,7 @@ function EtapaVistaPrevia({ tipo, destino }: { tipo: TipoEspacio; destino: Desti
   const a = st.archivo!;
   const rec = recuentoRegistros(plan);
   const diag = useMemo(() => diagnosticoAgregado(resultado), [resultado]);
-  const req = requisitosIncorporacion({ tipo, db: esp.db!, huella: esp.huella, respaldoVerificado: esp.respaldoVerificado, almacenamiento: esp.almacenamiento, plan, vistaPreviaRevisada: st.revisada, sintetico: a.sintetico });
+  const req = requisitosIncorporacion({ tipo, db: esp.db!, huella: esp.huella, respaldoVerificado: esp.respaldoVerificado, almacenamiento: esp.almacenamiento, plan, vistaPreviaRevisada: st.revisada, sintetico: a.sintetico, soloMemoria: esp.soloMemoria });
   const listo = req.every((r) => r.ok);
   const per = periodoDe(destino.anio, st.decisiones);
   const persona = personaEspacio(esp.db!);
@@ -310,6 +310,9 @@ function EtapaVistaPrevia({ tipo, destino }: { tipo: TipoEspacio; destino: Desti
           <input type="checkbox" checked={st.revisada} onChange={(e) => st.set({ revisada: e.target.checked })} aria-label="He revisado la vista previa" />
           <span>He revisado la vista previa completa: identificación, diagnóstico, calles, recuentos, pendientes y advertencias.</span>
         </label>
+        {esp.soloMemoria && (
+          <div className="t-info aviso" role="note"><Lock size={15} /> <div><b>Análisis sin guardar.</b> Esta vista previa vive solo en la memoria de esta pestaña: no se ha guardado ningún registro y al cerrarla no queda nada.</div></div>
+        )}
         {tipo === 'real' && !CONFIRMACION_REAL_HABILITADA && (
           <div className="t-info aviso" role="note"><Lock size={15} /> <div><b>C1e-B · Detenido aquí.</b> La incorporación del censo real no se puede confirmar hasta que revisemos juntos esta vista previa. No se ha incorporado nada.</div></div>
         )}

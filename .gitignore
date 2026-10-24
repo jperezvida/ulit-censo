@@ -162,3 +162,6 @@ datos-reales/
 
 # C1e · archivos sintéticos generados localmente (nunca en el repositorio)
 sinteticos/
+
+# Salida y enlace locales de Vercel
+.vercel/
