@@ -156,13 +156,12 @@ describe('Conciliación supervisada de calles', () => {
     expect(localesFarolas.length).toBe(pf.filter((f) => f.localNuevo).length);
   });
 
-  it('decisiones de calle no válidas bloquean el plan (sin firma, sin justificación, calle ajena, denominación inexistente)', async () => {
+  it('decisiones de calle no válidas bloquean el plan (sin firma, calle ajena, denominación inexistente); la justificación es opcional', async () => {
     const db = base();
     const { resultado } = await prepararIncorporacion(db, bytes, ARCHIVO_SINTETICO_C1E, destino, periodo(db));
     const farolas = calleId(db, 'Calle de las Farolas');
     const casos: DecisionesIncorporacion['calles'][] = [
       [{ denominacion: 'Plaza Mayor', accion: 'sin-correspondencia', porId: 'nadie', fecha: '2026-10-24', motivo: 'x' }],
-      [{ denominacion: 'Plaza Mayor', accion: 'sin-correspondencia', ...firma(db), motivo: ' ' }],
       [{ denominacion: 'Rda. de Gracia', accion: 'vincular', calleId: 'calle-de-otro-municipio', fuente: 'abreviatura-tipo-via', ...firma(db), motivo: 'x' }],
       [{ denominacion: 'Calle Inventada', accion: 'vincular', calleId: farolas, fuente: 'eleccion-manual', ...firma(db), motivo: 'x' }],
     ];

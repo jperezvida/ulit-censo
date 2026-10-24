@@ -70,18 +70,16 @@ describe('C1e-B · Análisis del Excel real SIN GUARDAR', () => {
     expect(clases).toHaveTextContent(/Pendientes de comprobar/);
     expect(clases).toHaveTextContent(/Informativos/);
     fireEvent.click(screen.getByRole('button', { name: /Siguiente: Decisiones/ }));
-    // Conciliación supervisada: la Plaza Mayor no se puede vincular; Farolas se confirma con justificación
+    // Conciliación supervisada: la Plaza Mayor no se puede vincular; Farolas se confirma (sin justificación)
     const conc = screen.getByLabelText('Conciliación de calles');
     expect(within(conc).getByLabelText('Denominación Plaza Mayor')).toHaveTextContent(/Plaza Mayor de la Hispanidad.*NO figura en el callejero OSM actual/);
     const farolas = within(conc).getByLabelText('Denominación Calle de las Farolas Antigua Ángel Molina');
     expect(farolas).toHaveTextContent(/42/);
     expect(farolas).toHaveTextContent(/Calle de las Farolas.*nombre actual y el antiguo/);
     fireEvent.change(within(farolas).getByLabelText(/^Decisión para/), { target: { value: within(farolas).getByRole('option', { name: 'Confirmar: Calle de las Farolas' }).getAttribute('value') } });
-    expect(within(farolas).getByRole('button', { name: 'Confirmar decisión' })).toBeDisabled();
-    fireEvent.change(within(farolas).getByLabelText(/^Justificación para/), { target: { value: 'Nomenclátor: antigua calle de Ángel Molina.' } });
     fireEvent.click(within(farolas).getByRole('button', { name: 'Confirmar decisión' }));
     await waitFor(() => expect(useAsistenteEspacio.getState().preparado!.plan.correspondencias.porMotivo['calle-sin-correspondencia']).toBe(135));
-    expect(useAsistenteEspacio.getState().decisiones.calles![0]).toMatchObject({ denominacion: 'Calle de las Farolas Antigua Ángel Molina', accion: 'vincular', motivo: 'Nomenclátor: antigua calle de Ángel Molina.' });
+    expect(useAsistenteEspacio.getState().decisiones.calles![0]).toMatchObject({ denominacion: 'Calle de las Farolas Antigua Ángel Molina', accion: 'vincular', porId: expect.any(String), fecha: expect.any(String) });
     // Revisión en bloque con un clic (sin justificación)
     fireEvent.click(screen.getByRole('tab', { name: 'Revisión en bloque' }));
     const bloque = screen.getByLabelText('Grupo «Local Vacío» sin valor');

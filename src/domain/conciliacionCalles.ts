@@ -8,7 +8,7 @@ import type { Calle, Id } from './types';
  * Para cada denominación del archivo que no coincide con el callejero se preparan PROPUESTAS, cada una
  * con su FUENTE (por qué se propone) y su explicación. Ninguna propuesta se aplica sola: solo una
  * decisión humana trazada (persona, fecha y justificación) vincula los registros a una calle. Una
- * propuesta basada SOLO en el parecido del texto se marca como tal y nunca basta por sí misma.
+ * propuesta basada SOLO en el parecido del texto se marca como tal y nunca se aplica sola.
  * Cuando la calle no existe en el callejero (p. ej. la denominación oficial no está en OpenStreetMap)
  * se dice así: no se inventan calles, geometrías ni coordenadas.
  */
@@ -123,8 +123,8 @@ export function proponer(denominacion: string, calles: Calle[]): Pick<Denominaci
 // ───────────── Decisiones de conciliación (trazadas) ─────────────
 
 export type DecisionCalle =
-  | { denominacion: string; accion: 'vincular'; calleId: Id; fuente: FuentePropuesta | 'eleccion-manual'; porId: Id; fecha: string; motivo: string }
-  | { denominacion: string; accion: 'sin-correspondencia'; porId: Id; fecha: string; motivo: string };
+  | { denominacion: string; accion: 'vincular'; calleId: Id; fuente: FuentePropuesta | 'eleccion-manual'; porId: Id; fecha: string; motivo?: string }
+  | { denominacion: string; accion: 'sin-correspondencia'; porId: Id; fecha: string; motivo?: string };
 
 /** Validación de las decisiones de calle frente al callejero y al archivo. */
 export function validarDecisionesCalle(db: BaseDatos, ds: DecisionCalle[], municipioId: Id, denominaciones: Set<string>): string[] {
@@ -134,7 +134,6 @@ export function validarDecisionesCalle(db: BaseDatos, ds: DecisionCalle[], munic
     const que = `Calle «${d.denominacion}»`;
     if (!d.porId || !db.personas[d.porId]) errores.push(`${que}: la persona «${d.porId}» no existe; toda decisión debe estar firmada.`);
     if (!/^\d{4}-\d{2}-\d{2}/.test(d.fecha ?? '')) errores.push(`${que}: falta la fecha de la decisión.`);
-    if (!d.motivo?.trim()) errores.push(`${que}: falta la justificación.`);
     if (!denominaciones.has(d.denominacion)) errores.push(`${que}: la denominación no aparece en el archivo.`);
     if (vistas.has(d.denominacion)) errores.push(`${que}: decisión duplicada.`);
     vistas.add(d.denominacion);

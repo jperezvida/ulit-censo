@@ -38,7 +38,7 @@ export function ConciliacionCalles({ resultado, decisiones, onCambiar, firma, si
     <div className="col" style={{ gap: 10 }} aria-label="Conciliación de calles">
       <div className="t-info" style={{ margin: 0 }}>
         <div>
-          <b>Ninguna correspondencia se aplica sola.</b> Cada propuesta indica su fuente. Confirmarla vincula <b>todos</b> los registros de esa denominación a la calle elegida, con persona, fecha y justificación. El texto original del archivo no se modifica. Si la calle no está en el callejero, no se inventan calles, geometrías ni coordenadas: el registro se conserva sin vínculo.
+          <b>Ninguna correspondencia se aplica sola.</b> Cada propuesta indica su fuente. Confirmarla vincula <b>todos</b> los registros de esa denominación a la calle elegida; queda constancia de quién y cuándo. El texto original del archivo no se modifica. Si la calle no está en el callejero, no se inventan calles, geometrías ni coordenadas: el registro se conserva sin vínculo.
           {db.meta?.detalleCallejero && <div className="muted" style={{ marginTop: 4 }}>Callejero: {db.meta.detalleCallejero}</div>}
         </div>
       </div>
@@ -70,7 +70,7 @@ export function ConciliacionCalles({ resultado, decisiones, onCambiar, firma, si
                     {dec ? (
                       <div className="col" style={{ gap: 3 }}>
                         <span><ChipEstado e="resuelto" /> {dec.accion === 'vincular' ? <>→ <b>{db.calles[dec.calleId]?.nombre ?? dec.calleId}</b></> : ESTADO_CALLE_TXT['sin-correspondencia']}</span>
-                        <span className="muted dec-nota"><CheckCircle2 size={13} /> {db.personas[dec.porId]?.nombre ?? dec.porId} · {dec.fecha} · «{dec.motivo}»{dec.accion === 'vincular' ? ` · fuente: ${dec.fuente === 'eleccion-manual' ? 'elección manual' : FUENTE_TXT[dec.fuente].titulo}` : ''}</span>
+                        <span className="muted dec-nota"><CheckCircle2 size={13} /> {db.personas[dec.porId]?.nombre ?? dec.porId} · {dec.fecha}{dec.motivo ? ` · «${dec.motivo}»` : ''}{dec.accion === 'vincular' ? ` · fuente: ${dec.fuente === 'eleccion-manual' ? 'elección manual' : FUENTE_TXT[dec.fuente].titulo}` : ''}</span>
                         <div><button className="btn s" onClick={() => fijar(d.denominacion, null)}><Undo2 size={13} /> Retirar la decisión</button></div>
                       </div>
                     ) : sinPermiso ? <span className="muted dec-nota">Pendiente · {sinPermiso}</span> : (
@@ -106,14 +106,13 @@ function Decidir({ denominacion, propuestas, ausente, calles, onDecidir }: {
 }) {
   const [opcion, setOpcion] = useState<Opcion>('');
   const [otra, setOtra] = useState<Id>('');
-  const [motivo, setMotivo] = useState('');
   const prop = propuestas.find((p) => p.calleId === opcion);
   const debil = opcion === 'otra' || (prop && !FUENTE_TXT[prop.fuente].solida);
-  const listo = !!motivo.trim() && (opcion === 'sin' || !!prop || (opcion === 'otra' && !!otra));
+  const listo = opcion === 'sin' || !!prop || (opcion === 'otra' && !!otra);
   const confirmar = () => {
-    if (opcion === 'sin') onDecidir({ denominacion, accion: 'sin-correspondencia', motivo: motivo.trim() });
-    else if (prop) onDecidir({ denominacion, accion: 'vincular', calleId: prop.calleId, fuente: prop.fuente, motivo: motivo.trim() });
-    else if (opcion === 'otra' && otra) onDecidir({ denominacion, accion: 'vincular', calleId: otra, fuente: 'eleccion-manual', motivo: motivo.trim() });
+    if (opcion === 'sin') onDecidir({ denominacion, accion: 'sin-correspondencia' });
+    else if (prop) onDecidir({ denominacion, accion: 'vincular', calleId: prop.calleId, fuente: prop.fuente });
+    else if (opcion === 'otra' && otra) onDecidir({ denominacion, accion: 'vincular', calleId: otra, fuente: 'eleccion-manual' });
   };
   return (
     <div className="col dec-elegir" style={{ gap: 4 }}>
@@ -129,8 +128,7 @@ function Decidir({ denominacion, propuestas, ausente, calles, onDecidir }: {
           {calles.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
         </select>
       )}
-      {debil && <span className="conc-aviso"><AlertTriangle size={13} /> El parecido del texto no basta: indique qué fuente lo confirma (nomenclátor, plano, visita…).</span>}
-      {opcion && <input className="input" placeholder="Justificación (obligatoria)" aria-label={`Justificación para ${denominacion}`} value={motivo} onChange={(e) => setMotivo(e.target.value)} />}
+      {debil && <span className="conc-aviso"><AlertTriangle size={13} /> Basada solo en el parecido: compruebe que es la misma vía.</span>}
       {opcion && <div><button className="btn s primario" disabled={!listo} onClick={confirmar}>Confirmar decisión</button></div>}
     </div>
   );

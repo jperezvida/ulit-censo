@@ -39,12 +39,12 @@ Para cada denominación que no coincide con el callejero se muestran la denomina
 | Abreviatura de tipo de vía no reconocida automáticamente | «Rda. de Gracia» → Ronda de Gracia | Orienta; requiere confirmación |
 | Mismo nombre con otro tipo de vía | «Gracia» → Ronda de Gracia | Débil: se avisa |
 | Referencia comunicada por la Cátedra | «Plaza Mayor» → Plaza Mayor de la Hispanidad | Solo si existe en el callejero |
-| Solo parecido del texto | «Calle de las Farolaz» → Calle de las Farolas | **No**: se avisa y se pide la fuente que lo confirma |
+| Solo parecido del texto | «Calle de las Farolaz» → Calle de las Farolas | **No**: se avisa de que hay que comprobar que es la misma vía |
 
 **Reglas:**
-- **Nada se aplica solo.** Cada decisión la toma una persona con rol de coordinación o administración, con fecha y **justificación obligatoria**. Vincula **todos** los registros de esa denominación.
+- **Nada se aplica solo.** Cada decisión la toma una persona con rol de coordinación o administración, con un clic, sin justificación (queda quién y cuándo). Vincula **todos** los registros de esa denominación.
 - **Opciones:** confirmar una propuesta, elegir otra calle del callejero o dejar constancia de que la denominación **no tiene correspondencia**.
-- **Trazabilidad:** las decisiones (`decisiones.calles`) se validan en el plan (persona, fecha, justificación, calle del municipio, denominación presente en el archivo) y se guardan en la traza de la incorporación. Las filas vinculadas así figuran como correspondencia **decidida**, no inequívoca.
+- **Trazabilidad:** las decisiones (`decisiones.calles`) se validan en el plan (persona, fecha, calle del municipio, denominación presente en el archivo) y se guardan en la traza de la incorporación. Las filas vinculadas así figuran como correspondencia **decidida**, no inequívoca.
 - **El texto original** de la dirección se conserva siempre.
 - **Plaza Mayor de la Hispanidad no está en la instantánea OSM actual**: comprobado por prueba automática, ni con otro tipo de vía. No se crean calles, geometrías ni coordenadas. «Plaza Mayor» solo puede quedar pendiente o marcada como «sin correspondencia»; sus registros se conservan sin vínculo territorial.
 - **Prioridad:** la lista se ordena por número de registros y marca como «Prioritaria» las cuatro primeras. En el auténtico son Plaza Mayor (45), Calle de las Farolas Antigua Ángel Molina (42), Ronda de Gracia (19) y Ronda de las Flores (13).
@@ -70,4 +70,4 @@ Los elementos de revisión (978 en el auténtico) se separan en tres clases, con
   - la similitud textual nunca vincula sola;
   - una decisión vincula los 42 registros sin alterar el original y queda en la traza; las decisiones no válidas bloquean el plan;
   - clases de revisión y revisión en bloque, que no cambia el plan.
-- `src/workspaces/espacios/analisis.test.tsx`: flujo en pantalla del análisis **sin guardar**. Incluye diagnóstico corregido, clases, conciliación de «Farolas» con justificación y revisión en bloque. No se escribe nada en IndexedDB.
+- `src/workspaces/espacios/analisis.test.tsx`: flujo en pantalla del análisis **sin guardar**. Incluye diagnóstico corregido, clases, conciliación de «Farolas» y revisión en bloque. No se escribe nada en IndexedDB.
