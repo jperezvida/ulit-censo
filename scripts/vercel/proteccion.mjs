@@ -1,5 +1,5 @@
 // Comprobación de la protección «Vercel Authentication» de la vista previa, SIN sesión (sin cookies).
-// La usa scripts/vercel/desplegar-preview.sh antes y después de asignar la dirección fija.
+// La usa scripts/vercel/desplegar-preview.mjs antes y después de asignar la dirección fija.
 //
 // Solo se da por protegida una respuesta que:
 //   - procede de Vercel (cabecera `server: Vercel`), y

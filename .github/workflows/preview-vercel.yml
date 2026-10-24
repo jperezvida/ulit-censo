@@ -21,6 +21,9 @@ env:
   PROYECTO: ulit-censo-pruebas
   DIRECCION_FIJA: ulit-censo-pruebas-vista.vercel.app
   RAMA_PERMITIDA: claude/fase2-oficina-itinerarios
+  # Despliegue creado por error como PRODUCCIÓN en la primera ejecución (Vercel asigna a producción el primer
+  # despliegue de un proyecto). Se retira SOLO si sigue siendo de este proyecto y de producción.
+  RETIRAR_PRODUCCION: dpl_5wBBNu998QbWfURDUtHgy5FSKgJV
   VERCEL_TELEMETRY_DISABLED: '1'
 
 jobs:
@@ -51,4 +54,4 @@ jobs:
         env:
           # Secreto del ENTORNO «preview» (no del repositorio).
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: bash scripts/vercel/desplegar-preview.sh
+        run: node scripts/vercel/desplegar-preview.mjs
