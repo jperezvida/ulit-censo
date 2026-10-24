@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import { fmt } from '../../../components/ui';
-import { agruparRevision, ESTADO_REVISION_TXT, filtrarRevision, type EstadoRevision, type ItemRevision } from '../../../domain/incorporacionDemo';
+import { agruparRevision, CLASE_REVISION_TXT, ESTADO_REVISION_TXT, filtrarRevision, resumenClases, type ClaseRevision, type EstadoRevision, type ItemRevision } from '../../../domain/incorporacionDemo';
 
 const GRAVEDAD_TXT = { error: 'Error', aviso: 'Aviso', info: 'Información', pendiente: 'Pendiente' } as const;
 type Grav = keyof typeof GRAVEDAD_TXT;
@@ -17,12 +17,14 @@ export function ChipEstado({ e }: { e: EstadoRevision }) {
  * negocio o número de fila. Cada fila muestra el valor original, la interpretación y la regla.
  */
 export function RevisionGrupos({ items }: { items: ItemRevision[] }) {
+  const [clase, setClase] = useState<ClaseRevision | null>(null);
   const [grupo, setGrupo] = useState<string | undefined>();
+  const clases = useMemo(() => resumenClases(items), [items]);
   const [gravedades, setGravedades] = useState<Grav[]>([]);
   const [estado, setEstado] = useState<EstadoRevision | ''>('');
   const [texto, setTexto] = useState('');
   const [pagina, setPagina] = useState(0);
-  const filtrados = useMemo(() => filtrarRevision(items, { gravedades, estados: estado ? [estado] : [], texto }), [items, gravedades, estado, texto]);
+  const filtrados = useMemo(() => filtrarRevision(items, { clases: clase ? [clase] : [], gravedades, estados: estado ? [estado] : [], texto }), [items, clase, gravedades, estado, texto]);
   const grupos = useMemo(() => agruparRevision(filtrados), [filtrados]);
   const visibles = useMemo(() => (grupo ? filtrados.filter((i) => i.grupo === grupo) : filtrados), [filtrados, grupo]);
   const paginas = Math.max(1, Math.ceil(visibles.length / POR_PAGINA));
@@ -34,6 +36,17 @@ export function RevisionGrupos({ items }: { items: ItemRevision[] }) {
 
   return (
     <div className="rev" aria-label="Revisión por grupos">
+      <div className="ap-resumen rev-clases" role="group" aria-label="Clases de revisión">
+        {(['error', 'comprobar', 'informativo'] as ClaseRevision[]).map((c) => (
+          <button key={c} className={`ap-celda clase-${c} ${clase === c ? 'on' : ''}`} aria-pressed={clase === c} title={CLASE_REVISION_TXT[c].explicacion}
+            onClick={() => { setClase(clase === c ? null : c); setGrupo(undefined); setPagina(0); }}>
+            <span className="muted">{CLASE_REVISION_TXT[c].titulo}</span>
+            <b>{fmt(clases[c].total)}</b>
+            <span className="muted">{c === 'informativo' ? `${fmt(clases[c].grupos)} grupo(s) · sin acción` : `${fmt(clases[c].pendientes)} pendiente(s) · ${fmt(clases[c].resueltos)} resuelto(s) · ${fmt(clases[c].grupos)} grupo(s)`}</span>
+          </button>
+        ))}
+      </div>
+      {clase && <p className="muted" style={{ margin: '0 0 6px' }}>{CLASE_REVISION_TXT[clase].explicacion}</p>}
       <div className="rev-filtros fila">
         <div className="fila" role="group" aria-label="Gravedad">
           {(Object.keys(GRAVEDAD_TXT) as Grav[]).map((g) => (

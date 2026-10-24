@@ -66,8 +66,10 @@ describe('C1d-A · Asistente de incorporación con el escenario ficticio de Medi
     expect(within(rev).getByText('«3,5 m»')).toBeInTheDocument();
     expect(within(rev).getAllByText('Pendiente de la Cátedra').length).toBeGreaterThan(0);
 
-    // ── Etapa 3: decisiones
+    // ── Etapa 3: decisiones (se abre en «Calles»; las interpretaciones están en su pestaña)
     fireEvent.click(screen.getByRole('button', { name: /Siguiente: Decisiones/ }));
+    expect(screen.getByLabelText('Conciliación de calles')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Interpretaciones' }));
     // Sin el rol adecuado no se pueden registrar decisiones
     act(() => useStore.setState({ prefs: { ...useStore.getState().prefs, roles: ['revisor'] } }));
     expect(screen.getAllByText(/requiere el rol de coordinación o administración/).length).toBeGreaterThan(0);

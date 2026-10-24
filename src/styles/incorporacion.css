@@ -97,3 +97,14 @@
   .inc-pasos button > span:last-child { display: none; }
 }
 .rev-filtros > select.input { width: auto; max-width: 240px; }
+.conc-tabla td { vertical-align: top; white-space: normal; }
+.conc-prop { margin-bottom: 4px; }
+.conc-prop .chip { font-size: 11px; }
+.conc-ausente { display: flex; gap: 4px; align-items: flex-start; color: #8a4b00; font-size: 12px; margin-bottom: 4px; }
+.conc-aviso { display: inline-flex; gap: 4px; align-items: center; color: #8a4b00; font-size: 12px; }
+.rev-clases { margin-bottom: 6px; }
+.rev-clases .clase-error b { color: #a42020; }
+.rev-clases .clase-comprobar b { color: #8a4b00; }
+.rev-clases .clase-informativo b { color: #3b5b8a; }
+.chip.clase-error { background: #fbe9e9; color: #a42020; }
+.chip.clase-comprobar { background: #fff3df; color: #8a4b00; }

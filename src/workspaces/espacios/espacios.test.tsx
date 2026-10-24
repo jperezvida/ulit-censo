@@ -66,7 +66,7 @@ describe('C1e · Espacios aislados (interfaz)', () => {
     expect(diag).toHaveTextContent(/indicadores coinciden con el informe agregado/);
     expect(diag).toHaveTextContent(/«Tablas Dinámicas» \(resumen, no se importa\)/);
     const calles = screen.getByRole('region', { name: 'Conciliación de calles' });
-    expect(within(calles).getByRole('table', { name: /Pendiente de conciliar/ }).querySelectorAll('tbody tr')).toHaveLength(23);
+    expect(within(calles).getByRole('table', { name: /Pendiente de conciliar/ }).querySelectorAll('tbody tr')).toHaveLength(21);
     // Vista previa
     fireEvent.click(screen.getByRole('button', { name: /Siguiente: Decisiones/ }));
     fireEvent.click(screen.getByRole('button', { name: /Siguiente: Vista previa/ }));

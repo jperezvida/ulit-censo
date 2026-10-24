@@ -13,9 +13,11 @@ import { BuscadorClasificacion, type Eleccion } from '../../office/BuscadorClasi
 import { ChipEstado } from './RevisionGrupos';
 import { hoy } from './estadoAsistente';
 import { useCtxIncorporacion } from './contextoIncorporacion';
+import { ConciliacionCalles } from './ConciliacionCalles';
+import { RevisionEnBloque } from './RevisionEnBloque';
 import type { Id } from '../../../domain/types';
 
-type Pestana = 'interpretaciones' | 'correspondencias' | 'exclusiones' | 'clasificacion' | 'catedra';
+type Pestana = 'calles' | 'revision' | 'interpretaciones' | 'correspondencias' | 'exclusiones' | 'clasificacion' | 'catedra';
 
 /** Formulario mínimo de una decisión: persona y fecha automáticas, motivo o referencia obligatorio. */
 function Registrar({ etiqueta, ayuda, onRegistrar, deshabilitado }: { etiqueta: string; ayuda: string; onRegistrar: (motivo: string) => void; deshabilitado?: string }) {
@@ -43,7 +45,7 @@ function Traza({ porId, fecha, motivo }: { porId: Id; fecha: string; motivo?: st
 }
 
 export function Decisiones({ resultado, plan, decisiones, onCambiar }: { resultado: ResultadoInterpretacion; plan: PlanIncorporacion; decisiones: DecisionesIncorporacion; onCambiar: (d: DecisionesIncorporacion) => void }) {
-  const [tab, setTab] = useState<Pestana>('interpretaciones');
+  const [tab, setTab] = useState<Pestana>('calles');
   const ctx = useCtxIncorporacion();
   const autorizado = ctx.autorizado;
   const firma = { porId: ctx.personaId, fecha: hoy() };
@@ -55,6 +57,8 @@ export function Decisiones({ resultado, plan, decisiones, onCambiar }: { resulta
         valor={tab}
         onCambio={setTab}
         opciones={[
+          { v: 'calles', t: 'Calles' },
+          { v: 'revision', t: 'Revisión en bloque' },
           { v: 'interpretaciones', t: 'Interpretaciones' },
           { v: 'correspondencias', t: 'Correspondencias' },
           { v: 'exclusiones', t: 'Exclusiones' },
@@ -62,6 +66,8 @@ export function Decisiones({ resultado, plan, decisiones, onCambiar }: { resulta
           { v: 'catedra', t: 'Pendiente de la Cátedra' },
         ]}
       />
+      {tab === 'calles' && <ConciliacionCalles {...props} />}
+      {tab === 'revision' && <RevisionEnBloque {...props} />}
       {tab === 'interpretaciones' && <Interpretaciones {...props} />}
       {tab === 'correspondencias' && <Correspondencias {...props} />}
       {tab === 'exclusiones' && <Exclusiones {...props} />}

@@ -175,7 +175,7 @@ function EtapaDiagnostico({ tipo }: { tipo: TipoEspacio }) {
   const db = useEspacios((s) => s.db!);
   const { resultado, plan } = preparado!;
   const diag = useMemo(() => diagnosticoAgregado(resultado), [resultado]);
-  const calles = useMemo(() => conciliacionCalles(db, resultado, municipioDeEspacio(tipo)), [db, resultado, tipo]);
+  const calles = useMemo(() => conciliacionCalles(db, resultado, municipioDeEspacio(tipo), decisiones), [db, resultado, tipo, decisiones]);
   const sen = useMemo(() => senales(resultado), [resultado]);
   const items = useMemo(() => itemsRevision(resultado, plan, decisiones), [resultado, plan, decisiones]);
   const [verCalles, setVerCalles] = useState<EstadoCalle | null>('pendiente');
@@ -190,16 +190,16 @@ function EtapaDiagnostico({ tipo }: { tipo: TipoEspacio }) {
         <table className="tabla ap-tabla" aria-label="Indicadores del archivo">
           <thead><tr><th>Indicador</th><th className="num">Archivo</th><th className="num">Informe</th><th /></tr></thead>
           <tbody>{diag.indicadores.map((i) => (
-            <tr key={i.clave} className={i.coincide === false ? 'aviso' : ''}><td>{i.etiqueta}</td><td className="num">{typeof i.valor === 'number' ? fmt(i.valor) : i.valor}</td><td className="num muted">{i.esperado === undefined ? '—' : typeof i.esperado === 'number' ? fmt(i.esperado) : i.esperado}</td><td>{i.coincide === undefined ? null : i.coincide ? <CheckCircle2 size={14} aria-label="coincide" /> : <AlertTriangle size={14} aria-label="no coincide" />}</td></tr>
+            <tr key={i.clave} className={i.coincide === false ? 'aviso' : ''}><td>{i.etiqueta}{i.nota && <div className="muted ind-nota">{i.nota}</div>}</td><td className="num">{typeof i.valor === 'number' ? fmt(i.valor) : i.valor}</td><td className="num muted">{i.esperado === undefined ? '—' : typeof i.esperado === 'number' ? fmt(i.esperado) : i.esperado}</td><td>{i.coincide === undefined ? null : i.coincide ? <CheckCircle2 size={14} aria-label="coincide" /> : <AlertTriangle size={14} aria-label="no coincide" />}</td></tr>
           ))}</tbody>
         </table>
       </section>
 
       <section className="tarjeta inc-bloque" aria-label="Conciliación de calles">
         <h3>Calles: coincidencias y denominaciones pendientes</h3>
-        <p className="muted">Callejero real de Medina del Campo (OpenStreetMap). No se aproxima ni se inventa ninguna correspondencia: lo que no coincide queda pendiente de conciliar y su registro se conserva sin vínculo territorial.</p>
+        <p className="muted">Callejero real de Medina del Campo (OpenStreetMap). No se aproxima ni se inventa ninguna correspondencia: lo que no coincide queda pendiente y su registro se conserva sin vínculo territorial. Las propuestas, con su fuente, se revisan y confirman en <b>Decisiones → Calles</b>.</p>
         <div className="ap-resumen">
-          {(['literal', 'normalizada', 'pendiente', 'ambigua', 'vacia'] as EstadoCalle[]).map((e) => (
+          {(['literal', 'normalizada', 'conciliada', 'pendiente', 'sin-correspondencia', 'ambigua', 'vacia'] as EstadoCalle[]).filter((e) => calles.porEstado[e].denominaciones || e === 'pendiente').map((e) => (
             <button key={e} className={`ap-celda ${verCalles === e ? 'on' : ''}`} onClick={() => setVerCalles(verCalles === e ? null : e)} aria-pressed={verCalles === e}>
               <span className="muted">{ESTADO_CALLE_TXT[e]}</span><b>{calles.porEstado[e].denominaciones}</b><span className="muted">{fmt(calles.porEstado[e].filas)} filas</span>
             </button>
@@ -266,6 +266,7 @@ function EtapaVistaPrevia({ tipo, destino }: { tipo: TipoEspacio; destino: Desti
             st.decisiones.periodoTrabajo && 'periodo de trabajo de campo',
             `${plan.decisiones.reglasAutorizadas.length} regla(s) autorizada(s)`, `${plan.decisiones.diccionarioAprobado.length} texto(s) «sin información»`,
             `${plan.decisiones.exclusiones} exclusión(es)`, `${plan.decisiones.correspondencias} correspondencia(s)`, `${plan.decisiones.equivalenciasClasificacion} equivalencia(s)`,
+            `${plan.decisiones.calles ?? 0} conciliación(es) de calle`, `${plan.decisiones.revisionesBloque ?? 0} revisión(es) en bloque`,
           ].filter(Boolean).join(' · ')}</dd>
         </dl>
       </section>

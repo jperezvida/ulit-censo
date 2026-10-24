@@ -1,7 +1,8 @@
 import type { BaseDatos } from './db';
 import { claveCalle, normalizar } from './text';
-import type { MotivoSinLocal, PlanIncorporacion } from './incorporacion';
-import type { ResultadoInterpretacion, ValorOriginal } from './xlsx/interpretacion';
+import type { DecisionesIncorporacion, MotivoSinLocal, PlanIncorporacion } from './incorporacion';
+import { proponer, type DenominacionPendiente } from './conciliacionCalles';
+import { claveDenominacion, type ResultadoInterpretacion, type ValorOriginal } from './xlsx/interpretacion';
 import type { InformeEstructural } from './xlsx/analisis';
 import { TIPOS_INCIDENCIA } from './xlsx/reglasInterpretacion';
 import type { Id } from './types';
@@ -39,6 +40,8 @@ const esNum = (o: ValorOriginal | undefined, n: number) => !!o && ((o.t === 'num
 export interface Indicador {
   clave: string;
   etiqueta: string;
+  /** Cómo se cuenta (cuando no es evidente). */
+  nota?: string;
   valor: number | string;
   esperado?: number | string;
   coincide?: boolean;
@@ -65,8 +68,8 @@ export function diagnosticoAgregado(resultado: ResultadoInterpretacion & { estru
   const filas = capa.filas;
   const c = (f: (typeof filas)[number], k: string) => f.celdas[k];
   const ind: Indicador[] = [];
-  const add = (clave: string, etiqueta: string, valor: number | string, esp?: number | string) =>
-    ind.push({ clave, etiqueta, valor, ...(esp !== undefined ? { esperado: esp, coincide: valor === esp } : {}) });
+  const add = (clave: string, etiqueta: string, valor: number | string, esp?: number | string, nota?: string) =>
+    ind.push({ clave, etiqueta, valor, ...(nota ? { nota } : {}), ...(esp !== undefined ? { esperado: esp, coincide: valor === esp } : {}) });
 
   add('filas', 'Filas de datos', filas.length, esperado.filas);
   add('columnas', 'Columnas reconocidas del perfil', capa.columnas.length, esperado.columnas);
@@ -129,16 +132,30 @@ export function diagnosticoAgregado(resultado: ResultadoInterpretacion & { estru
   if (cps.size > 1) add('cp-otros', 'Filas con otro CP o sin CP', filas.length - (cps.get(esperado.cp.valor) ?? 0), 0);
 
   add('sin-numero', 'Filas sin número de portal', filas.filter((f) => vacia(c(f, 'numero'))).length, esperado.sinNumero);
-  const pares = new Map<string, number>();
-  for (const f of filas) {
-    if (vacia(c(f, 'direccion')) || vacia(c(f, 'numero'))) continue;
-    const k = `${texto(c(f, 'direccion'))}\u0000${texto(c(f, 'numero'))}`;
-    pares.set(k, (pares.get(k) ?? 0) + 1);
-  }
-  const rep = [...pares.values()].filter((n) => n > 1);
-  add('pares', 'Pares calle + número distintos', pares.size, esperado.direcciones.pares);
-  add('pares-repetidos', 'Pares que aparecen más de una vez', rep.length, esperado.direcciones.paresRepetidos);
-  add('registros-mismo-portal', 'Registros en portales compartidos (locales independientes)', rep.reduce((a, n) => a + n, 0), esperado.direcciones.registrosEnRepetidos);
+  // Portales: la calle se compara NORMALIZADA (sin distinguir mayúsculas ni espacios) y el número tal
+  // como figura; los valores originales no se modifican. «S/N» se agrupa textualmente (como en el
+  // informe de referencia), pero no identifica un portal numérico: se separa en dos recuentos.
+  const grupos = (clave: (f: (typeof filas)[number]) => string | null) => {
+    const m = new Map<string, number>();
+    for (const f of filas) {
+      const k = clave(f);
+      if (k !== null) m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    const rep = [...m.entries()].filter(([, n]) => n > 1);
+    return { pares: m.size, repetidos: rep.length, registros: rep.reduce((a, [, n]) => a + n, 0), rep };
+  };
+  const conDireccion = (f: (typeof filas)[number]) => !vacia(c(f, 'direccion')) && !vacia(c(f, 'numero'));
+  const numTxt = (f: (typeof filas)[number]) => texto(c(f, 'numero')).trim();
+  const norm = grupos((f) => (conDireccion(f) ? `${claveDenominacion(texto(c(f, 'direccion')))}\u0000${numTxt(f)}` : null));
+  const literal = grupos((f) => (conDireccion(f) ? `${texto(c(f, 'direccion'))}\u0000${texto(c(f, 'numero'))}` : null));
+  const sn = norm.rep.filter(([k]) => /^s\s*\/\s*n\.?$/i.test(k.split('\u0000')[1]));
+  const variantes = norm.pares !== literal.pares;
+  add('pares', 'Pares calle + número distintos', norm.pares, esperado.direcciones.pares, 'Calle normalizada (sin distinguir mayúsculas ni espacios); número tal como figura, incluido «S/N».');
+  add('pares-repetidos', 'Pares que aparecen más de una vez', norm.repetidos, esperado.direcciones.paresRepetidos);
+  add('registros-mismo-portal', 'Registros en direcciones compartidas (recuento textual)', norm.registros, esperado.direcciones.registrosEnRepetidos, 'Mismo criterio que el informe de referencia: incluye los «S/N» agrupados por calle.');
+  add('registros-sn-agrupados', '· de ellos, «S/N» agrupados por calle (no identifican un portal)', sn.reduce((a, [, n]) => a + n, 0), undefined, sn.length ? `${sn.length} vía(s) con varios «S/N».` : undefined);
+  add('registros-portal-numerico', '· de ellos, en portales NUMÉRICOS compartidos (regla de C1b)', resultado.filas.filter((f) => f.grupoDireccion).length, undefined, 'Locales independientes del mismo portal: se conservan todos, no se fusionan.');
+  if (variantes) add('pares-literales', 'Pares sin normalizar la calle (solo informativo)', literal.pares, undefined, `Con la calle tal como está escrita: ${literal.registros} registros en direcciones compartidas. La diferencia se debe a grafías de una misma calle que solo difieren en mayúsculas o espacios.`);
 
   add('vacios-sin-fachada', 'Locales vacíos sin «Long fachada» (m lineales)', filas.filter((f) => esNum(c(f, 'vacio'), 1) && vacia(c(f, 'fachada'))).length, esperado.vaciosSinFachada);
   add('ocupados-sin-actividad', 'Locales ocupados sin «Actividad»', filas.filter((f) => esNum(c(f, 'vacio'), 0) && vacia(c(f, 'actividad'))).length, esperado.ocupadosSinActividad);
@@ -195,14 +212,17 @@ export function recuentoRegistros(plan: PlanIncorporacion): RecuentoRegistros {
 
 // ───────────── Conciliación de denominaciones de calle ─────────────
 
-export type EstadoCalle = 'literal' | 'normalizada' | 'ambigua' | 'pendiente' | 'vacia';
+export type EstadoCalle = 'literal' | 'normalizada' | 'conciliada' | 'ambigua' | 'pendiente' | 'sin-correspondencia' | 'vacia';
 export const ESTADO_CALLE_TXT: Record<EstadoCalle, string> = {
   literal: 'Coincidencia exacta (literal)',
   normalizada: 'Coincidencia exacta tras normalizar (mayúsculas, tildes, tipo de vía y artículos)',
+  conciliada: 'Conciliada por una persona (decisión trazada)',
   ambigua: 'Ambigua: coincide con varias calles',
   pendiente: 'Pendiente de conciliar: no está en el callejero',
+  'sin-correspondencia': 'Sin correspondencia en el callejero (decidido; se conserva sin vínculo)',
   vacia: 'Sin denominación',
 };
+export const ORDEN_ESTADO_CALLE: EstadoCalle[] = ['pendiente', 'ambigua', 'vacia', 'sin-correspondencia', 'conciliada', 'normalizada', 'literal'];
 
 export interface DenominacionCalle {
   literal: string;
@@ -215,11 +235,12 @@ export interface DenominacionCalle {
 /**
  * Cada denominación LITERAL del archivo frente al callejero del municipio. No se inventa ni se
  * aproxima ninguna correspondencia: lo que no coincide queda pendiente de conciliar (el registro
- * se conserva sin vínculo territorial).
+ * se conserva sin vínculo territorial) salvo que una persona lo haya conciliado con una decisión trazada.
  */
-export function conciliacionCalles(db: BaseDatos, resultado: ResultadoInterpretacion, municipioId: Id): { denominaciones: DenominacionCalle[]; porEstado: Record<EstadoCalle, { denominaciones: number; filas: number }> } {
+export function conciliacionCalles(db: BaseDatos, resultado: ResultadoInterpretacion, municipioId: Id, decisiones: DecisionesIncorporacion = {}): { denominaciones: DenominacionCalle[]; porEstado: Record<EstadoCalle, { denominaciones: number; filas: number }> } {
   const porClave = new Map<string, Id[]>();
   for (const c of Object.values(db.calles)) if (c.municipioId === municipioId) porClave.set(claveCalle(c.nombre), [...(porClave.get(claveCalle(c.nombre)) ?? []), c.id]);
+  const decididas = new Map((decisiones.calles ?? []).map((d) => [d.denominacion, d]));
   const m = new Map<string, DenominacionCalle>();
   for (const f of resultado.original.filas) {
     const lit = texto(f.celdas.direccion);
@@ -228,13 +249,25 @@ export function conciliacionCalles(db: BaseDatos, resultado: ResultadoInterpreta
     if (!lit.trim()) { m.set(lit, { literal: lit, filas: 1, estado: 'vacia' }); continue; }
     const ids = porClave.get(claveCalle(lit)) ?? [];
     const calle = ids.length === 1 ? db.calles[ids[0]] : undefined;
-    const estado: EstadoCalle = ids.length > 1 ? 'ambigua' : !calle ? 'pendiente' : calle.nombre === lit ? 'literal' : 'normalizada';
-    m.set(lit, { literal: lit, filas: 1, estado, ...(calle ? { calleId: calle.id, calle: calle.nombre } : {}) });
+    const dec = !ids.length ? decididas.get(lit) : undefined;
+    const conciliada = dec?.accion === 'vincular' && db.calles[dec.calleId]?.municipioId === municipioId ? db.calles[dec.calleId] : undefined;
+    const estado: EstadoCalle = ids.length > 1 ? 'ambigua' : calle ? (calle.nombre === lit ? 'literal' : 'normalizada') : conciliada ? 'conciliada' : dec?.accion === 'sin-correspondencia' ? 'sin-correspondencia' : 'pendiente';
+    const destino = calle ?? conciliada;
+    m.set(lit, { literal: lit, filas: 1, estado, ...(destino ? { calleId: destino.id, calle: destino.nombre } : {}) });
   }
-  const denominaciones = [...m.values()].sort((a, b) => ['pendiente', 'ambigua', 'vacia', 'normalizada', 'literal'].indexOf(a.estado) - ['pendiente', 'ambigua', 'vacia', 'normalizada', 'literal'].indexOf(b.estado) || b.filas - a.filas || a.literal.localeCompare(b.literal, 'es'));
-  const porEstado = Object.fromEntries((['literal', 'normalizada', 'ambigua', 'pendiente', 'vacia'] as EstadoCalle[]).map((e) => [e, { denominaciones: 0, filas: 0 }])) as Record<EstadoCalle, { denominaciones: number; filas: number }>;
+  const denominaciones = [...m.values()].sort((a, b) => ORDEN_ESTADO_CALLE.indexOf(a.estado) - ORDEN_ESTADO_CALLE.indexOf(b.estado) || b.filas - a.filas || a.literal.localeCompare(b.literal, 'es'));
+  const porEstado = Object.fromEntries(ORDEN_ESTADO_CALLE.map((e) => [e, { denominaciones: 0, filas: 0 }])) as Record<EstadoCalle, { denominaciones: number; filas: number }>;
   for (const d of denominaciones) { porEstado[d.estado].denominaciones++; porEstado[d.estado].filas += d.filas; }
   return { denominaciones, porEstado };
+}
+
+/** Denominaciones por conciliar (o ya decididas), con sus propuestas, de más a menos registros. */
+export function denominacionesPorConciliar(db: BaseDatos, resultado: ResultadoInterpretacion, municipioId: Id, decisiones: DecisionesIncorporacion = {}): (DenominacionPendiente & { estado: EstadoCalle; calleId?: Id; calle?: string })[] {
+  const calles = Object.values(db.calles).filter((c) => c.municipioId === municipioId);
+  return conciliacionCalles(db, resultado, municipioId, decisiones).denominaciones
+    .filter((d) => d.estado === 'pendiente' || d.estado === 'conciliada' || d.estado === 'sin-correspondencia')
+    .map((d) => ({ ...d, denominacion: d.literal, ...proponer(d.literal, calles) }))
+    .sort((a, b) => b.filas - a.filas || a.denominacion.localeCompare(b.denominacion, 'es'));
 }
 
 // ───────────── Señales que no eliminan registros ─────────────

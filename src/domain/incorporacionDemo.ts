@@ -121,11 +121,28 @@ export const MOTIVO_TXT: Record<string, { titulo: string; explicacion: string; d
   'estado-local-desconocido': { titulo: 'No se sabe si el local está vacío', explicacion: '«Local Vacío» falta o no es 0/1: no se deduce y queda pendiente.', decidible: false },
 };
 
+/**
+ * Clase de un elemento de revisión:
+ * - «error»: error efectivo en el dato de origen (valor imposible, fecha que no es fecha, estado del
+ *   local desconocido…) o bloqueo del plan;
+ * - «comprobar»: dato pendiente de comprobar o de conciliar (avisos, calles sin correspondencia, reglas
+ *   pendientes de la Cátedra…);
+ * - «informativo»: hecho que se registra sin exigir acción (mismo portal, clasificación histórica 2025
+ *   que se conserva literalmente y no tiene por qué equivaler a 2026…).
+ */
+export type ClaseRevision = 'error' | 'comprobar' | 'informativo';
+export const CLASE_REVISION_TXT: Record<ClaseRevision, { titulo: string; explicacion: string }> = {
+  error: { titulo: 'Errores efectivos', explicacion: 'El dato de origen es imposible o falta algo imprescindible. Se conserva el original; la celda queda sin valor interpretado.' },
+  comprobar: { titulo: 'Pendientes de comprobar', explicacion: 'Avisos, conciliaciones y reglas pendientes: no son errores, pero requieren una comprobación o una decisión.' },
+  informativo: { titulo: 'Informativos', explicacion: 'Se registran sin exigir acción. La clasificación histórica 2025 se conserva literalmente y no tiene que equivaler a la de 2026.' },
+};
+
 export interface ItemRevision {
   clave: string;
   fila: number;
   grupo: string;
   titulo: string;
+  clase: ClaseRevision;
   categoria: 'valor' | 'correspondencia' | 'clasificacion' | 'fila';
   gravedad: Gravedad | 'pendiente';
   estado: EstadoRevision;
@@ -163,6 +180,7 @@ export function itemsRevision(resultado: ResultadoInterpretacion, plan: PlanInco
   const excluidas = new Set((decisiones.exclusiones ?? []).map((e) => e.fila));
   const decididas = new Set((decisiones.correspondencias ?? []).map((c) => c.fila));
   const equivalencias = new Set((decisiones.equivalenciasClasificacion ?? []).map((q) => claveCombo(q.grupo, q.grupoComercio, q.subgrupo, q.actividad)));
+  const enBloque = new Set((decisiones.revisionesBloque ?? []).flatMap((r) => r.filas.map((f) => `${r.tipo}|${f}`)));
   const porFila = new Map(resultado.filas.map((f) => [f.fila, f]));
   const orig = new Map(resultado.original.filas.map((f) => [f.fila, f]));
   const datosFila = (fila: number) => {
@@ -177,14 +195,20 @@ export function itemsRevision(resultado: ResultadoInterpretacion, plan: PlanInco
     let estado: EstadoRevision;
     const f = porFila.get(i.fila);
     const comboOk = CLASIFICACION.has(i.tipo) && f && equivalencias.has(claveCombo(...comboDe(f)));
+    const historica = CLASIFICACION.has(i.tipo);
     if (excluidas.has(i.fila)) estado = 'no-aplica';
     else if (comboOk) estado = 'resuelto';
+    // La clasificación 2025 se conserva literalmente: no exige equivalencia con 2026 para incorporarse.
+    else if (historica) estado = 'no-aplica';
     else if (tipo.decision === 'catedra') estado = 'catedra';
     else if (tipo.gravedad === 'info' && tipo.decision === 'informativa') estado = 'no-aplica';
+    else if (enBloque.has(`${i.tipo}|${i.fila}`)) estado = 'resuelto';
     else estado = 'revisar';
+    const gravedad = celda?.estado === 'pendiente' ? 'pendiente' : i.gravedad;
     items.push({
-      clave: `inc-${n}`, fila: i.fila, grupo: i.tipo, titulo: tipo.titulo, categoria: CLASIFICACION.has(i.tipo) ? 'clasificacion' : i.tipo === 'posible-fila-de-totales' ? 'fila' : 'valor',
-      gravedad: celda?.estado === 'pendiente' ? 'pendiente' : i.gravedad, estado, columna: i.columna, cabecera: i.cabecera, original: i.valorOriginal,
+      clave: `inc-${n}`, fila: i.fila, grupo: i.tipo, titulo: tipo.titulo, categoria: historica ? 'clasificacion' : i.tipo === 'posible-fila-de-totales' ? 'fila' : 'valor',
+      clase: historica || gravedad === 'info' ? 'informativo' : gravedad === 'error' ? 'error' : 'comprobar',
+      gravedad, estado, columna: i.columna, cabecera: i.cabecera, original: i.valorOriginal,
       interpretacion: celda ? `${celda.estado}${celda.valor !== undefined ? ` · ${valorTexto(celda.valor)}` : ''}${celda.propuesta !== undefined ? ` · propuesta: ${valorTexto(celda.propuesta)}` : ''}` : undefined,
       regla: celda?.regla ?? i.regla, reglaTxt: REGLAS[celda?.regla ?? i.regla ?? '']?.descripcion, mensaje: i.mensaje, propuesta: i.propuesta, ...datosFila(i.fila),
     });
@@ -193,16 +217,17 @@ export function itemsRevision(resultado: ResultadoInterpretacion, plan: PlanInco
     if (!pf.motivo) continue;
     const m = MOTIVO_TXT[pf.motivo];
     items.push({
-      clave: `cor-${pf.fila}`, fila: pf.fila, grupo: `correspondencia:${pf.motivo}`, titulo: m.titulo, categoria: 'correspondencia', gravedad: 'aviso',
+      clave: `cor-${pf.fila}`, fila: pf.fila, grupo: `correspondencia:${pf.motivo}`, titulo: m.titulo, categoria: 'correspondencia', clase: 'comprobar', gravedad: 'aviso',
       estado: excluidas.has(pf.fila) ? 'no-aplica' : decididas.has(pf.fila) ? 'resuelto' : 'revisar',
       mensaje: m.explicacion, propuesta: m.decidible ? 'Decidir en «Correspondencias» o dejar pendiente.' : 'Queda sin vínculo para revisión posterior.', ...datosFila(pf.fila),
     });
   }
-  for (const b of plan.bloqueos) items.push({ clave: `bloq-${b.codigo}`, fila: 0, grupo: `bloqueo:${b.codigo}`, titulo: 'Bloqueo del plan', categoria: 'fila', gravedad: 'error', estado: 'bloqueante', mensaje: b.mensaje, propuesta: b.detalles.join(' · ') });
+  for (const b of plan.bloqueos) items.push({ clave: `bloq-${b.codigo}`, fila: 0, grupo: `bloqueo:${b.codigo}`, titulo: 'Bloqueo del plan', categoria: 'fila', clase: 'error', gravedad: 'error', estado: 'bloqueante', mensaje: b.mensaje, propuesta: b.detalles.join(' · ') });
   return items;
 }
 
 export interface FiltroRevision {
+  clases?: ClaseRevision[];
   gravedades?: (Gravedad | 'pendiente')[];
   estados?: EstadoRevision[];
   grupo?: string;
@@ -212,7 +237,8 @@ export interface FiltroRevision {
 export function filtrarRevision(items: ItemRevision[], f: FiltroRevision): ItemRevision[] {
   const q = f.texto ? normalizar(f.texto) : '';
   return items.filter((i) =>
-    (!f.gravedades?.length || f.gravedades.includes(i.gravedad))
+    (!f.clases?.length || f.clases.includes(i.clase))
+    && (!f.gravedades?.length || f.gravedades.includes(i.gravedad))
     && (!f.estados?.length || f.estados.includes(i.estado))
     && (!f.grupo || i.grupo === f.grupo)
     && (!q || String(i.fila) === q || [i.calle, i.numero, i.negocio].some((t) => t && normalizar(t).includes(q))),
@@ -240,6 +266,52 @@ export function agruparRevision(items: ItemRevision[]): GrupoRevision[] {
     m.set(i.grupo, g);
   }
   return [...m.values()].sort((a, b) => ORDEN_GRAVEDAD[a.gravedad] - ORDEN_GRAVEDAD[b.gravedad] || b.total - a.total);
+}
+
+/** Resumen por clase: total y pendientes de revisar. */
+export function resumenClases(items: ItemRevision[]): Record<ClaseRevision, { total: number; pendientes: number; resueltos: number; grupos: number }> {
+  const r = Object.fromEntries((['error', 'comprobar', 'informativo'] as ClaseRevision[]).map((c) => [c, { total: 0, pendientes: 0, resueltos: 0, grupos: 0 }])) as Record<ClaseRevision, { total: number; pendientes: number; resueltos: number; grupos: number }>;
+  const grupos = new Map<ClaseRevision, Set<string>>();
+  for (const i of items) {
+    r[i.clase].total++;
+    if (i.estado === 'revisar' || i.estado === 'catedra' || i.estado === 'bloqueante') r[i.clase].pendientes++;
+    if (i.estado === 'resuelto') r[i.clase].resueltos++;
+    grupos.set(i.clase, (grupos.get(i.clase) ?? new Set()).add(i.grupo));
+  }
+  for (const [c, g] of grupos) r[c].grupos = g.size;
+  return r;
+}
+
+// ───────────── Revisión en bloque (decisiones justificadas) ─────────────
+
+/** Tipos que exigen una decisión fila a fila (excluir una fila, decidir un duplicado): nunca en bloque. */
+export const NO_EN_BLOQUE = new Set<string>(['posible-fila-de-totales', 'fila-duplicada-exacta']);
+
+export interface GrupoEnBloque {
+  tipo: IdTipoIncidencia;
+  titulo: string;
+  clase: ClaseRevision;
+  propuesta: string;
+  filas: number[];
+  pendientes: number;
+}
+
+/**
+ * Grupos de incidencias que se pueden dar por revisados EN BLOQUE con una justificación: los que
+ * dependen de una revisión humana (no de la Cátedra) y cuya resolución es conservar el original.
+ */
+export function gruposEnBloque(items: ItemRevision[]): GrupoEnBloque[] {
+  const m = new Map<string, GrupoEnBloque>();
+  for (const i of items) {
+    if (!i.clave.startsWith('inc-') || i.estado === 'no-aplica' || i.clase === 'informativo' || NO_EN_BLOQUE.has(i.grupo)) continue;
+    const t = TIPOS_INCIDENCIA[i.grupo as IdTipoIncidencia];
+    if (!t || t.decision !== 'revision') continue;
+    const g = m.get(i.grupo) ?? { tipo: i.grupo as IdTipoIncidencia, titulo: t.titulo, clase: i.clase, propuesta: t.propuesta, filas: [], pendientes: 0 };
+    if (!g.filas.includes(i.fila)) g.filas.push(i.fila);
+    if (i.estado === 'revisar') g.pendientes++;
+    m.set(i.grupo, g);
+  }
+  return [...m.values()].map((g) => ({ ...g, filas: g.filas.sort((a, b) => a - b) })).sort((a, b) => (a.clase === b.clase ? b.filas.length - a.filas.length : a.clase === 'error' ? -1 : 1));
 }
 
 // ───────────── Reglas pendientes (decisiones de la Cátedra) ─────────────

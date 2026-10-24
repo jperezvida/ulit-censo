@@ -131,7 +131,7 @@ export const TIPOS_INCIDENCIA = {
   'servicios-actividad-ejemplo': t('Servicios: actividad 2025 que en 2026 es un ejemplo de descripción', 'info', 'catedra', 'Diferencia de estructura, no error. Equivalencia pendiente de la Cátedra (decisión 3).'),
   'servicios-actividad-no-prevista': t('Servicios: actividad 2025 no prevista en 2026', 'aviso', 'catedra', 'Pendiente de la correspondencia 2025 → 2026 (decisión 3).'),
   'clasificacion-fuera-de-lista': t('Valor fuera de las listas históricas de Hoja1', 'info', 'informativa', 'Se conserva tal cual; puede ser una variante de escritura.'),
-  'direccion-repetida': t('Varios establecimientos en el mismo portal', 'info', 'informativa', 'Se conservan todas las filas y cada una es un local físico distinto del mismo portal (bajos, locales interiores…): no se fusionan ni son una ambigüedad (corrección C1c-1).'),
+  'direccion-repetida': t('Varios establecimientos en el mismo portal numérico', 'info', 'informativa', 'Misma calle (sin distinguir mayúsculas) y mismo número de portal. Se conservan todas las filas y cada una es un local físico distinto del mismo portal (bajos, locales interiores…): no se fusionan ni son una ambigüedad (corrección C1c-1). Los «S/N» no se agrupan aquí: no identifican un portal.'),
   'posible-fila-de-totales': t('Posible fila de totales (heurística)', 'aviso', 'revision', 'Se conserva íntegra. Solo se excluirá de la aplicación operativa con una decisión humana explícita y trazada (C1d).'),
   'fila-duplicada-exacta': t('Fila idéntica a otra', 'aviso', 'revision', 'Posible duplicado exacto. Se conservan ambas filas hasta una decisión humana.'),
 } satisfies Record<string, TipoIncidencia>;

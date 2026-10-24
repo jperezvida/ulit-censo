@@ -20,3 +20,4 @@ tr.aviso td { background: #fff6e0; }
 .req-lista li.aviso svg { color: #a86400; }
 .esp-version { font-size: 11.5px; color: #c9d2e3; }
 .esp-desactivada { opacity: 0.75; cursor: not-allowed; background: var(--superficie-2, #f4f6fa); }
+.ind-nota { font-size: 11.5px; margin-top: 2px; }

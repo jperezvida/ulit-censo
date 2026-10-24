@@ -65,8 +65,10 @@ describe('C1e · Vista previa e incorporación en un espacio aislado', () => {
     // Calles: 10 literales + 60 normalizadas (70 existentes) y 23 pendientes; ninguna inventada
     const cc = conciliacionCalles(db, resultado, municipioDeEspacio('ensayo'));
     expect(cc.porEstado.literal.denominaciones).toBe(10);
-    expect(cc.porEstado.normalizada.denominaciones).toBe(60);
-    expect(cc.porEstado.pendiente.denominaciones).toBe(23);
+    expect(cc.porEstado.normalizada.denominaciones).toBe(62);
+    expect(cc.porEstado.pendiente.denominaciones).toBe(21);
+    expect(cc.porEstado.pendiente.filas).toBe(177);
+    expect(cc.porEstado.literal.filas + cc.porEstado.normalizada.filas).toBe(712);
     expect(cc.porEstado.ambigua.denominaciones + cc.porEstado.vacia.denominaciones).toBe(0);
     expect(r.pendientesPorMotivo['calle-sin-correspondencia']).toBe(cc.porEstado.pendiente.filas);
     // Sin número: se conserva el registro, sin local

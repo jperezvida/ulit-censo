@@ -6,7 +6,8 @@ import { huella } from '../data/rng';
 import { sha256Texto } from './sha256';
 import { TAXONOMIA_POR_ID, catalogoDeNodo } from './taxonomy';
 import { configTerritorial } from './territorio';
-import { REGLAS } from './xlsx/reglasInterpretacion';
+import { REGLAS, TIPOS_INCIDENCIA } from './xlsx/reglasInterpretacion';
+import { validarDecisionesCalle, type DecisionCalle } from './conciliacionCalles';
 import type { FilaInterpretada, OpcionesInterpretacion, Portal, ResultadoInterpretacion } from './xlsx/interpretacion';
 import type {
   Campana, CeldaOriginal, ColeccionIncorporada, Confianza, DatoDigital, Id, Importacion, LocalFisico, Observacion, Ocupacion, RegistroOrigen,
@@ -60,6 +61,17 @@ export interface DecisionesIncorporacion {
    * conservan como fecha de observación, sin marcarlas fuera de campaña ni cambiarlas.
    */
   periodoTrabajo?: Trazada & { desde: string; hasta: string };
+  /**
+   * Conciliación SUPERVISADA de denominaciones de calle: vincular todos los registros de una denominación
+   * a una calle del callejero, o dejar constancia de que no tiene correspondencia. Nunca automática.
+   */
+  calles?: DecisionCalle[];
+  /**
+   * Revisión EN BLOQUE de un grupo de incidencias (mismo tipo): la persona deja constancia, con su
+   * justificación, de que ha revisado esas filas y se conservan sus valores originales tal cual. No
+   * cambia ningún dato ni ninguna interpretación.
+   */
+  revisionesBloque?: (Trazada & { tipo: string; filas: number[]; motivo: string })[];
 }
 
 /** Periodo con el que se interpretan las fechas: el decidido o el año natural. */
@@ -105,8 +117,10 @@ export interface PlanFila {
   fila: number;
   correspondencia: Correspondencia;
   motivo?: MotivoSinLocal;
-  /** Calle reconocida (solo con correspondencia única por nombre). */
+  /** Calle reconocida (correspondencia única por nombre o conciliación decidida por una persona). */
   calleId?: Id;
+  /** La calle procede de una conciliación supervisada (decisión trazada), no del reconocimiento automático. */
+  calleDecidida?: boolean;
   /** Local que se creará (nuevo) o local existente decidido por una persona. */
   localId?: Id;
   localNuevo: boolean;
@@ -141,7 +155,7 @@ export interface PlanIncorporacion {
    */
   mismoPortal: { portales: number; locales: number };
   incidencias: { total: number; porGravedad: Record<string, number>; porTipo: Record<string, number> };
-  decisiones: { reglasAutorizadas: string[]; diccionarioAprobado: string[]; exclusiones: number; correspondencias: number; equivalenciasClasificacion: number; periodo?: { desde: string; hasta: string } };
+  decisiones: { reglasAutorizadas: string[]; diccionarioAprobado: string[]; exclusiones: number; correspondencias: number; equivalenciasClasificacion: number; calles?: number; revisionesBloque?: number; periodo?: { desde: string; hasta: string } };
   pendientes: string[];
   reimportacion?: { importacionId: Id; campanaId?: Id; filasIguales: number; filasCambiadas: number[]; filasNuevas: number[]; filasDesaparecidas: number[] };
   filas: PlanFila[];
@@ -204,6 +218,18 @@ function validarDecisiones(db: BaseDatos, d: DecisionesIncorporacion, filas: Set
     traza(q, `Equivalencia de clasificación hacia «${q.actividadId}»`);
     if (!TAXONOMIA_POR_ID[q.actividadId]) errores.push(`Equivalencia de clasificación: el nodo «${q.actividadId}» no existe en ningún catálogo.`);
   }
+  const tiposVistos = new Set<string>();
+  for (const r of d.revisionesBloque ?? []) {
+    const que = `Revisión en bloque «${r.tipo}»`;
+    traza(r, que);
+    const t = TIPOS_INCIDENCIA[r.tipo as keyof typeof TIPOS_INCIDENCIA];
+    if (!t) errores.push(`${que}: tipo de incidencia desconocido.`);
+    else if (t.decision === 'catedra') errores.push(`${que}: depende de una decisión de la Cátedra; no se puede dar por revisado en bloque.`);
+    if (!r.motivo?.trim()) errores.push(`${que}: falta la justificación.`);
+    if (!r.filas?.length || r.filas.some((f) => !filas.has(f))) errores.push(`${que}: alguna fila no existe en el archivo.`);
+    if (tiposVistos.has(r.tipo)) errores.push(`${que}: decisión duplicada.`);
+    tiposVistos.add(r.tipo);
+  }
   return errores;
 }
 
@@ -243,7 +269,11 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   }
 
   const filasSet = new Set(capa.filas.map((f) => f.fila));
-  const errores = validarDecisiones(db, decisiones, filasSet, destino.municipioId, destino.anio);
+  const literalDir = new Map(capa.filas.map((f) => [f.fila, f.celdas.direccion ? (f.celdas.direccion.t === 'texto' ? f.celdas.direccion.v : f.celdas.direccion.t === 'vacio' ? '' : String(f.celdas.direccion.v)) : '']));
+  const errores = [
+    ...validarDecisiones(db, decisiones, filasSet, destino.municipioId, destino.anio),
+    ...validarDecisionesCalle(db, decisiones.calles ?? [], destino.municipioId, new Set(literalDir.values())),
+  ];
   if (errores.length) bloqueos.push({ codigo: 'decision-invalida', mensaje: `${errores.length} decisión(es) no válida(s): no se aplica nada.`, detalles: errores });
 
   // Reimportación. ÁMBITO = municipio + año de destino (+ campaña, si se indica) + perfil.
@@ -302,6 +332,8 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
 
   const excluidas = new Map((decisiones.exclusiones ?? []).map((e) => [e.fila, e]));
   const decididas = new Map((decisiones.correspondencias ?? []).map((c) => [c.fila, c]));
+  // Calles conciliadas por una persona: denominación LITERAL → calle (solo con la decisión válida).
+  const callesDecididas = new Map((decisiones.calles ?? []).flatMap((d) => (d.accion === 'vincular' && db.calles[d.calleId]?.municipioId === destino.municipioId ? [[d.denominacion, d.calleId] as const] : [])));
   const incPorFila = new Map<number, number>();
   for (const i of resultado.incidencias) incPorFila.set(i.fila, (incPorFila.get(i.fila) ?? 0) + 1);
 
@@ -309,20 +341,22 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   const previo = resultado.filas.map((fi) => {
     const dir = fi.celdas.direccion;
     const num = fi.celdas.numero;
-    const claves = esValida(dir) ? porClave.get(claveCalle(String(dir!.valor))) ?? [] : [];
+    const automaticas = esValida(dir) ? porClave.get(claveCalle(String(dir!.valor))) ?? [] : [];
+    const conciliada = !automaticas.length ? callesDecididas.get(literalDir.get(fi.fila) ?? '') : undefined;
+    const claves = conciliada ? [conciliada] : automaticas;
     const portal = esValida(num) ? (num!.valor as Portal) : undefined;
     const calleId = claves.length === 1 ? claves[0] : undefined;
     const kDir = calleId && portal?.tipo === 'numero' ? `${calleId}|${portal.numero}|${(portal.sufijo ?? '').toUpperCase()}` : undefined;
-    return { fi, claves, calleId, portal, kDir };
+    return { fi, claves, calleId, portal, kDir, calleDecidida: !!conciliada };
   });
 
-  const filas: PlanFila[] = previo.map(({ fi, claves, calleId, portal, kDir }) => {
-    const base = { fila: fi.fila, local: fi.local, incidencias: incPorFila.get(fi.fila) ?? 0, calleId };
+  const filas: PlanFila[] = previo.map(({ fi, claves, calleId, portal, kDir, calleDecidida }) => {
+    const base = { fila: fi.fila, local: fi.local, incidencias: incPorFila.get(fi.fila) ?? 0, calleId, ...(calleDecidida ? { calleDecidida } : {}) };
     if (excluidas.has(fi.fila)) return { ...base, correspondencia: 'excluida', localNuevo: false, negocio: false, observacion: false, ocupacion: false };
     const negocio = !!calleId && fi.local === 'ocupado' && esValida(fi.celdas.nombre) && !!String(fi.celdas.nombre!.valor).trim();
     const observacion = !!calleId && fi.local !== 'desconocido';
     const sinLocal = (correspondencia: Correspondencia, motivo: MotivoSinLocal, candidatos?: Id[]): PlanFila => ({ ...base, correspondencia, motivo, candidatos, localNuevo: false, negocio, observacion, ocupacion: false });
-    const ocupacion = (localId: Id, nuevo: boolean): PlanFila => ({ ...base, correspondencia: decididas.has(fi.fila) ? 'decidida' : 'inequivoca', localId, localNuevo: nuevo, negocio, observacion, ocupacion: fi.local === 'vacio' || negocio });
+    const ocupacion = (localId: Id, nuevo: boolean): PlanFila => ({ ...base, correspondencia: decididas.has(fi.fila) || calleDecidida ? 'decidida' : 'inequivoca', localId, localNuevo: nuevo, negocio, observacion, ocupacion: fi.local === 'vacio' || negocio });
 
     const dec = decididas.get(fi.fila);
     if (dec && calleId && fi.local !== 'desconocido') {
@@ -388,6 +422,8 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
     decisiones: {
       reglasAutorizadas: op.reglasAutorizadas ?? [], diccionarioAprobado: op.diccionarioAprobado ?? [], exclusiones: excluidas.size,
       correspondencias: decididas.size, equivalenciasClasificacion: equivalencias.size,
+      ...(decisiones.calles?.length ? { calles: decisiones.calles.length } : {}),
+      ...(decisiones.revisionesBloque?.length ? { revisionesBloque: decisiones.revisionesBloque.length } : {}),
       ...(decisiones.periodoTrabajo ? { periodo: periodoDe(destino.anio, decisiones) } : {}),
     },
     pendientes, reimportacion, filas,

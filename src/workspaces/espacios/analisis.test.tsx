@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { readFileSync } from 'node:fs';
 import { webcrypto } from 'node:crypto';
@@ -59,7 +59,36 @@ describe('C1e-B · Análisis del Excel real SIN GUARDAR', () => {
     await screen.findByLabelText('Identificación del archivo', undefined, { timeout: 20000 });
     fireEvent.click(screen.getByRole('button', { name: /Analizar el archivo/ }));
     await screen.findByRole('region', { name: 'Diagnóstico agregado' }, { timeout: 60000 });
+    // Diagnóstico corregido: calle normalizada, «S/N» y portales numéricos por separado
+    const ind = screen.getByRole('table', { name: 'Indicadores del archivo' });
+    expect(ind).toHaveTextContent(/Pares calle \+ número distintos.*Calle normalizada.*625625/);
+    expect(ind).toHaveTextContent(/«S\/N» agrupados por calle.*3/);
+    expect(ind).toHaveTextContent(/portales NUMÉRICOS compartidos \(regla de C1b\).*442/);
+    // Revisión por clases
+    const clases = screen.getByRole('group', { name: 'Clases de revisión' });
+    expect(clases).toHaveTextContent(/Errores efectivos/);
+    expect(clases).toHaveTextContent(/Pendientes de comprobar/);
+    expect(clases).toHaveTextContent(/Informativos/);
     fireEvent.click(screen.getByRole('button', { name: /Siguiente: Decisiones/ }));
+    // Conciliación supervisada: la Plaza Mayor no se puede vincular; Farolas se confirma con justificación
+    const conc = screen.getByLabelText('Conciliación de calles');
+    expect(within(conc).getByLabelText('Denominación Plaza Mayor')).toHaveTextContent(/Plaza Mayor de la Hispanidad.*NO figura en el callejero OSM actual/);
+    const farolas = within(conc).getByLabelText('Denominación Calle de las Farolas Antigua Ángel Molina');
+    expect(farolas).toHaveTextContent(/42/);
+    expect(farolas).toHaveTextContent(/Calle de las Farolas.*nombre actual y el antiguo/);
+    fireEvent.change(within(farolas).getByLabelText(/^Decisión para/), { target: { value: within(farolas).getByRole('option', { name: 'Confirmar: Calle de las Farolas' }).getAttribute('value') } });
+    expect(within(farolas).getByRole('button', { name: 'Confirmar decisión' })).toBeDisabled();
+    fireEvent.change(within(farolas).getByLabelText(/^Justificación para/), { target: { value: 'Nomenclátor: antigua calle de Ángel Molina.' } });
+    fireEvent.click(within(farolas).getByRole('button', { name: 'Confirmar decisión' }));
+    await waitFor(() => expect(useAsistenteEspacio.getState().preparado!.plan.correspondencias.porMotivo['calle-sin-correspondencia']).toBe(135));
+    expect(useAsistenteEspacio.getState().decisiones.calles![0]).toMatchObject({ denominacion: 'Calle de las Farolas Antigua Ángel Molina', accion: 'vincular', motivo: 'Nomenclátor: antigua calle de Ángel Molina.' });
+    // Revisión en bloque con justificación
+    fireEvent.click(screen.getByRole('tab', { name: 'Revisión en bloque' }));
+    const bloque = screen.getByLabelText('Grupo «Local Vacío» sin valor');
+    fireEvent.click(within(bloque).getByRole('button', { name: /Dar por revisado en bloque/ }));
+    fireEvent.change(within(bloque).getByLabelText(/Justificación de la revisión en bloque/), { target: { value: 'Se comprobará en campo.' } });
+    fireEvent.click(within(bloque).getByRole('button', { name: 'Registrar la revisión' }));
+    await waitFor(() => expect(within(screen.getByLabelText('Grupo «Local Vacío» sin valor')).getByText(/Revisado en bloque/)).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /Siguiente: Vista previa/ }));
     expect(screen.getByRole('region', { name: 'Recuento de registros' })).toHaveTextContent(/Preparados889/);
     const conf = screen.getByRole('region', { name: 'Confirmación' });

@@ -142,6 +142,12 @@ export interface ResultadoInterpretacion {
 // ───────────── Utilidades ─────────────
 
 const norm = (s: string) => s.normalize('NFC').replace(/[\s ]+/g, ' ').trim().toLowerCase();
+/**
+ * Clave de una denominación de calle para AGRUPAR registros del mismo portal: iguala mayúsculas y
+ * espacios («Calle de las Angustias» = «Calle de las angustias»). Solo se usa para contar y agrupar:
+ * el valor original se conserva siempre tal cual.
+ */
+export const claveDenominacion = norm;
 const fechaIso = (d: Date) => d.toISOString().slice(0, 10);
 
 export function mostrarOriginal(o: ValorOriginal): string {
@@ -536,7 +542,7 @@ export function interpretarCapa(capa: CapaOriginal, op: OpcionesInterpretacion =
       const d = fi.celdas.direccion;
       const n = fi.celdas.numero;
       if (!d?.valor || !n?.valor || typeof n.valor !== 'object' || n.valor.tipo !== 'numero') return;
-      const k = `${norm(String(d.valor))}|${n.valor.numero}${n.valor.sufijo ?? ''}`;
+      const k = `${claveDenominacion(String(d.valor))}|${n.valor.numero}${n.valor.sufijo ?? ''}`;
       grupos.set(k, [...(grupos.get(k) ?? []), i]);
     });
     let g = 0;

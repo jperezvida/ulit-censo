@@ -122,6 +122,10 @@ Ya no hace falta Codespaces. La dirección fija de Vercel ([`PREVIEW-VERCEL.md`]
 
 En la web, el espacio de datos reales **guardado** está desactivado.
 
+## 4 ter. Diagnóstico corregido y conciliación supervisada
+
+Tras el primer análisis del auténtico: pares calle + número con la calle normalizada (625 / 445), «S/N» distinguido de los portales numéricos (442), conciliación supervisada de calles con propuestas y fuente, y revisión de incidencias por clases y en bloque. Ver [C1E-DIAGNOSTICO-CONCILIACION.md](C1E-DIAGNOSTICO-CONCILIACION.md).
+
 ## 5. Probarlo en Codespaces (alternativa)
 
 ```bash
