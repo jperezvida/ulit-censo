@@ -773,7 +773,17 @@ export function aplicarIncorporacion(
   return { db, importacionId, campanaId, creadas: Object.fromEntries(COLECCIONES.map((c) => [c, creadas[c].length])) as Record<ColeccionIncorporada, number> };
 }
 
-const huellaEntidad = (db: BaseDatos, col: ColeccionIncorporada, id: Id, alg: AlgoritmoHuella = 'sha256') => resumir(JSON.stringify((db[col] as Record<string, unknown>)[id]), alg);
+const huellaEntidad = (db: BaseDatos, col: ColeccionIncorporada, id: Id, alg: AlgoritmoHuella = 'sha256') => resumir(JSON.stringify(sinConciliacionesDeshechas(col, (db[col] as Record<string, unknown>)[id])), alg);
+/**
+ * G5 · Un vínculo cuyas conciliaciones posteriores se han deshecho TODAS vuelve a estar como lo dejó la
+ * incorporación (el historial de decisiones deshechas no es un cambio vigente): así deshacer la
+ * conciliación devuelve también la posibilidad de deshacer la incorporación.
+ */
+function sinConciliacionesDeshechas(col: ColeccionIncorporada, x: unknown): unknown {
+  if (col !== 'vinculos' || !x || typeof x !== 'object') return x;
+  const { conciliaciones, ...resto } = x as { conciliaciones?: { deshecha?: unknown }[] };
+  return conciliaciones && conciliaciones.every((c) => c.deshecha) ? resto : x;
+}
 
 /** Integridad referencial de las entidades creadas (y de lo que referencian). */
 export function comprobarIntegridad(db: BaseDatos, creadas: Partial<Record<ColeccionIncorporada, Id[]>>, importacionId: Id): string[] {

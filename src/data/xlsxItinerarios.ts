@@ -43,6 +43,24 @@ export const archivoItinerario = (it: 'IT1' | 'IT2' | 'IT3', version = 1) => `it
 
 /** Excel sintético de un itinerario. `version` > 1 genera otro archivo del MISMO itinerario (una fila más). */
 export async function libroItinerario(it: 'IT1' | 'IT2' | 'IT3', version = 1): Promise<Uint8Array> {
+  const filas = [...FILAS_ITINERARIOS[it], ...(version > 1 ? [{ calle: 'Calle Real', num: 10 + version, nombre: `ALTA SINTÉTICA V${version}`, fecha: '2026-03-05' }] : [])];
+  return libroConFilas(it, filas);
+}
+
+/**
+ * G5 · Variante SINTÉTICA de IT3 para la conciliación posterior: añade una observación repetida
+ * (CAFETERÍA SINTÉTICA en Calle del Olmo 5, también en IT2) y una contradicción SIN FECHA (Calle Peatonal
+ * Mayor 2: ocupado y sin fecha en IT2, vacío y sin fecha aquí).
+ */
+export const FILAS_IT3_G5: Fila[] = [
+  ...FILAS_ITINERARIOS.IT3,
+  { calle: 'Calle del Olmo', num: 5, nombre: 'CAFETERÍA SINTÉTICA', fecha: '2026-05-12' },
+  { calle: 'Calle Peatonal Mayor', num: 2, vacio: true, fecha: null },
+];
+export const archivoIT3G5 = 'itinerario_IT3_villa_sintetica_2026_G5_SINTETICO.xlsx';
+export const libroIT3G5 = () => libroConFilas('IT3', FILAS_IT3_G5);
+
+async function libroConFilas(it: 'IT1' | 'IT2' | 'IT3', filas: Fila[]): Promise<Uint8Array> {
   const n = Number(it.slice(2));
   const wb = new ExcelJS.Workbook();
   const fijo = new Date(Date.UTC(2026, 9, 25));
@@ -50,7 +68,6 @@ export async function libroItinerario(it: 'IT1' | 'IT2' | 'IT3', version = 1): P
   const ws = wb.addWorksheet('Datos 25');
   const cols = PERFIL_ITINERARIO_28.columnas;
   ws.addRow(cols.map((c) => c.cabecera));
-  const filas = [...FILAS_ITINERARIOS[it], ...(version > 1 ? [{ calle: 'Calle Real', num: 10 + version, nombre: `ALTA SINTÉTICA V${version}`, fecha: '2026-03-05' }] : [])];
   for (const f of filas) {
     const v: Record<string, unknown> = {
       fecha: f.fecha ? new Date(`${f.fecha}T00:00:00Z`) : null, municipio: 'VILLA SINTÉTICA DE ARRIBA', itinerario: f.itinerario ?? n,

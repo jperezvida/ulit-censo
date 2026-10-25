@@ -229,6 +229,8 @@ export interface Campana {
   procedencia: Procedencia;
   /** G2 · Campaña creada a mano (quién y cuándo). Una histórica creada así espera su incorporación. */
   creada?: { porId: Id; fecha: string };
+  /** G5 · Resoluciones del estado de locales con observaciones contradictorias en esta campaña. */
+  resolucionesEstado?: ResolucionEstado[];
 }
 
 export interface Itinerario {
@@ -451,6 +453,41 @@ export interface VinculoHistorico {
   revisadoPorId?: Id;
   /** Candidatos alternativos propuestos por el sistema (no aplicados). */
   candidatos?: { localId: Id; puntuacion: number; motivo: string }[];
+  /** G5 · Conciliación POSTERIOR a la importación: decisiones supervisadas, de la más antigua a la más reciente. */
+  conciliaciones?: ConciliacionPosterior[];
+}
+
+/**
+ * G5 · Decisión de conciliación posterior sobre una fila importada (vínculo registro → local). Guarda lo
+ * que había antes y lo que creó, para poder deshacerla sin tocar nada más.
+ */
+export interface ConciliacionPosterior {
+  accion: 'vincular' | 'local-nuevo' | 'mantener-pendiente';
+  localId?: Id;
+  porId: Id;
+  fecha: string;
+  /** Justificación (obligatoria para crear un local distinto) o nota. */
+  motivo?: string;
+  campanaId: Id;
+  itinerarioId?: Id;
+  antes: { localId: Id | null; confianza: Confianza; revisadoPorId?: Id; observacionLocalId?: Id | null };
+  creadas: { locales: Id[]; ocupaciones: Id[] };
+  deshecha?: { porId: Id; fecha: string };
+}
+
+/**
+ * G5 · Resolución supervisada del estado de un local en una campaña cuando sus observaciones no coinciden
+ * (vacío según una, ocupado según otra). No borra ni cambia ninguna observación.
+ */
+export interface ResolucionEstado {
+  localId: Id;
+  /** «vacio»/«ocupado»: estado actual confirmado por una persona según una observación concreta; «dudoso»: queda así. */
+  estado: 'vacio' | 'ocupado' | 'dudoso';
+  observacionId?: Id;
+  porId: Id;
+  fecha: string;
+  motivo?: string;
+  retirada?: { porId: Id; fecha: string };
 }
 
 export interface Importacion {

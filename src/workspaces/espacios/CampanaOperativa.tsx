@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { AlertTriangle, FileUp, Plus, Route } from 'lucide-react';
+import { AlertTriangle, FileUp, Plus } from 'lucide-react';
 import { fmt } from '../../components/ui';
 import { useEspacios } from '../../store/espacios';
-import { censoConsolidado, crearItinerario, guardarTramosObservados, validarItinerario } from '../../domain/campanaOperativa';
+import { callesConObservaciones, censoConsolidado, crearItinerario, tramosDeducidosSinConfirmar, validarItinerario } from '../../domain/campanaOperativa';
+import { ConciliacionPosterior } from './ConciliacionPosterior';
 import type { Id } from '../../domain/types';
 import { useAsistenteEspacio, useSeleccionEspacio } from './estadoAsistenteEspacio';
 
@@ -34,10 +35,11 @@ export function CampanaOperativa({ campanaId }: { campanaId: Id }) {
 
       <div className="ap-resumen" aria-label="Censo consolidado">
         <div><span className="muted">Itinerarios</span><b>{censo.itinerarios.length}</b><span className="muted">{fmt(t.archivos)} archivo(s)</span></div>
-        <div><span className="muted">Registros</span><b>{fmt(t.registros)}</b><span className="muted">filas de los Excel</span></div>
-        <div><span className="muted">Locales</span><b>{fmt(t.locales)}</b><span className="muted">{fmt(t.ocupados)} ocupados · {fmt(t.vacios)} vacíos</span></div>
-        <div><span className="muted">Pendientes</span><b>{fmt(t.pendientes)}</b><span className="muted">de conciliación</span></div>
-        <div><span className="muted">Calles</span><b>{fmt(t.calles)}</b><span className="muted">observadas</span></div>
+        <div><span className="muted">Registros</span><b>{fmt(t.registros)}</b><span className="muted">filas de los Excel · {fmt(t.observaciones)} observaciones</span></div>
+        <div><span className="muted">Locales únicos</span><b>{fmt(t.locales)}</b><span className="muted">{fmt(t.ocupados)} ocupados · {fmt(t.vacios)} vacíos (confirmados)</span></div>
+        <div><span className="muted">Por decidir</span><b>{fmt(t.dudosos + t.sinFecha)}</b><span className="muted">{fmt(t.dudosos)} dudosos · {fmt(t.sinFecha)} sin fecha suficiente</span></div>
+        <div><span className="muted">Pendientes</span><b>{fmt(t.pendientes)}</b><span className="muted">filas sin local</span></div>
+        <div><span className="muted">Calles</span><b>{fmt(t.calles)}</b><span className="muted">con observaciones (recorrido no confirmado)</span></div>
       </div>
 
       <div className="tabla-scroll">
@@ -54,13 +56,10 @@ export function CampanaOperativa({ campanaId }: { campanaId: Id }) {
               <td>
                 <div className="fila cj-fila-acc">
                   {!d.archivos.length && <button className="btn s" onClick={() => incorporar(d.itinerario.id)}><FileUp size={13} /> Incorporar su Excel</button>}
-                  {d.calles.length > 0 && !d.itinerario.tramos.length && (
-                    <button className="btn s" disabled={!!ocupado} title="Guarda las calles observadas, con los identificadores de sus segmentos, como tramos del itinerario" onClick={async () => {
-                      const r = await modificar('Guardando los tramos…', (x) => guardarTramosObservados(x, d.itinerario.id));
-                      setError(r.ok ? null : r.error ?? null);
-                    }}><Route size={13} /> Guardar {d.calles.length} calle(s) como tramos</button>
-                  )}
-                  {d.itinerario.tramos.length > 0 && <span className="muted">{d.itinerario.tramos.length} tramo(s)</span>}
+                  {d.calles.length > 0 && <span className="muted" title={callesConObservaciones(db, d.itinerario.id).map((x) => `${x.nombre}: portales ${x.numeros.join(', ') || '—'}${x.sinNumero ? ` y ${x.sinNumero} sin número` : ''}`).join(' · ')}>{d.calles.length} calle(s) con observaciones · recorrido no confirmado</span>}
+                  {tramosDeducidosSinConfirmar(db, d.itinerario.id).length > 0
+                    ? <span className="muted">{d.itinerario.tramos.length} tramo(s) deducidos de lo observado (G4): no confirmados, no indican calle completa ni cobertura</span>
+                    : d.itinerario.tramos.length > 0 && <span className="muted">{d.itinerario.tramos.length} tramo(s)</span>}
                 </div>
               </td>
             </tr>
@@ -86,12 +85,14 @@ export function CampanaOperativa({ campanaId }: { campanaId: Id }) {
           <b><AlertTriangle size={14} /> Cruces entre itinerarios (nada se fusiona solo)</b>
           <ul className="inc-lista">
             {censo.posiblesDuplicados.map((d) => <li key={`d-${d.portal}-${d.nombre}`} className={d.conciliado ? '' : 'aviso'}>Posible duplicado: «{d.nombre}», {d.portal} · {d.observaciones.map((o) => `${o.itinerario}${o.fila ? ` (fila ${o.fila})` : ''}`).join(' y ')} · {d.conciliado ? 'conciliado: es el mismo local' : 'pendiente de conciliar'}</li>)}
-            {censo.contradicciones.map((x) => <li key={`c-${x.portal}`} className="aviso">Contradicción: {x.portal} · vacío según {x.vacio.join(', ')} y ocupado según {x.ocupado.join(', ')}</li>)}
+            {censo.contradicciones.map((x) => <li key={`c-${x.portal}`} className={x.resuelta ? '' : 'aviso'}>Contradicción: {x.portal} · vacío según {x.vacio.join(', ')} y ocupado según {x.ocupado.join(', ')} · {x.resuelta ? 'resuelta por decisión' : 'sin resolver'}</li>)}
             {censo.mismoPortal.map((m) => <li key={`p-${m.portal}`}>{m.portal}: {m.locales} locales distintos en el mismo portal (no se fusionan)</li>)}
             {censo.solapamientos.map((s) => <li key={`s-${s.calleId}`}>Calle compartida: {s.calle} · {s.itinerarios.join(', ')}</li>)}
           </ul>
         </div>
       )}
+
+      {censo.total.archivos > 0 && <ConciliacionPosterior campanaId={campanaId} />}
     </div>
   );
 }

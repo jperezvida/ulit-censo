@@ -42,9 +42,7 @@
 ## Censo consolidado (`src/domain/campanaOperativa.ts`)
 
 - **`censoConsolidado(db, campañaId)`:** totales y desglose por itinerario, solapamientos (calles observadas por varios itinerarios), posibles duplicados (y si ya están conciliados), contradicciones y portales con varios locales.
-- **`tramosObservados` / `guardarTramosObservados`:** las calles observadas por un itinerario, con los **identificadores de sus segmentos (G3)**, se pueden guardar como tramos del itinerario.
-  - Solo si el itinerario no tiene tramos todavía.
-  - Prepara la selección sobre mapa; el editor no está implementado.
+- ~~`tramosObservados` / `guardarTramosObservados`~~ **(retirado en G5).** Guardar las calles observadas como tramos completos («ambas» aceras, todos los segmentos) confundía locales encontrados con calle recorrida. G5 lo sustituye por `callesConObservaciones` (informativo, «recorrido no confirmado») y muestra como **no confirmados** los tramos que ya se hubieran guardado así, sin modificarlos. Ver `G5-CONCILIACION-POSTERIOR.md`.
 
 ## Pruebas
 
@@ -63,7 +61,7 @@
 
 ## Pendiente
 
-- **Conciliación de duplicados:** se hace fila a fila en Decisiones. No hay todavía una pantalla para conciliar después, a nivel de campaña, los posibles duplicados ya incorporados.
+- **Conciliación de duplicados:** resuelto en G5 (conciliación posterior a nivel de campaña).
 - **Itinerarios:** no se pueden renombrar ni borrar.
 - **Interpretación:** se hace en modo «histórico». Los campos territoriales obligatorios no se exigen; se conservan vacíos.
 - **Editor de itinerarios sobre mapa:** fase posterior.

@@ -9,7 +9,7 @@ import { aplicarCarga, huellaCalle } from './callejeros';
 import { leerOsmMunicipio } from './fuentesCallejero';
 import { prepararIncorporacion } from './incorporacionXlsx';
 import { aplicarIncorporacion, deshacerIncorporacion, type DecisionesIncorporacion } from './incorporacion';
-import { censoConsolidado, crearItinerario, guardarTramosObservados, tramosObservados, validarItinerario } from './campanaOperativa';
+import { callesConObservaciones, censoConsolidado, crearItinerario, validarItinerario } from './campanaOperativa';
 import type { BaseDatos } from './db';
 
 /**
@@ -143,7 +143,7 @@ describe('G4 · Itinerarios de una campaña operativa', () => {
     expect(c.itinerarios[1].sinFecha).toBe(1);
     expect(c.solapamientos.map((s) => [s.calle, s.itinerarios])).toEqual(expect.arrayContaining([['Calle del Olmo', ['IT1', 'IT2']], ['Calle Real', ['IT1', 'IT2']]]));
     expect(c.posiblesDuplicados).toEqual([expect.objectContaining({ portal: 'Calle del Olmo, 7', nombre: 'FERRETERÍA SINTÉTICA', conciliado: false })]);
-    expect(c.contradicciones).toEqual([{ portal: 'Calle del Olmo, 5', vacio: ['IT1'], ocupado: ['IT2'] }]);
+    expect(c.contradicciones).toEqual([{ portal: 'Calle del Olmo, 5', vacio: ['IT1'], ocupado: ['IT2'], resuelta: false }]);
     expect(c.mismoPortal).toEqual([{ portal: 'Calle del Olmo, 3', locales: 2 }]);
     expect(Object.keys(db.campanas)).toHaveLength(1);
     expect(verificarEspacio(db, 'ensayo')).toEqual([]);
@@ -203,16 +203,15 @@ describe('G4 · Itinerarios de una campaña operativa', () => {
     expect(JSON.stringify([obsH, Object.values(db.locales), db.campanas[h.campanaId]])).toBe(historico);
   });
 
-  it('tramos observados con los identificadores de calles y segmentos de G3 (sin sustituir una planificación)', async () => {
-    const { db, its } = await tresItinerarios();
-    const t = tramosObservados(db, its.IT1);
+  it('calles con observaciones: portales y segmentos de G3 como referencia, sin convertirlos en cobertura', async () => {
+    const { db, its, campanaId } = await tresItinerarios();
+    const t = callesConObservaciones(db, its.IT1);
     const olmo = Object.values(db.calles).find((c) => c.nombre === 'Calle del Olmo')!;
-    expect(t.map((x) => [db.calles[x.calleId].nombre, x.segmentoIds])).toEqual([['Calle del Olmo', ['w1001', 'w1002']], ['Calle Real', ['w1003']]]);
-    const huella = huellaCalle(olmo);
-    const d = guardarTramosObservados(db, its.IT1);
-    expect(d.itinerarios[its.IT1].tramos).toEqual(t);
-    expect(huellaCalle(d.calles[olmo.id])).toBe(huella);
-    expect(() => guardarTramosObservados(d, its.IT1)).toThrow(/ya tiene tramos/);
-    expect(verificarEspacio(d, 'ensayo')).toEqual([]);
+    expect(t.map((x) => [x.nombre, x.segmentos, x.recorrido])).toEqual([['Calle del Olmo', ['w1001', 'w1002'], 'no-confirmado'], ['Calle Real', ['w1003'], 'no-confirmado']]);
+    expect(t[0]).toMatchObject({ numeros: [1, 3, 5, 7], acerasConLocales: ['impar'] });
+    // No se guarda nada en el itinerario ni en el callejero
+    expect(db.itinerarios[its.IT1].tramos).toEqual([]);
+    expect(huellaCalle(db.calles[olmo.id])).toBe(huellaCalle(olmo));
+    expect(Object.values(db.coberturas).filter((c) => c.campanaId === campanaId)).toEqual([]);
   });
 });

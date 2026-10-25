@@ -53,7 +53,7 @@ async function incorporar(it: 'IT1' | 'IT2') {
 }
 
 describe('G4 · Itinerarios de una campaña operativa (interfaz)', () => {
-  it('IT1 e IT2 en la misma campaña: desglose, consolidado y cruces sin fusionar', async () => {
+  it('IT1 e IT2 en la misma campaña: desglose, consolidado, cruces sin fusionar y conciliación posterior (G5)', async () => {
     vi.stubGlobal('fetch', vi.fn());
     render(<MemoryRouter initialEntries={['/espacios/ensayo']}><Routes><Route path="/espacios/*" element={<EspaciosApp />} /></Routes></MemoryRouter>);
     await screen.findByRole('region', { name: 'Crear el espacio' }, { timeout: 20000 });
@@ -98,6 +98,34 @@ describe('G4 · Itinerarios de una campaña operativa (interfaz)', () => {
     expect(cruces).toHaveTextContent(/Posible duplicado: «FERRETERÍA SINTÉTICA», Calle del Olmo, 7 · IT1 \(fila \d+\) y IT2 \(fila \d+\) · pendiente de conciliar/);
     expect(cruces).toHaveTextContent(/Contradicción: Calle del Olmo, 5 · vacío según IT1 y ocupado según IT2/);
     expect(cruces).toHaveTextContent(/Calle del Olmo, 3: 2 locales distintos en el mismo portal/);
+    // G5 · Conciliación posterior: las 2 filas de IT2 sin local, con filtros; vincular, deshacer y estado de locales
+    const conc = within(panel).getByRole('region', { name: 'Conciliación posterior' });
+    expect(conc).toHaveTextContent(/2 fila\(s\) sin local/);
+    expect(within(conc).getAllByRole('listitem', { name: /^Fila \d+ de IT2/ })).toHaveLength(2);
+    expect(within(panel).getByLabelText('Censo consolidado')).toHaveTextContent(/Locales únicos9.*Pendientes2/);
+    const ferr = within(conc).getAllByRole('listitem', { name: /^Fila \d+ de IT2/ }).find((li) => /FERRETERÍA/.test(li.textContent ?? ''))!;
+    expect(within(ferr).getByRole('combobox')).toHaveDisplayValue(/Calle del Olmo, 7 \(mismo portal\)/);
+    fireEvent.click(within(ferr).getByRole('button', { name: /Vincular/ }));
+    await waitFor(() => expect(within(panel).getByRole('region', { name: 'Conciliación posterior' })).toHaveTextContent(/1 fila\(s\) sin local/), { timeout: 20000 });
+    expect(within(panel).getByLabelText('Decisiones tomadas')).toHaveTextContent(/IT2 fila \d+ · Vinculada a un local existente · Coordinación de Prueba/);
+    expect(within(panel).getByLabelText('Cruces entre itinerarios')).toHaveTextContent(/FERRETERÍA SINTÉTICA.*conciliado: es el mismo local/);
+    // Filtro por tipo de incidencia
+    fireEvent.change(within(panel).getByLabelText('Filtrar por tipo'), { target: { value: 'local-existente-en-direccion' } });
+    expect(within(panel).getAllByRole('listitem', { name: /^Fila \d+ de IT2/ })).toHaveLength(1);
+    // Deshacer la decisión
+    fireEvent.click(within(within(panel).getByLabelText('Decisiones tomadas')).getByRole('button', { name: /Deshacer/ }));
+    await waitFor(() => expect(within(panel).getByRole('region', { name: 'Conciliación posterior' })).toHaveTextContent(/2 fila\(s\) sin local/), { timeout: 20000 });
+    // La cafetería: vincularla al local vacío de IT1 crea una contradicción con fecha → estado dudoso
+    const caf = within(panel).getAllByRole('listitem', { name: /^Fila \d+ de IT2/ }).find((li) => /CAFETERÍA/.test(li.textContent ?? ''))!;
+    fireEvent.click(within(caf).getByRole('button', { name: /Vincular/ }));
+    expect(within(panel).getByLabelText('Estado de locales por revisar')).toHaveTextContent(/Calle Peatonal Mayor, 2 · Información sin fecha suficiente/);
+    await waitFor(() => expect(within(panel).getByLabelText('Estado de locales por revisar')).toHaveTextContent(/Calle del Olmo, 5 · Estado dudoso/), { timeout: 20000 });
+    const revisar = within(within(panel).getByLabelText('Estado de locales por revisar')).getAllByRole('listitem').find((li) => /Olmo, 5/.test(li.textContent ?? ''))!;
+    expect(revisar).toHaveTextContent(/Propuesta \(no aplicada\): La observación más reciente \(2026-04-07\) dice «ocupado»/);
+    fireEvent.click(within(revisar).getByRole('button', { name: /Confirmar ocupado/ }));
+    await waitFor(() => expect(within(panel).getByLabelText('Estado de locales por revisar')).toHaveTextContent(/Estado actual confirmado: ocupado/), { timeout: 20000 });
+    expect(within(panel).getByLabelText('Cruces entre itinerarios')).toHaveTextContent(/Calle del Olmo, 5.*resuelta por decisión/);
+    expect(screen.queryByRole('button', { name: /como tramos/ })).toBeNull();
     const db = await idbGet<BaseDatos>('db', createStore('ulit-censo-ensayo', 'datos'));
     expect(Object.keys(db!.campanas)).toHaveLength(1);
     expect(Object.values(db!.importaciones).map((i) => [i.tipo, i.c1?.itinerario?.codigo])).toEqual([['C-excel-itinerario', 'IT1'], ['C-excel-itinerario', 'IT2']]);
