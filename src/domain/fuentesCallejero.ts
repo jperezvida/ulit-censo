@@ -43,7 +43,7 @@ export type LecturaCallejero =
     descartes: Descartes;
     avisos: string[];
     fechaDatos?: string;
-    limite?: { bbox: [number, number, number, number]; fuente: string; ine?: string; nombre?: string };
+    limite?: { bbox: [number, number, number, number]; fuente: string; ine?: string; nombre?: string; poligono: Limite };
   }
   | { ok: false; motivo: string };
 
@@ -125,6 +125,32 @@ export interface Limite {
   interiores: Anillo[];
 }
 export const dentroDelLimite = (p: LngLat, l: Limite) => l.exteriores.some((a) => dentroAnillo(p, a)) && !l.interiores.some((a) => dentroAnillo(p, a));
+
+/** ¿Se cortan los segmentos a–b y c–d? (incluye tocarse). */
+function cortan(a: LngLat, b: LngLat, c: LngLat, d: LngLat): boolean {
+  const o = (p: LngLat, q: LngLat, r: LngLat) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
+  const en = (p: LngLat, q: LngLat, r: LngLat) => Math.min(p[0], r[0]) <= q[0] && q[0] <= Math.max(p[0], r[0]) && Math.min(p[1], r[1]) <= q[1] && q[1] <= Math.max(p[1], r[1]);
+  const [o1, o2, o3, o4] = [o(a, b, c), o(a, b, d), o(c, d, a), o(c, d, b)];
+  if (o1 !== o2 && o3 !== o4) return true;
+  return (o1 === 0 && en(a, c, b)) || (o2 === 0 && en(a, d, b)) || (o3 === 0 && en(c, a, d)) || (o4 === 0 && en(c, b, d));
+}
+
+/**
+ * ¿Está una geometría (punto, línea o contorno) completamente dentro del límite? Todos sus vértices dentro
+ * Y ningún tramo cruza el perímetro (una línea con los extremos dentro puede atravesar una entrante).
+ */
+export function geometriaDentro(coords: LngLat[], l: Limite): { dentro: boolean; verticesFuera: number; cruza: boolean } {
+  const verticesFuera = coords.filter((p) => !dentroDelLimite(p, l)).length;
+  const anillos = [...l.exteriores, ...l.interiores];
+  let cruza = false;
+  for (let i = 0; i + 1 < coords.length && !cruza; i++) {
+    for (const a of anillos) {
+      for (let k = 0; k + 1 < a.length; k++) if (cortan(coords[i], coords[i + 1], a[k], a[k + 1])) { cruza = true; break; }
+      if (cruza) break;
+    }
+  }
+  return { dentro: !verticesFuera && !cruza, verticesFuera, cruza };
+}
 const bboxDe = (ps: LngLat[]): [number, number, number, number] => [
   Math.min(...ps.map((p) => p[1])), Math.min(...ps.map((p) => p[0])), Math.max(...ps.map((p) => p[1])), Math.max(...ps.map((p) => p[0])),
 ];
@@ -225,7 +251,7 @@ export function leerOsmMunicipio(json: unknown, m: MunicipioFuente): LecturaCall
   return {
     ok: true, tipo: 'osm', vias, agrupados, descartes, avisos,
     fechaDatos: j.osm3s?.timestamp_osm_base ?? j.__fuente?.fechaDatosOsm,
-    limite: { bbox: bboxDe(todos), fuente: `osm:relation/${lim.id}`, ...(ineOsm ? { ine: ineOsm } : {}), ...(lim.tags?.name ? { nombre: lim.tags.name } : {}) },
+    limite: { bbox: bboxDe(todos), fuente: `osm:relation/${lim.id}`, ...(ineOsm ? { ine: ineOsm } : {}), ...(lim.tags?.name ? { nombre: lim.tags.name } : {}), poligono: limite },
   };
 }
 

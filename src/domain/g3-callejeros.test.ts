@@ -2,14 +2,15 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { webcrypto } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { CSV_PUEBLO_SINTETICO, geojsonAldeaSintetica, osmPuebloSintetico, osmVillaSintetica } from '../data/callejeroSintetico';
+import { CSV_PUEBLO_SINTETICO, geojsonAldeaSintetica, osmMunicipioConcavo, osmPuebloSintetico, osmVillaSintetica, puntoU, U } from '../data/callejeroSintetico';
+import { REFERENCIAS_SUPERADAS } from '../data/referenciasDenominacion';
 import { CASOS_GENERALIDAD } from '../data/xlsxGeneralidad';
 import { validarInstantanea } from '../data/instantaneaOsm';
 import { crearBaseEspacio, municipioDeEspacio, PREFIJO, verificarEspacio } from './espacios';
 import { altaMunicipio, callejeroDe, crearCampana, TERRITORIO_INICIAL } from './municipios';
 import {
   altaCalle, anadirAlias, anadirReferencia, aplicarCarga, callesDe, callesVigentes, corregirCalle, huellaCalle, planificarCarga, rechazarCalle, referenciasDe,
-  resumenCallejero, retirarAlias, retirarReferencia, validarAltaCalle, validarCalle,
+  pertenenciaGeometria, resumenCallejero, retirarAlias, retirarReferencia, validarAltaCalle, validarCalle,
 } from './callejeros';
 import { consultaOverpassMunicipio, leerCallejeroCsv, leerCallejeroGeoJson, leerFuenteCallejero, leerGeometriaManual, leerOsmMunicipio } from './fuentesCallejero';
 import { proponer } from './conciliacionCalles';
@@ -192,7 +193,7 @@ describe('G3 · Altas manuales supervisadas, plazas sin geometría y referencias
   it('«Plaza Mayor de la Hispanidad» en Medina: propuesta sin geometría → validada → la referencia la propone', () => {
     let db = baseConMedina();
     // La referencia es un DATO del callejero de Medina (con su fuente), no código
-    expect(db.municipios[MEDINA].callejero?.referencias).toEqual([expect.objectContaining({ denominacion: 'Plaza Mayor', oficial: 'Plaza Mayor de la Hispanidad', fuente: expect.stringMatching(/Cátedra/) })]);
+    expect(db.municipios[MEDINA].callejero?.referencias).toEqual([expect.objectContaining({ denominacion: 'Plaza Mayor', oficial: 'Plaza Mayor de la Hispanidad', fuente: expect.stringMatching(/Revisión del censo 2025/), respaldo: 'pendiente' })]);
     const antes = proponer('Plaza Mayor', callesDe(db, MEDINA), referenciasDe(db, MEDINA));
     expect(antes.ausente?.oficial).toBe('Plaza Mayor de la Hispanidad');
     const datos = { municipioId: MEDINA, nombre: 'Mayor de la Hispanidad', tipoVia: 'Plaza', fuenteDocumental: 'Nomenclátor municipal (prueba)', geometria: '' };
@@ -210,7 +211,7 @@ describe('G3 · Altas manuales supervisadas, plazas sin geometría y referencias
     expect(db.calles[c.id].alta).toMatchObject({ estado: 'validada', validacion: { porId: db.meta.espacioCreadoPorId, nota: 'Comprobado en el nomenclátor' } });
     const despues = proponer('Plaza Mayor', callesDe(db, MEDINA), referenciasDe(db, MEDINA));
     expect(despues.ausente).toBeUndefined();
-    expect(despues.propuestas).toEqual([expect.objectContaining({ calleId: c.id, fuente: 'referencia-catedra', explicacion: expect.stringMatching(/fuente de la referencia: Cátedra/) })]);
+    expect(despues.propuestas).toEqual([expect.objectContaining({ calleId: c.id, fuente: 'referencia-catedra', explicacion: expect.stringMatching(/fuente de la referencia: Revisión del censo 2025.*PENDIENTE de respaldo documental/) })]);
     expect(db.calles[c.id].historial!.map((h) => h.accion)).toEqual(['alta', 'validacion']);
   });
 
@@ -313,5 +314,129 @@ describe('G3 · Separación entre municipios y datos existentes', () => {
     const antes = JSON.stringify(db);
     planificarCarga(db, id, l, { contenido: JSON.stringify(osmVillaSintetica(1)) });
     expect(JSON.stringify(db)).toBe(antes);
+  });
+});
+
+// ───────────── Cierre de G3 ─────────────
+
+describe('Cierre de G3 · La descripción del callejero es siempre la del propio municipio', () => {
+  it('un municipio nuevo con una plaza manual validada no muestra el callejero de Medina', () => {
+    let { db, id } = conMunicipio(baseConMedina(), { nombre: 'Municipio Prueba G3' });
+    expect(callejeroDe(db, id)).toMatchObject({ disponible: false, calles: 0 });
+    const a = altaCalle(db, { municipioId: id, nombre: 'del Pozo', tipoVia: 'Plaza', fuenteDocumental: 'Prueba', geometria: '' }, ctx(db));
+    db = validarCalle(a.db, a.calleId, { porId: db.meta.espacioCreadoPorId!, ahora: AHORA });
+    expect(callejeroDe(db, id)).toEqual({ disponible: true, calles: 1, texto: '1 vía · alta manual' });
+    expect(callejeroDe(db, id).texto).not.toMatch(/254|instantánea|OSM/);
+    // Medina conserva su descripción
+    expect(callejeroDe(db, MEDINA).texto).toBe(db.municipios[MEDINA].callejero!.detalle);
+  });
+
+  it('cada municipio describe su propia fuente; Medina suma sus altas manuales', () => {
+    let { db, id } = conMunicipio(baseConMedina(), VILLA);
+    db = cargar(db, id, osmVillaSintetica(1)).db;
+    expect(callejeroDe(db, id).texto).toBe('7 vías de OpenStreetMap (Overpass API) (datos a 2026-09-30)');
+    const a = altaCalle(db, { municipioId: MEDINA, nombre: 'Mayor de la Hispanidad', tipoVia: 'Plaza', fuenteDocumental: 'Prueba', geometria: '' }, ctx(db));
+    db = validarCalle(a.db, a.calleId, { porId: db.meta.espacioCreadoPorId!, ahora: AHORA });
+    expect(callejeroDe(db, MEDINA).texto).toBe(`${db.municipios[MEDINA].callejero!.detalle} · 1 alta manual`);
+    expect(callejeroDe(db, id).texto).not.toMatch(/alta manual/);
+  });
+
+  it('bases anteriores: la descripción del espacio solo se usa para Medina, nunca para otro municipio', () => {
+    const db0 = baseConMedina();
+    // Base anterior a G2: Medina sin descripción propia; la del espacio (instantánea) es la suya
+    const antigua: BaseDatos = { ...db0, meta: { ...db0.meta, detalleCallejero: '254 calles reales · instantánea OSM del proyecto' }, municipios: { ...db0.municipios, [MEDINA]: { ...db0.municipios[MEDINA], callejero: undefined } } };
+    expect(callejeroDe(antigua, MEDINA).texto).toBe('254 calles reales · instantánea OSM del proyecto');
+    const { db, id } = conMunicipio(antigua, { nombre: 'Municipio Prueba G3' });
+    const a = altaCalle(db, { municipioId: id, nombre: 'del Pozo', tipoVia: 'Plaza', fuenteDocumental: 'Prueba', geometria: '' }, ctx(db));
+    const d = validarCalle(a.db, a.calleId, { porId: db.meta.espacioCreadoPorId!, ahora: AHORA });
+    expect(callejeroDe(d, id).texto).toBe('1 vía · alta manual');
+  });
+});
+
+describe('Cierre de G3 · Geometrías manuales comprobadas con el perímetro municipal', () => {
+  const concavo = { nombre: 'Valle Sintético en U', ine: '99003' };
+  function municipioU() {
+    const { db, id } = conMunicipio(baseConMedina(), concavo);
+    const json = osmMunicipioConcavo();
+    const l = leerOsmMunicipio(json, concavo);
+    if (!l.ok) throw new Error(l.motivo);
+    return { db: aplicarCarga(db, id, l, { archivo: 'u.json', contenido: JSON.stringify(json), fuente: 'OpenStreetMap (Overpass API)' }, ctx(db)).db, id };
+  }
+  const alta = (municipioId: string, geometria: string, nombre = 'del Pozo') => ({ municipioId, nombre, tipoVia: 'Plaza', fuenteDocumental: 'Visita de campo (prueba)', geometria });
+
+  it('el perímetro (con sus partes y huecos) se guarda con el límite verificado', () => {
+    const { db, id } = municipioU();
+    const pol = db.municipios[id].callejero!.limite!.poligono!;
+    expect(pol.exteriores).toHaveLength(2);
+    expect(pol.interiores).toHaveLength(1);
+  });
+
+  it('un punto dentro del rectángulo envolvente pero en la «muesca» de la U se rechaza', () => {
+    const { db, id } = municipioU();
+    const [s, o, n, e] = db.municipios[id].callejero!.limite!.bbox;
+    const [lat, lon] = [U.V + 0.02, U.L + 0.015];
+    expect(lat > s && lat < n && lon > o && lon < e).toBe(true);
+    expect(validarAltaCalle(db, alta(id, puntoU(0.02, 0.015))).errores[0]).toMatch(/fuera del límite municipal.*1 de 1 punto/);
+  });
+
+  it('se aceptan puntos de los brazos y de la parte separada; se rechazan los del hueco y las líneas que salen', () => {
+    const { db, id } = municipioU();
+    expect(validarAltaCalle(db, alta(id, puntoU(0.02, 0.005))).errores).toEqual([]);
+    expect(validarAltaCalle(db, alta(id, puntoU(0.02, 0.025))).errores).toEqual([]);
+    expect(validarAltaCalle(db, alta(id, puntoU(0.055, 0.055))).errores).toEqual([]);
+    expect(validarAltaCalle(db, alta(id, puntoU(0.004, 0.014))).errores[0]).toMatch(/fuera del límite municipal/);
+    expect(validarAltaCalle(db, alta(id, `${puntoU(0.02, 0.005)}\n${puntoU(0.02, 0.025)}`)).errores[0]).toMatch(/sale del límite municipal.*cruza el perímetro/);
+    const a = altaCalle(db, alta(id, puntoU(0.02, 0.005)), ctx(db));
+    expect(a.db.calles[a.calleId].alta!.pertenencia).toBe('verificada');
+    expect(() => corregirCalle(a.db, a.calleId, { geometria: puntoU(0.02, 0.015) }, { porId: db.meta.espacioCreadoPorId! })).toThrow(/fuera del límite municipal/);
+  });
+
+  it('sin perímetro administrativo, la pertenencia queda expresamente NO verificada', () => {
+    const { db, id } = conMunicipio(baseConMedina(), { nombre: 'Municipio Prueba G3' });
+    const v = validarAltaCalle(db, alta(id, '10.5, -30.5'));
+    expect(v.errores).toEqual([]);
+    expect(v.avisos[0]).toMatch(/Pertenencia territorial NO verificada/);
+    const a = altaCalle(db, alta(id, '10.5, -30.5'), ctx(db));
+    expect(a.db.calles[a.calleId].alta!.pertenencia).toBe('no-verificada');
+    // Un límite anterior sin perímetro (solo el rectángulo) tampoco basta para verificarla
+    const soloBbox = { ...db.municipios[id], callejero: { estado: 'disponible' as const, limite: { bbox: [10, -31, 11, -30] as [number, number, number, number], fuente: 'osm:relation/1' } } };
+    expect(pertenenciaGeometria(soloBbox, [[-30.5, 10.5]]).estado).toBe('no-verificada');
+    // Sin geometría no hay nada que verificar
+    expect(validarAltaCalle(db, alta(id, '', 'de la Iglesia')).avisos).toEqual([]);
+  });
+
+  it('las geometrías ya aceptadas no se modifican al cargar después el límite', () => {
+    let { db, id } = conMunicipio(baseConMedina(), concavo);
+    const a = altaCalle(db, alta(id, puntoU(0.02, 0.015)), ctx(db));
+    db = a.db;
+    const antes = huellaCalle(db.calles[a.calleId]);
+    const json = osmMunicipioConcavo();
+    const l = leerOsmMunicipio(json, concavo);
+    if (!l.ok) throw new Error(l.motivo);
+    db = aplicarCarga(db, id, l, { archivo: 'u.json', contenido: JSON.stringify(json), fuente: 'OpenStreetMap (Overpass API)' }, ctx(db)).db;
+    expect(huellaCalle(db.calles[a.calleId])).toBe(antes);
+    expect(db.calles[a.calleId].alta!.pertenencia).toBe('no-verificada');
+  });
+});
+
+describe('Cierre de G3 · Procedencia de la referencia de la Plaza Mayor', () => {
+  it('se presenta como referencia aportada en la revisión del censo 2025, pendiente de respaldo documental', () => {
+    const db = baseConMedina();
+    const [r] = referenciasDe(db, MEDINA);
+    expect(r).toMatchObject({ respaldo: 'pendiente', fuente: expect.stringMatching(/Revisión del censo 2025.*sin documentación/) });
+    expect(`${r.nota} ${r.fuente}`).not.toMatch(/Indicado por la Cátedra|acuerdo/);
+    expect(r.nota).toMatch(/Pendiente de respaldo documental o de validación formal/);
+  });
+
+  it('una copia guardada con la redacción anterior se muestra corregida sin reescribir los datos', () => {
+    const db0 = baseConMedina();
+    const sup = REFERENCIAS_SUPERADAS[0];
+    const vieja = { denominacion: sup.denominacion, oficial: 'Plaza Mayor de la Hispanidad', nota: sup.nota, fuente: sup.fuente, fecha: '2026-10-24' };
+    const db: BaseDatos = { ...db0, municipios: { ...db0.municipios, [MEDINA]: { ...db0.municipios[MEDINA], callejero: { ...db0.municipios[MEDINA].callejero!, referencias: [vieja] } } } };
+    const guardado = JSON.stringify(db);
+    const [r] = referenciasDe(db, MEDINA);
+    expect(r).toMatchObject({ respaldo: 'pendiente', nota: expect.stringMatching(/^Referencia aportada durante la revisión del censo 2025/) });
+    expect(proponer('Plaza Mayor', callesDe(db, MEDINA), referenciasDe(db, MEDINA)).ausente?.nota).not.toMatch(/Indicado por la Cátedra/);
+    expect(JSON.stringify(db)).toBe(guardado);
   });
 });

@@ -188,7 +188,7 @@ function AltaVia({ municipioId, onCerrar }: { municipioId: Id; onCerrar: () => v
   const [d, setD] = useState({ nombre: '', tipoVia: 'Plaza', fuenteDocumental: '', geometria: '', nota: '' });
   const [error, setError] = useState<string | null>(null);
   const datos = { municipioId, ...d };
-  const v = d.nombre.trim() ? validarAltaCalle(db, datos) : { errores: [], parecidas: [] };
+  const v = d.nombre.trim() ? validarAltaCalle(db, datos) : { errores: [], parecidas: [], avisos: [] };
   const campo = (k: keyof typeof d) => (e: { target: { value: string } }) => setD({ ...d, [k]: e.target.value });
   return (
     <div className="mun-form" role="group" aria-label="Añadir calle o plaza">
@@ -206,6 +206,7 @@ function AltaVia({ municipioId, onCerrar }: { municipioId: Id; onCerrar: () => v
       </label>
       <label className="campo"><span>Nota (opcional)</span><input className="input" aria-label="Nota del alta" value={d.nota} onChange={campo('nota')} /></label>
       {v.parecidas.length > 0 && <div className="t-info aviso" role="note"><AlertTriangle size={15} /> <div>Nombres parecidos en el callejero: {v.parecidas.join(', ')}. Compruebe que no es la misma vía (si lo es, registre el nombre como alias).</div></div>}
+      {v.avisos.map((a) => <div key={a} className="t-info aviso" role="note"><AlertTriangle size={15} /> <div>{a}</div></div>)}
       {(error || v.errores[0]) && <div className="t-info error" role="alert">{error ?? v.errores[0]}</div>}
       <p className="muted" style={{ margin: 0 }}>El alta queda como <b>propuesta</b>, con quién y cuándo. No se usa en la conciliación hasta que una persona de coordinación la <b>valide</b>.</p>
       <div className="fila"><span className="esp" />
@@ -304,6 +305,11 @@ function FichaVia({ c }: { c: Calle }) {
         <dt>Identificador</dt><dd className="mono">{c.id}</dd>
         <dt>Procedencia</dt><dd>{procedenciaTxt(c)}{c.codigoVia ? ` · código ${c.codigoVia}` : ''}{c.refsFuente.length ? ` · ${c.refsFuente.length} elemento(s) de la fuente` : ''}</dd>
         <dt>Segmentos</dt><dd>{c.segmentos.length ? <span className="mono">{c.segmentos.slice(0, 6).map((s) => `${s.id} (${s.tipo ?? 'linea'})`).join(' · ')}{c.segmentos.length > 6 ? ' …' : ''}</span> : 'Sin geometría (la vía existe aunque no esté dibujada)'}</dd>
+        {c.alta && c.segmentos.length > 0 && <><dt>Pertenencia</dt><dd>{c.alta.pertenencia === 'verificada'
+          ? <span className="chip ok">Dentro del límite municipal (comprobado con el perímetro)</span>
+          : c.alta.pertenencia === 'no-verificada'
+            ? <span className="chip aviso">No verificada: el municipio no tenía límite administrativo con geometría</span>
+            : <span className="chip aviso">No comprobada con el perímetro (alta anterior a esta comprobación)</span>}</dd></>}
         {c.alta && <><dt>Alta</dt><dd>Propuesta por {persona(c.alta.porId)} el {c.alta.fecha.slice(0, 10)} · fuente: {c.alta.fuenteDocumental}{c.alta.validacion ? ` · ${c.alta.estado === 'validada' ? 'validada' : 'rechazada'} por ${persona(c.alta.validacion.porId)} el ${c.alta.validacion.fecha.slice(0, 10)}${c.alta.validacion.nota ? ` (${c.alta.validacion.nota})` : ''}` : ''}</dd></>}
         <dt>En uso</dt><dd>{usos ? `${usos} referencia(s): locales, observaciones o itinerarios` : 'No'}</dd>
       </dl>
@@ -370,7 +376,7 @@ function Referencias({ municipioId }: { municipioId: Id }) {
   const modificar = useEspacios((s) => s.modificar);
   const ocupado = useEspacios((s) => s.ocupado);
   const lista = referenciasDe(db, municipioId);
-  const [r, setR] = useState({ denominacion: '', oficial: '', nota: '', fuente: '' });
+  const [r, setR] = useState<{ denominacion: string; oficial: string; nota: string; fuente: string; respaldo: 'pendiente' | 'documentado' }>({ denominacion: '', oficial: '', nota: '', fuente: '', respaldo: 'pendiente' });
   const [error, setError] = useState<string | null>(null);
   const existe = (oficial: string) => callesDe(db, municipioId).some((c) => c.nombre.toLowerCase() === oficial.toLowerCase() && (!c.alta || c.alta.estado === 'validada'));
   return (
@@ -379,7 +385,8 @@ function Referencias({ municipioId }: { municipioId: Id }) {
       {lista.length === 0 ? <p className="muted">Ninguna referencia.</p> : (
         <ul className="inc-lista">{lista.map((x) => (
           <li key={x.denominacion}>
-            «{x.denominacion}» → <b>«{x.oficial}»</b> {existe(x.oficial) ? <span className="chip ok">en el callejero</span> : <span className="chip aviso">no está en el callejero</span>}
+            «{x.denominacion}» → <b>«{x.oficial}»</b> {existe(x.oficial) ? <span className="chip ok">en el callejero</span> : <span className="chip aviso">no está en el callejero</span>}{' '}
+            {x.respaldo === 'documentado' ? <span className="chip ok">con respaldo documental</span> : <span className="chip aviso">pendiente de respaldo documental</span>}
             <div className="muted">{x.nota} · fuente: {x.fuente} · {x.fecha.slice(0, 10)}</div>
             <button className="btn s fantasma" aria-label={`Retirar la referencia ${x.denominacion}`} onClick={async () => { const res = await modificar('Retirando la referencia…', (d, ctx) => retirarReferencia(d, municipioId, x.denominacion, { porId: ctx.porId })); if (!res.ok) setError(res.error ?? null); }}><X size={13} /> Retirar</button>
           </li>
@@ -390,13 +397,19 @@ function Referencias({ municipioId }: { municipioId: Id }) {
         <label className="campo"><span>Vía oficial</span><input className="input" aria-label="Vía oficial" value={r.oficial} onChange={(e) => setR({ ...r, oficial: e.target.value })} /></label>
         <label className="campo"><span>Fuente</span><input className="input" aria-label="Fuente de la referencia" value={r.fuente} onChange={(e) => setR({ ...r, fuente: e.target.value })} /></label>
         <label className="campo"><span>Nota (opcional)</span><input className="input" aria-label="Nota de la referencia" value={r.nota} onChange={(e) => setR({ ...r, nota: e.target.value })} /></label>
+        <label className="campo"><span>Respaldo</span>
+          <select className="input" aria-label="Respaldo de la referencia" value={r.respaldo} onChange={(e) => setR({ ...r, respaldo: e.target.value as 'pendiente' | 'documentado' })}>
+            <option value="pendiente">Pendiente de respaldo documental</option>
+            <option value="documentado">Con respaldo documental (indíquelo en la fuente)</option>
+          </select>
+        </label>
       </div>
       {error && <div className="t-info error" role="alert">{error}</div>}
       <div><button className="btn s" disabled={!r.denominacion.trim() || !r.oficial.trim() || r.fuente.trim().length < 3 || !!ocupado} onClick={async () => {
         const res = await modificar('Registrando la referencia…', (d, ctx) => anadirReferencia(d, municipioId, r, { porId: ctx.porId }));
         if (!res.ok) return setError(res.error ?? null);
         setError(null);
-        setR({ denominacion: '', oficial: '', nota: '', fuente: '' });
+        setR({ denominacion: '', oficial: '', nota: '', fuente: '', respaldo: 'pendiente' });
       }}>Registrar la referencia</button></div>
     </div>
   );

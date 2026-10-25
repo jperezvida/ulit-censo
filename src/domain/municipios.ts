@@ -110,10 +110,25 @@ export interface ResumenCallejero {
 export function callejeroDe(db: BaseDatos, municipioId: Id): ResumenCallejero {
   const m = db.municipios[municipioId];
   // G3: solo las vías vigentes (un alta manual cuenta una vez validada).
-  const calles = callesVigentes(db, municipioId).length;
+  const vigentes = callesVigentes(db, municipioId);
+  const calles = vigentes.length;
   if (!calles) return { disponible: false, calles: 0, texto: 'Sin callejero todavía: la conciliación territorial quedará pendiente (los registros se conservan sin vínculo con calles ni locales).' };
-  const detalle = m?.callejero?.detalle ?? db.meta?.detalleCallejero;
-  return { disponible: true, calles, texto: detalle ?? `${calles.toLocaleString('es-ES')} calles` };
+  // La descripción es SIEMPRE la del propio municipio: la del espacio (`db.meta.detalleCallejero`, la
+  // instantánea OSM de Medina) solo vale para el municipio piloto de una base anterior a G2.
+  const manuales = vigentes.filter((c) => !!c.alta).length;
+  const deFuente = calles - manuales;
+  const n = (k: number, uno: string, varios: string) => `${k.toLocaleString('es-ES')} ${k === 1 ? uno : varios}`;
+  const partes: string[] = [];
+  if (deFuente) {
+    const cj = m?.callejero;
+    const piloto = /^(ensayo|real)-mun-medina$/.test(municipioId) && !cj?.detalle && !!db.meta?.detalleCallejero;
+    if (cj?.cargas?.length && cj.detalle) partes.push(`${n(deFuente, 'vía', 'vías')} de ${cj.detalle}`);
+    else if (cj?.fuente === 'osm-instantanea' && cj.detalle) partes.push(cj.detalle);
+    else if (piloto) partes.push(db.meta.detalleCallejero!);
+    else partes.push(n(deFuente, 'vía', 'vías'));
+  }
+  if (manuales) partes.push(deFuente ? n(manuales, 'alta manual', 'altas manuales') : `${n(manuales, 'vía', 'vías')} · ${manuales === 1 ? 'alta manual' : 'altas manuales'}`);
+  return { disponible: true, calles, texto: partes.join(' · ') };
 }
 
 // ───────────── Campañas ─────────────

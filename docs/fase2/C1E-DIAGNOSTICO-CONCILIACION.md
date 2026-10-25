@@ -38,7 +38,7 @@ Para cada denominación que no coincide con el callejero se muestran la denomina
 | La denominación contiene el nombre completo de una calle | «Calle X (tramo…)» → Calle X | Orienta; requiere confirmación |
 | Abreviatura de tipo de vía no reconocida automáticamente | «Rda. de Gracia» → Ronda de Gracia | Orienta; requiere confirmación |
 | Mismo nombre con otro tipo de vía | «Gracia» → Ronda de Gracia | Débil: se avisa |
-| Referencia comunicada por la Cátedra | «Plaza Mayor» → Plaza Mayor de la Hispanidad | Solo si existe en el callejero |
+| Referencia aportada durante la revisión del censo 2025 (pendiente de respaldo documental; desde G3, dato del callejero) | «Plaza Mayor» → Plaza Mayor de la Hispanidad | Solo si existe en el callejero |
 | Solo parecido del texto | «Calle de las Farolaz» → Calle de las Farolas | **No**: se avisa de que hay que comprobar que es la misma vía |
 
 **Reglas:**

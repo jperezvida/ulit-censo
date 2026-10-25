@@ -5,6 +5,8 @@ import type { DecisionesIncorporacion } from '../../../domain/incorporacion';
 import { denominacionesPorConciliar, ESTADO_CALLE_TXT } from '../../../domain/c1e';
 import { FUENTE_TXT, type DecisionCalle, type Propuesta } from '../../../domain/conciliacionCalles';
 import { callesVigentes } from '../../../domain/callejeros';
+import { callejeroDe } from '../../../domain/municipios';
+import { esBaseDeEspacio } from '../../../domain/espacios';
 import type { ResultadoInterpretacion } from '../../../domain/xlsx/interpretacion';
 import { ChipEstado } from './RevisionGrupos';
 import { useCtxIncorporacion } from './contextoIncorporacion';
@@ -40,7 +42,10 @@ export function ConciliacionCalles({ resultado, decisiones, onCambiar, firma, si
       <div className="t-info" style={{ margin: 0 }}>
         <div>
           <b>Ninguna correspondencia se aplica sola.</b> Cada propuesta indica su fuente. Confirmarla vincula <b>todos</b> los registros de esa denominación a la calle elegida; queda constancia de quién y cuándo. El texto original del archivo no se modifica. Si la calle no está en el callejero, no se inventan calles, geometrías ni coordenadas: el registro se conserva sin vínculo.
-          {db.meta?.detalleCallejero && <div className="muted" style={{ marginTop: 4 }}>Callejero: {db.meta.detalleCallejero}</div>}
+          {/* G3: la descripción del callejero del municipio de DESTINO (nunca la de otro municipio del espacio). */}
+          {esBaseDeEspacio(db)
+            ? <div className="muted" style={{ marginTop: 4 }}>Callejero de {db.municipios[destino.municipioId]?.nombre ?? destino.municipioId}: {callejeroDe(db, destino.municipioId).texto}</div>
+            : db.meta?.detalleCallejero && <div className="muted" style={{ marginTop: 4 }}>Callejero: {db.meta.detalleCallejero}</div>}
         </div>
       </div>
       <div className="fila" style={{ flexWrap: 'wrap', gap: 8 }}>

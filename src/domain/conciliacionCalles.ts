@@ -92,7 +92,8 @@ export function proponer(denominacion: string, callesMunicipio: Calle[], referen
   for (const r of referencias) {
     if (normalizar(r.denominacion) !== n) continue;
     const c = unica(claveCalle(r.oficial));
-    if (c) add(c, 'referencia-catedra', `${r.nota} «${r.oficial}» figura en el callejero (fuente de la referencia: ${r.fuente}).`);
+    const respaldo = r.respaldo === 'pendiente' ? ' Referencia PENDIENTE de respaldo documental: compruébela antes de confirmar.' : '';
+    if (c) add(c, 'referencia-catedra', `${r.nota} «${r.oficial}» figura en el callejero (fuente de la referencia: ${r.fuente}).${respaldo}`);
     else ausente = { oficial: r.oficial, nota: `${r.nota} «${r.oficial}» NO figura en el callejero actual del municipio: no se puede vincular ni se inventa su geometría. Puede añadirse con una alta supervisada en «Callejero».` };
   }
 

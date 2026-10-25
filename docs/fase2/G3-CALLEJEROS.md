@@ -59,6 +59,11 @@ La vía guarda su **forma**: línea, área, punto, mixta o **sin geometría**.
 - **geometría opcional**: pares «latitud, longitud» o un GeoJSON. Debe caer dentro del límite si se conoce. **Nunca se inventa**: si se deja vacía, la vía queda sin geometría;
 - una nota.
 
+**Pertenencia de la geometría al municipio:** se comprueba con el **perímetro administrativo auténtico** (todas sus partes y sus huecos), que se guarda al cargar el callejero de OSM (`callejero.limite.poligono`), no con el rectángulo envolvente.
+- **Se rechaza** una geometría con algún vértice fuera del perímetro, o con algún tramo que lo cruce: una línea con los extremos dentro puede atravesar una entrante del límite.
+- **Si el municipio no tiene perímetro cargado,** la geometría se admite, pero se avisa expresamente de que la **pertenencia territorial NO está verificada**. Queda registrado en el alta (`pertenencia: 'no-verificada'`) y se muestra en la ficha.
+- **Las geometrías ya aceptadas no se modifican.** Cargar después el límite no las cambia; en la ficha figuran como «no comprobada con el perímetro».
+
 **Supervisión:**
 1. **Propuesta:** el alta queda como **propuesta**, con quién y cuándo. **No se usa** en la conciliación ni en la incorporación.
 2. **Validación:** una persona de coordinación la **valida** desde la ficha de la vía. Queda constancia de quién, cuándo y con qué nota, y desde ese momento cuenta.
@@ -72,9 +77,11 @@ La vía guarda su **forma**: línea, área, punto, mixta o **sin geometría**.
   - No se admite un alias que sea el nombre de otra vía, porque haría ambigua la conciliación.
 - **Referencias del municipio**, p. ej. «Plaza Mayor» → «Plaza Mayor de la Hispanidad»: denominación, vía oficial, nota, fuente y fecha. Se añaden y se retiran desde «Referencias».
 - **Plaza Mayor de la Hispanidad:** **ya no está en el código**.
-  - Es un dato del callejero de Medina, con su fuente («Cátedra, revisión del censo 2025»).
+  - Es un dato del callejero de Medina. **No es un acuerdo institucional documentado**: es una referencia **aportada durante la revisión del censo 2025**, marcada «pendiente de respaldo documental o de validación formal» (`respaldo: 'pendiente'`).
   - Los espacios nuevos la guardan al crearse.
   - Las bases anteriores a G3 la leen de `src/data/referenciasDenominacion.ts`, que son datos de partida, hasta que se edite la lista.
+  - Una copia guardada con la redacción anterior («Indicado por la Cátedra…») **se muestra corregida sin reescribir el dato guardado**. Solo se guarda la redacción corregida si la persona edita después la lista de referencias.
+  - Toda referencia muestra su respaldo («pendiente de respaldo documental» o «con respaldo documental»). Cuando una referencia pendiente propone una vía, la propuesta lo dice.
 - **La conciliación sigue siendo supervisada:**
   - un alias o una referencia **solo proponen**, con fuente «Alias o nombre histórico registrado en el callejero» o «Referencia de denominación registrada»;
   - **nada se vincula solo**.
@@ -99,6 +106,15 @@ La vía guarda su **forma**: línea, área, punto, mixta o **sin geometría**.
   - el espacio real sigue sin poder guardarse en la vista previa;
   - la confirmación sigue bloqueada.
 
+## Descripción del callejero de cada municipio
+
+El texto «Callejero: …» de cada municipio describe **solo su propio callejero**:
+- **Por carga:** «7 vías de OpenStreetMap (Overpass API) (datos a 2026-09-30)».
+- **Solo altas manuales:** «1 vía · alta manual».
+- **Medina:** su instantánea, más las altas manuales si las hay.
+
+La descripción general del espacio (la instantánea OSM de Medina) solo se usa para Medina en las bases anteriores a G2. Antes del cierre de G3 aparecía por error en los municipios nuevos.
+
 ## Persistencia
 
 Igual que en G2: el callejero se guarda en la base del espacio de **este navegador**. No se comparte con otras personas ni se envía a ningún servidor. Para llevarlo a otro equipo sirve el respaldo del espacio.
@@ -112,6 +128,11 @@ Igual que en G2: el callejero se guarda en la base del espacio de **este navegad
 
 ## Pruebas
 
+- **Cierre de G3** (10 pruebas más en `g3-callejeros.test.ts` y una de interfaz en `callejero.test.tsx`). Comprueban:
+  - que cada municipio muestra su propia descripción («1 vía · alta manual»), también en bases anteriores, en el destino del asistente y con Medina al lado;
+  - el perímetro con un límite **cóncavo** (en U), una parte separada y un hueco: un punto dentro del rectángulo pero fuera del municipio se rechaza, igual que el hueco y una línea que cruza la entrante; los brazos y la parte separada se aceptan;
+  - que sin perímetro la pertenencia queda «no verificada», y que las geometrías aceptadas no cambian;
+  - la procedencia de la referencia de la Plaza Mayor, y la copia antigua mostrada corregida sin reescribir datos.
 - **`src/domain/g3-callejeros.test.ts`** (16 pruebas, municipios y callejeros sintéticos con coordenadas en el Atlántico, que no son un lugar real). Comprueba:
   - **Lectura de OSM:** calles, peatonales y plazas como área, multipolígono y punto; descartes sin nombre, fuera del límite o de tipo no admitido.
   - **Rechazos:** otro municipio, sin límite, límites homónimos y límite sin geometría. Además, la consulta por INE.

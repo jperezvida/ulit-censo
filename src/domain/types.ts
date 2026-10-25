@@ -67,8 +67,12 @@ export interface EstadoCallejero {
   actualizado?: string;
   /** G3 · Cargas aplicadas (fuente, fecha, versión, procedencia y resumen), de la más antigua a la más reciente. */
   cargas?: CargaCallejero[];
-  /** G3 · Límite administrativo verificado (rectángulo envolvente [sur, oeste, norte, este]) de la última carga OSM. */
-  limite?: { bbox: [number, number, number, number]; fuente: string; ine?: string; nombre?: string };
+  /**
+   * G3 · Límite administrativo verificado de la última carga OSM: rectángulo envolvente [sur, oeste, norte, este]
+   * y, desde el cierre de G3, el PERÍMETRO auténtico (anillos exteriores, varios si el municipio tiene varias
+   * partes, e interiores = huecos). Sin perímetro, la pertenencia de una geometría no se puede verificar.
+   */
+  limite?: { bbox: [number, number, number, number]; fuente: string; ine?: string; nombre?: string; poligono?: { exteriores: LngLat[][]; interiores: LngLat[][] } };
   /**
    * G3 · Referencias de denominación (p. ej. «Plaza Mayor» → «Plaza Mayor de la Hispanidad»). Orientan la
    * conciliación; nunca vinculan solas. `undefined` = el municipio aún no tiene la lista guardada.
@@ -97,6 +101,8 @@ export interface ReferenciaDenominacion {
   oficial: string;
   nota: string;
   fuente: string;
+  /** Respaldo documental de la referencia: pendiente (aportada, sin documentación que la acredite) o documentado. */
+  respaldo?: 'pendiente' | 'documentado';
   porId?: Id;
   fecha: string;
   retirada?: { porId: Id; fecha: string };
@@ -160,6 +166,11 @@ export interface AliasCalle {
 export interface AltaCalle {
   estado: 'propuesta' | 'validada' | 'rechazada';
   fuenteDocumental: string;
+  /**
+   * Pertenencia de la geometría manual al municipio: comprobada contra el perímetro administrativo, o NO
+   * verificada (el municipio no tiene perímetro cargado). Ausente si no hay geometría, o en altas anteriores.
+   */
+  pertenencia?: 'verificada' | 'no-verificada';
   porId: Id;
   fecha: string;
   validacion?: { porId: Id; fecha: string; nota?: string };

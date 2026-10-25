@@ -103,3 +103,36 @@ export function geojsonAldeaSintetica() {
     ],
   };
 }
+
+/**
+ * Municipio ficticio con un límite CÓNCAVO (en forma de U), una segunda parte separada (exclave) y un
+ * hueco interior (enclave de otro municipio). Sirve para comprobar que la pertenencia se verifica con el
+ * PERÍMETRO y no con el rectángulo envolvente.
+ *
+ *   lat ↑  ┌──┐  ┌──┐        ┌─┐  ← exclave (0,05–0,06)
+ *          │  │  │  │        └─┘
+ *          │  └──┘  │  ← la «muesca» (lat 0,01–0,03; lon 0,01–0,02) está FUERA del municipio
+ *          │   ▫    │  ← hueco interior (enclave)
+ *          └────────┘ → lon
+ */
+export const U = { V: 10.3, L: -30.3 };
+export function osmMunicipioConcavo() {
+  const { V, L } = U;
+  const anillo = (ps: P[]) => g(ps.map(([a, b]) => [V + a, L + b] as P));
+  return {
+    osm3s: { timestamp_osm_base: '2026-09-30T00:00:00Z' }, __sintetico: MARCA_FICTICIO,
+    elements: [
+      {
+        type: 'relation', id: 9003, tags: { boundary: 'administrative', admin_level: '8', name: 'Valle Sintético en U', 'ine:municipio': '99003' },
+        members: [
+          { type: 'way', ref: 90031, role: 'outer', geometry: anillo([[0, 0], [0, 0.03], [0.03, 0.03], [0.03, 0.02], [0.01, 0.02], [0.01, 0.01], [0.03, 0.01], [0.03, 0], [0, 0]]) },
+          { type: 'way', ref: 90032, role: 'outer', geometry: anillo([[0.05, 0.05], [0.05, 0.06], [0.06, 0.06], [0.06, 0.05], [0.05, 0.05]]) },
+          { type: 'way', ref: 90033, role: 'inner', geometry: anillo([[0.002, 0.012], [0.002, 0.016], [0.006, 0.016], [0.006, 0.012], [0.002, 0.012]]) },
+        ],
+      },
+      way(5001, { highway: 'residential', name: 'Calle del Brazo Oeste' }, [[V + 0.005, L + 0.002], [V + 0.02, L + 0.002]]),
+    ],
+  };
+}
+/** Punto «latitud, longitud» relativo al municipio en U, en el formato del alta manual. */
+export const puntoU = (dlat: number, dlon: number) => `${(U.V + dlat).toFixed(6)}, ${(U.L + dlon).toFixed(6)}`;

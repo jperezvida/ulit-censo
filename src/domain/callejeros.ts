@@ -1,8 +1,8 @@
 import { ErrorDominio, type BaseDatos } from './db';
 import { sha256Texto } from './sha256';
 import { claveCalle, normalizar, similitud, tipoVia } from './text';
-import { leerGeometriaManual, type LecturaCallejero, type ViaEntrante } from './fuentesCallejero';
-import { REFERENCIAS_INICIALES } from '../data/referenciasDenominacion';
+import { geometriaDentro, leerGeometriaManual, type LecturaCallejero, type ViaEntrante } from './fuentesCallejero';
+import { REFERENCIAS_INICIALES, REFERENCIAS_SUPERADAS } from '../data/referenciasDenominacion';
 import type { AliasCalle, Calle, CambioCalle, CargaCallejero, FormaVia, Id, Municipio, ReferenciaDenominacion, Segmento } from './types';
 
 /**
@@ -246,10 +246,25 @@ function coincidencias(db: BaseDatos, municipioId: Id, nombre: string, excepto?:
     && (claveCalle(c.nombre) === k || (c.alias ?? []).some((a) => !a.retirado && claveCalle(a.nombre) === k)));
 }
 
-export function validarAltaCalle(db: BaseDatos, d: DatosAltaCalle): { errores: string[]; parecidas: string[] } {
+/**
+ * Pertenencia de una geometría manual al municipio, comprobada contra su PERÍMETRO administrativo
+ * (todas las partes del municipio y sus huecos). Si el municipio no tiene perímetro cargado, la
+ * pertenencia NO está verificada (el rectángulo envolvente no basta: incluye puntos de fuera).
+ */
+export function pertenenciaGeometria(m: Municipio, coords: [number, number][]): { estado: 'verificada' | 'no-verificada' | 'fuera'; motivo: string } {
+  const pol = m.callejero?.limite?.poligono;
+  if (!pol?.exteriores.length) return { estado: 'no-verificada', motivo: `Pertenencia territorial NO verificada: ${m.nombre} no tiene cargado su límite administrativo con geometría (se obtiene al cargar su callejero de OpenStreetMap).` };
+  const r = geometriaDentro(coords, pol);
+  if (r.verticesFuera) return { estado: 'fuera', motivo: `La geometría cae fuera del límite municipal de ${m.nombre} (${r.verticesFuera} de ${coords.length} punto(s) fuera del perímetro).` };
+  if (r.cruza) return { estado: 'fuera', motivo: `La geometría sale del límite municipal de ${m.nombre}: algún tramo cruza el perímetro.` };
+  return { estado: 'verificada', motivo: `Dentro del límite municipal de ${m.nombre} (${m.callejero!.limite!.fuente}).` };
+}
+
+export function validarAltaCalle(db: BaseDatos, d: DatosAltaCalle): { errores: string[]; parecidas: string[]; avisos: string[] } {
   const errores: string[] = [];
+  const avisos: string[] = [];
   const m = db.municipios[d.municipioId];
-  if (!m) return { errores: ['Elija el municipio.'], parecidas: [] };
+  if (!m) return { errores: ['Elija el municipio.'], parecidas: [], avisos };
   const nombre = nombreDeAlta(d);
   if (d.nombre.trim().length < 2) errores.push('Indique el nombre de la vía.');
   if (!d.tipoVia) errores.push('Indique el tipo de vía.');
@@ -258,14 +273,15 @@ export function validarAltaCalle(db: BaseDatos, d: DatosAltaCalle): { errores: s
   if (ya.length) errores.push(`Ya existe en el callejero de ${m.nombre}: «${ya[0].nombre}»${ya[0].alta?.estado === 'propuesta' ? ' (propuesta pendiente de validar)' : ''}.`);
   const g = leerGeometriaManual(d.geometria ?? '');
   if (!g.ok) errores.push(g.motivo);
-  else if (g.segmento && m.callejero?.limite) {
-    const [s, o, n, e] = m.callejero.limite.bbox;
-    if (g.segmento.coords.some(([lon, lat]) => lat < s || lat > n || lon < o || lon > e)) errores.push(`La geometría cae fuera del límite de ${m.nombre}.`);
+  else if (g.segmento) {
+    const p = pertenenciaGeometria(m, g.segmento.coords);
+    if (p.estado === 'fuera') errores.push(p.motivo);
+    else if (p.estado === 'no-verificada') avisos.push(p.motivo);
   }
   const parecidas = d.nombre.trim().length >= 3
     ? callesDe(db, d.municipioId).filter((c) => !ya.includes(c) && similitud(nombre, c.nombre) >= 0.8).map((c) => c.nombre).slice(0, 5)
     : [];
-  return { errores, parecidas };
+  return { errores, parecidas, avisos };
 }
 
 /** Alta manual: queda como PROPUESTA (no se usa hasta validarla). */
@@ -283,7 +299,10 @@ export function altaCalle(db: BaseDatos, d: DatosAltaCalle, o: { prefijo: string
   const c: Calle = {
     id, municipioId: d.municipioId, nombre, tipoVia: d.tipoVia === 'Otro' ? tipoVia(nombre) : d.tipoVia, segmentos: segmentos.map((s) => ({ ...s, id: `${id}-g1` })),
     longitudM: segmentos.reduce((a, s) => a + s.longitudM, 0), procedencia: 'manual', refsFuente: [], forma: formaDe(segmentos),
-    alta: { estado: 'propuesta', fuenteDocumental: d.fuenteDocumental.trim(), porId: o.porId, fecha: ahora, ...(d.nota?.trim() ? { nota: d.nota.trim() } : {}) },
+    alta: {
+      estado: 'propuesta', fuenteDocumental: d.fuenteDocumental.trim(), porId: o.porId, fecha: ahora, ...(d.nota?.trim() ? { nota: d.nota.trim() } : {}),
+      ...(segmentos.length ? { pertenencia: v.avisos.length ? 'no-verificada' as const : 'verificada' as const } : {}),
+    },
     historial: [{ fecha: ahora, porId: o.porId, accion: 'alta', detalle: `Alta manual propuesta. Fuente: ${d.fuenteDocumental.trim()}.${segmentos.length ? '' : ' Sin geometría.'}` }],
   };
   return { db: { ...db, calles: { ...db.calles, [id]: c } }, calleId: id };
@@ -349,9 +368,15 @@ export function corregirCalle(db: BaseDatos, calleId: Id, cambios: Partial<Pick<
   const nombre = cambios.nombre !== undefined ? nombreDeAlta({ nombre: cambios.nombre, tipoVia: tipoNuevo }) : c.nombre;
   if (cambios.nombre !== undefined && coincidencias(db, c.municipioId, nombre, c.id).length) throw new ErrorDominio('regla', `Ya existe «${nombre}» en el callejero.`);
   let segmentos = c.segmentos;
+  let pertenencia: 'verificada' | 'no-verificada' | undefined;
   if (cambios.geometria !== undefined) {
     const g = leerGeometriaManual(cambios.geometria);
     if (!g.ok) throw new ErrorDominio('regla', g.motivo);
+    if (g.segmento) {
+      const p = pertenenciaGeometria(db.municipios[c.municipioId], g.segmento.coords);
+      if (p.estado === 'fuera') throw new ErrorDominio('regla', p.motivo);
+      pertenencia = p.estado;
+    }
     segmentos = g.segmento ? [{ ...g.segmento, id: `${c.id}-g${(c.historial ?? []).length + 1}` }] : [];
   }
   const antes: Record<string, unknown> = {};
@@ -362,7 +387,10 @@ export function corregirCalle(db: BaseDatos, calleId: Id, cambios: Partial<Pick<
   if (!Object.keys(antes).length) throw new ErrorDominio('regla', 'No hay cambios que registrar.');
   return cambiarCalle(db, calleId, (x) => ({
     ...x, nombre, tipoVia: tipoNuevo, segmentos, longitudM: segmentos.reduce((a, s) => a + s.longitudM, 0), forma: formaDe(segmentos),
-    alta: { ...x.alta!, ...(cambios.fuenteDocumental?.trim() ? { fuenteDocumental: cambios.fuenteDocumental.trim() } : {}) },
+    alta: {
+      ...x.alta!, ...(cambios.fuenteDocumental?.trim() ? { fuenteDocumental: cambios.fuenteDocumental.trim() } : {}),
+      ...(cambios.geometria !== undefined ? { pertenencia } : {}),
+    },
     historial: [...(x.historial ?? []), { fecha: ahora, porId: o.porId, accion: 'correccion', detalle: `Corregido: ${Object.keys(antes).join(', ')}${o.motivo?.trim() ? `. ${o.motivo.trim()}` : ''}.`, antes }],
   }));
 }
@@ -409,19 +437,29 @@ export function retirarAlias(db: BaseDatos, calleId: Id, nombre: string, o: { po
  */
 export function referenciasDe(db: Pick<BaseDatos, 'municipios'>, municipioId: Id): ReferenciaDenominacion[] {
   const m = db.municipios[municipioId];
-  const lista = m?.callejero?.referencias ?? referenciasIniciales(municipioId);
+  const lista = (m?.callejero?.referencias ?? referenciasIniciales(municipioId)).map(redaccionActual);
   return lista.filter((r) => !r.retirada);
 }
 export const referenciasIniciales = (municipioId: Id): ReferenciaDenominacion[] => REFERENCIAS_INICIALES[municipioId.replace(/^(ensayo|real)-/, '')] ?? [];
 
+/**
+ * Una copia guardada de una referencia de partida con la redacción ANTERIOR (que la presentaba como
+ * indicación de la Cátedra) se muestra con la redacción corregida. El dato guardado no se reescribe.
+ */
+function redaccionActual(r: ReferenciaDenominacion): ReferenciaDenominacion {
+  const sup = REFERENCIAS_SUPERADAS.find((x) => x.denominacion === r.denominacion && x.fuente === r.fuente && x.nota === r.nota);
+  const actual = sup && REFERENCIAS_INICIALES[sup.actual]?.find((x) => x.denominacion === r.denominacion);
+  return actual ? { ...r, nota: actual.nota, fuente: actual.fuente, respaldo: actual.respaldo } : r;
+}
+
 function conReferencias(db: BaseDatos, municipioId: Id, f: (r: ReferenciaDenominacion[]) => ReferenciaDenominacion[]): BaseDatos {
   const m = db.municipios[municipioId];
   if (!m) throw new ErrorDominio('regla', 'El municipio no existe.');
-  const actuales = m.callejero?.referencias ?? referenciasIniciales(municipioId);
+  const actuales = (m.callejero?.referencias ?? referenciasIniciales(municipioId)).map(redaccionActual);
   return { ...db, municipios: { ...db.municipios, [municipioId]: { ...m, callejero: { ...(m.callejero ?? { estado: 'sin-callejero' }), referencias: f(actuales) } } } };
 }
 
-export function anadirReferencia(db: BaseDatos, municipioId: Id, r: Pick<ReferenciaDenominacion, 'denominacion' | 'oficial' | 'nota' | 'fuente'>, o: { porId: Id; ahora?: string }): BaseDatos {
+export function anadirReferencia(db: BaseDatos, municipioId: Id, r: Pick<ReferenciaDenominacion, 'denominacion' | 'oficial' | 'nota' | 'fuente' | 'respaldo'>, o: { porId: Id; ahora?: string }): BaseDatos {
   if (!db.personas[o.porId]) throw new ErrorDominio('regla', 'La referencia debe registrarla una persona.');
   const den = r.denominacion.trim();
   const of = r.oficial.trim();
@@ -430,7 +468,7 @@ export function anadirReferencia(db: BaseDatos, municipioId: Id, r: Pick<Referen
   if (claveCalle(den) === claveCalle(of)) throw new ErrorDominio('regla', 'La denominación y el nombre oficial son el mismo.');
   if (referenciasDe(db, municipioId).some((x) => normalizar(x.denominacion) === normalizar(den))) throw new ErrorDominio('regla', `Ya hay una referencia para «${den}».`);
   const fecha = o.ahora ?? new Date().toISOString();
-  return conReferencias(db, municipioId, (l) => [...l, { denominacion: den, oficial: of, nota: r.nota.trim(), fuente: r.fuente.trim(), porId: o.porId, fecha }]);
+  return conReferencias(db, municipioId, (l) => [...l, { denominacion: den, oficial: of, nota: r.nota.trim(), fuente: r.fuente.trim(), respaldo: r.respaldo ?? 'pendiente', porId: o.porId, fecha }]);
 }
 
 export function retirarReferencia(db: BaseDatos, municipioId: Id, denominacion: string, o: { porId: Id; ahora?: string }): BaseDatos {
