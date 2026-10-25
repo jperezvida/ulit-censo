@@ -31,7 +31,7 @@ describe('G3 · Callejero de un municipio (interfaz)', () => {
     // Sin Medina: no hace falta su instantánea (no se descarga nada)
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
-    render(<MemoryRouter initialEntries={['/espacios/ensayo']}><Routes><Route path="/espacios/*" element={<EspaciosApp />} /></Routes></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/espacios/ensayo/avanzado']}><Routes><Route path="/espacios/*" element={<EspaciosApp />} /></Routes></MemoryRouter>);
     await screen.findByRole('region', { name: 'Crear el espacio' }, { timeout: 20000 });
     fireEvent.change(screen.getByLabelText('Persona responsable'), { target: { value: 'Coordinación de Prueba' } });
     fireEvent.click(screen.getByLabelText('Incluir Medina del Campo'));
@@ -96,7 +96,7 @@ describe('G3 · Callejero de un municipio (interfaz)', () => {
   it('con Medina en el espacio, un municipio nuevo muestra SU callejero («1 vía · alta manual»), también en el asistente', async () => {
     const snapshot = readFileSync('public/data/medina-callejero.json', 'utf8');
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, headers: new Headers({ 'content-type': 'application/json' }), json: async () => JSON.parse(snapshot) }) as unknown as Response));
-    render(<MemoryRouter initialEntries={['/espacios/ensayo']}><Routes><Route path="/espacios/*" element={<EspaciosApp />} /></Routes></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/espacios/ensayo/avanzado']}><Routes><Route path="/espacios/*" element={<EspaciosApp />} /></Routes></MemoryRouter>);
     await screen.findByRole('region', { name: 'Crear el espacio' }, { timeout: 20000 });
     fireEvent.change(screen.getByLabelText('Persona responsable'), { target: { value: 'Coordinación de Prueba' } });
     fireEvent.click(screen.getByRole('button', { name: 'Crear el espacio' }));

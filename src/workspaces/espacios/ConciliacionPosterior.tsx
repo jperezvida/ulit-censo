@@ -16,21 +16,28 @@ const ACCION_TXT = { vincular: 'Vinculada a un local existente', 'local-nuevo': 
  * la campaña, con filtros sencillos, y el estado de los locales con observaciones que no coinciden o no
  * tienen fecha. Cada decisión guarda quién y cuándo, y se puede deshacer.
  */
-export function ConciliacionPosterior({ campanaId }: { campanaId: Id }) {
+export function ConciliacionPosterior({ campanaId, simple = false, filtroInicial = {} }: { campanaId: Id; simple?: boolean; filtroInicial?: FiltrosPendientes }) {
   const db = useEspacios((s) => s.db!);
   const modificar = useEspacios((s) => s.modificar);
   const ocupado = useEspacios((s) => s.ocupado);
-  const [f, setF] = useState<FiltrosPendientes>({});
+  const [f, setF] = useState<FiltrosPendientes>(filtroInicial);
   const [error, setError] = useState<string | null>(null);
   const todos = pendientesCampana(db, campanaId);
   const lista = pendientesCampana(db, campanaId, f);
-  const revisar = localesPorRevisar(db, campanaId);
+  const todosRevisar = localesPorRevisar(db, campanaId);
+  // UX1 · En la vista sencilla solo lo que necesita intervención: estados contradictorios sin decidir.
+  const revisar = simple ? todosRevisar.filter((e) => e.contradictorio && !e.resolucion) : todosRevisar;
+  const resueltos = simple ? todosRevisar.filter((e) => e.resolucion) : [];
   const decisiones = decisionesCampana(db, campanaId);
   const vigentes = decisiones.filter((d) => !d.decision.deshecha);
   const ultimaPorRegistro = new Map<Id, (typeof vigentes)[number]>();
   for (const d of vigentes) if (!ultimaPorRegistro.has(d.registroId)) ultimaPorRegistro.set(d.registroId, d);
   const calles = [...new Map(todos.filter((p) => p.calleId).map((p) => [p.calleId!, db.calles[p.calleId!]?.nombre ?? p.calleId!])).entries()].sort((a, b) => a[1].localeCompare(b[1], 'es'));
   const tipos = [...new Set(todos.flatMap((p) => [p.motivo, ...(p.decision ? ['mantener-pendiente'] : [])]))];
+  const portalDe = (localId: Id) => {
+    const d = db.locales[localId]?.direcciones.at(-1);
+    return d ? `${db.calles[d.calleId]?.nombre ?? d.calleId}, ${d.numero ?? 's/n'}${d.sufijo ? ` ${d.sufijo}` : ''}` : localId;
+  };
   const hacer = async (msg: string, fn: (x: BaseDatos, porId: Id) => BaseDatos) => {
     const r = await modificar(msg, (x, ctx) => fn(x, ctx.porId));
     setError(r.ok ? null : r.error ?? 'No se ha podido guardar.');
@@ -38,9 +45,11 @@ export function ConciliacionPosterior({ campanaId }: { campanaId: Id }) {
 
   return (
     <div className="col" style={{ gap: 8 }} role="region" aria-label="Conciliación posterior">
-      <b>Conciliación posterior · {todos.length} fila(s) sin local</b>
-      <p className="muted" style={{ margin: 0 }}>Filas de cualquier itinerario que quedaron sin local al importar. Vincule cada una a un local existente, cree un local distinto si es otro establecimiento, o déjela pendiente. Nada se fusiona por compartir portal.</p>
-      <div className="col-ctrl">
+      {simple ? <b>{todos.length ? `${todos.length} fila(s) sin local` : 'Todas las filas tienen local'}</b> : <>
+        <b>Conciliación posterior · {todos.length} fila(s) sin local</b>
+        <p className="muted" style={{ margin: 0 }}>Filas de cualquier itinerario que quedaron sin local al importar. Vincule cada una a un local existente, cree un local distinto si es otro establecimiento, o déjela pendiente. Nada se fusiona por compartir portal.</p>
+      </>}
+      {(!simple || todos.length > 3 || Object.values(f).some(Boolean)) && <div className="col-ctrl">
         <label className="campo"><span>Itinerario</span>
           <select className="input" aria-label="Filtrar por itinerario" value={f.itinerarioId ?? ''} onChange={(e) => setF({ ...f, itinerarioId: e.target.value || undefined })}>
             <option value="">Todos</option>{itinerariosDe(db, campanaId).map((i) => <option key={i.id} value={i.id}>{i.codigo}</option>)}
@@ -53,17 +62,18 @@ export function ConciliacionPosterior({ campanaId }: { campanaId: Id }) {
           <select className="input" aria-label="Filtrar por tipo" value={f.tipo ?? ''} onChange={(e) => setF({ ...f, tipo: e.target.value || undefined })}>
             <option value="">Todos</option>{tipos.map((t) => <option key={t} value={t}>{MOTIVO_PENDIENTE_TXT[t] ?? t}</option>)}
           </select></label>
-      </div>
+      </div>}
       {error && <div className="t-info error" role="alert">{error}</div>}
-      {lista.length === 0 ? <div className="t-info">{todos.length ? 'Ninguna fila con estos filtros.' : 'No queda ninguna fila sin local.'}</div> : (
+      {lista.length === 0 ? (simple && !todos.length ? null : <div className="t-info">{todos.length ? 'Ninguna fila con estos filtros.' : 'No queda ninguna fila sin local.'}</div>) : (
         <ul className="inc-lista" aria-label="Filas sin local">
           {lista.map((p) => <FilaPendiente key={p.registroId} p={p} deshacible={ultimaPorRegistro.has(p.registroId)} ocupado={!!ocupado} hacer={hacer} campanaId={campanaId} />)}
         </ul>
       )}
 
       {vigentes.some((d) => d.decision.accion !== 'mantener-pendiente') && (
+        <Plegable simple={simple} titulo={`Decisiones tomadas (${vigentes.filter((d) => d.decision.accion !== 'mantener-pendiente').length})`}>
         <div className="col" style={{ gap: 4 }} aria-label="Decisiones tomadas">
-          <b>Decisiones tomadas</b>
+          {!simple && <b>Decisiones tomadas</b>}
           <ul className="inc-lista">{vigentes.filter((d) => d.decision.accion !== 'mantener-pendiente').map((d) => {
             const r = db.registros[d.registroId];
             return (
@@ -74,15 +84,25 @@ export function ConciliacionPosterior({ campanaId }: { campanaId: Id }) {
             );
           })}</ul>
         </div>
+        </Plegable>
+      )}
+
+      {resueltos.length > 0 && (
+        <Plegable simple titulo={`Estados decididos (${resueltos.length})`}>
+          <ul className="inc-lista" aria-label="Estados decididos">{resueltos.map((e) => (
+            <li key={e.localId}>{portalDe(e.localId)} · {e.valor === 'vacio' ? 'vacío' : e.valor === 'ocupado' ? 'ocupado' : 'dudoso'} · {db.personas[e.resolucion!.porId]?.nombre ?? e.resolucion!.porId}, {e.resolucion!.fecha.slice(0, 10)}{' '}
+              <button className="btn s" disabled={!!ocupado} onClick={() => hacer('Retirando la decisión…', (x, porId) => retirarResolucion(x, campanaId, e.localId, { porId }))}><Undo2 size={13} /> Retirar</button>
+            </li>
+          ))}</ul>
+        </Plegable>
       )}
 
       {revisar.length > 0 && (
         <div className="col" style={{ gap: 4 }} aria-label="Estado de locales por revisar">
-          <b>Estado de locales por revisar · {revisar.length}</b>
-          <p className="muted" style={{ margin: 0 }}>Las observaciones no se cambian ni se borran: la decisión se guarda aparte y se puede retirar.</p>
+          <b>{simple ? `${revisar.length} local(es) con datos que no coinciden` : `Estado de locales por revisar · ${revisar.length}`}</b>
+          {!simple && <p className="muted" style={{ margin: 0 }}>Las observaciones no se cambian ni se borran: la decisión se guarda aparte y se puede retirar.</p>}
           <ul className="inc-lista">{revisar.map((e) => {
-            const d = db.locales[e.localId]?.direcciones.at(-1);
-            const portal = d ? `${db.calles[d.calleId]?.nombre ?? d.calleId}, ${d.numero ?? 's/n'}${d.sufijo ? ` ${d.sufijo}` : ''}` : e.localId;
+            const portal = portalDe(e.localId);
             return (
               <li key={e.localId} className={e.resolucion ? '' : 'aviso'}>
                 <b>{portal}</b> · {CLASE_ESTADO_TXT[e.clase]}{e.valor && e.resolucion ? `: ${e.valor === 'vacio' ? 'vacío' : 'ocupado'}` : ''} · {e.motivo}
@@ -106,6 +126,11 @@ export function ConciliacionPosterior({ campanaId }: { campanaId: Id }) {
       )}
     </div>
   );
+}
+
+/** En la vista sencilla, lo secundario queda plegado; en la completa se muestra tal cual. */
+function Plegable({ simple, titulo, children }: { simple: boolean; titulo: string; children: React.ReactNode }) {
+  return simple ? <details className="ux-plegable"><summary>{titulo}</summary>{children}</details> : <>{children}</>;
 }
 
 function FilaPendiente({ p, deshacible, ocupado, hacer, campanaId }: { p: Pendiente; deshacible: boolean; ocupado: boolean; campanaId: Id; hacer: (msg: string, fn: (x: BaseDatos, porId: Id) => BaseDatos) => Promise<void> }) {

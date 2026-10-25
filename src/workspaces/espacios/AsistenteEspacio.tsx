@@ -18,6 +18,7 @@ import { crearItinerario, itinerariosDe } from '../../domain/campanaOperativa';
 import { callejeroDe } from '../../domain/municipios';
 import { leerBytes } from './leerArchivo';
 import { PasoColumnas } from './PasoColumnas';
+import { RespaldoTarjeta } from './Respaldo';
 import type { BaseDatos } from '../../domain/db';
 
 const ETAPAS: { n: EtapaEspacio; t: string; d: string }[] = [
@@ -27,6 +28,14 @@ const ETAPAS: { n: EtapaEspacio; t: string; d: string }[] = [
   { n: 4, t: 'Decisiones', d: 'Resolver lo pendiente' },
   { n: 5, t: 'Vista previa', d: 'Revisar y confirmar' },
   { n: 6, t: 'Resultado', d: 'Incorporado' },
+];
+
+/** UX1 · Vista sencilla: los mismos seis pasos, agrupados en cuatro. */
+const GRUPOS: { t: string; etapas: EtapaEspacio[] }[] = [
+  { t: 'Archivo', etapas: [1] },
+  { t: 'Comprobar', etapas: [2, 3] },
+  { t: 'Decidir', etapas: [4] },
+  { t: 'Confirmar', etapas: [5, 6] },
 ];
 
 const errorTexto = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -67,7 +76,7 @@ function useDestino(tipo: TipoEspacio): DestinoIncorporacion | null {
  * (interpretación), C1c (plan, aplicación atómica, deshacer) y las decisiones de C1d. El archivo se
  * elige y se procesa en ESTE navegador: no se sube a ningún servidor.
  */
-export function AsistenteEspacio({ tipo }: { tipo: TipoEspacio }) {
+export function AsistenteEspacio({ tipo, simple = false }: { tipo: TipoEspacio; simple?: boolean }) {
   const st = useAsistenteEspacio();
   const db = useEspacios((s) => s.db!);
   const persona = personaEspacio(db);
@@ -99,7 +108,22 @@ export function AsistenteEspacio({ tipo }: { tipo: TipoEspacio }) {
   return (
     <ContextoIncorporacion.Provider value={{ db, personaId: persona?.id ?? '', autorizado, destino }}>
       <div className="col" style={{ gap: 12 }}>
-        <ol className="inc-pasos" aria-label="Etapas">
+        {simple ? (
+          <ol className="inc-pasos ux-pasos" aria-label="Pasos">
+            {GRUPOS.map((g, i) => {
+              const on = g.etapas.includes(st.etapa);
+              const hecho = st.etapa > g.etapas[g.etapas.length - 1] || (st.etapa === 6 && g.etapas.includes(5));
+              return (
+                <li key={g.t} className={`${on ? 'on' : ''} ${hecho ? 'hecho' : ''}`}>
+                  <button disabled={!puedeIr(g.etapas[0])} onClick={() => st.set({ etapa: g.etapas[0] })} aria-current={on ? 'step' : undefined}>
+                    <span className="inc-num">{hecho ? <CheckCircle2 size={14} /> : i + 1}</span>
+                    <span><b>{g.t}</b></span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        ) : <ol className="inc-pasos" aria-label="Etapas">
           {ETAPAS.map((e) => (
             <li key={e.n} className={`${st.etapa === e.n ? 'on' : ''} ${st.etapa > e.n ? 'hecho' : ''}`}>
               <button disabled={!puedeIr(e.n)} onClick={() => st.set({ etapa: e.n })} aria-current={st.etapa === e.n ? 'step' : undefined}>
@@ -108,20 +132,22 @@ export function AsistenteEspacio({ tipo }: { tipo: TipoEspacio }) {
               </button>
             </li>
           ))}
-        </ol>
+        </ol>}
         {st.cargando && <div className="t-info inc-progreso" role="status"><span className="inc-spinner" /> {st.cargando}</div>}
         {st.error && <div className="t-info error" role="alert"><AlertTriangle size={15} /> {st.error}</div>}
 
-        {st.etapa === 1 && <EtapaArchivo tipo={tipo} destino={elegido} onAnalizar={() => st.set({ etapa: 2, error: null })} />}
-        {st.etapa === 2 && st.archivo && <PasoColumnas onContinuar={async (lectura) => {
+        {st.etapa === 1 && <EtapaArchivo tipo={tipo} destino={elegido} simple={simple} onAnalizar={() => st.set({ etapa: 2, error: null })} />}
+        {st.etapa === 2 && st.archivo && <PasoColumnas simple={simple} onContinuar={async (lectura) => {
           useAsistenteEspacio.getState().set({ lectura });
           await recalcular(useAsistenteEspacio.getState().decisiones, true, lectura);
           if (!useAsistenteEspacio.getState().error) useAsistenteEspacio.getState().set({ etapa: 3 });
         }} />}
-        {st.etapa === 3 && st.preparado && <EtapaDiagnostico destino={destino} />}
-        {st.etapa === 4 && st.preparado && <Decisiones resultado={st.preparado.resultado} plan={st.preparado.plan} decisiones={st.decisiones} onCambiar={(d) => recalcular(d)} />}
-        {st.etapa === 5 && st.preparado && <EtapaVistaPrevia tipo={tipo} destino={destino} />}
-        {st.etapa === 6 && st.aplicado && <EtapaResultado />}
+        {st.etapa === 3 && st.preparado && <EtapaDiagnostico destino={destino} simple={simple} />}
+        {st.etapa === 4 && st.preparado && (simple
+          ? <DecidirSencillo destino={destino}>{<Decisiones resultado={st.preparado.resultado} plan={st.preparado.plan} decisiones={st.decisiones} onCambiar={(d) => recalcular(d)} />}</DecidirSencillo>
+          : <Decisiones resultado={st.preparado.resultado} plan={st.preparado.plan} decisiones={st.decisiones} onCambiar={(d) => recalcular(d)} />)}
+        {st.etapa === 5 && st.preparado && <EtapaVistaPrevia tipo={tipo} destino={destino} simple={simple} />}
+        {st.etapa === 6 && st.aplicado && <EtapaResultado simple={simple} />}
 
         {st.etapa > 2 && st.etapa < 6 && (
           <div className="inc-nav fila">
@@ -135,7 +161,7 @@ export function AsistenteEspacio({ tipo }: { tipo: TipoEspacio }) {
   );
 }
 
-function EtapaArchivo({ tipo, destino, onAnalizar }: { tipo: TipoEspacio; destino: DestinoIncorporacion | null; onAnalizar: () => void }) {
+function EtapaArchivo({ tipo, destino, simple, onAnalizar }: { tipo: TipoEspacio; destino: DestinoIncorporacion | null; simple: boolean; onAnalizar: () => void }) {
   const st = useAsistenteEspacio();
   const db = useEspacios((s) => s.db!);
   const a = st.archivo;
@@ -155,17 +181,7 @@ function EtapaArchivo({ tipo, destino, onAnalizar }: { tipo: TipoEspacio; destin
     : tipo === 'real' && a.sintetico ? 'Este archivo lo ha generado la aplicación (sintético o ficticio): no se admite en el espacio de datos reales. Úselo en el espacio de ensayo.'
     : tipo === 'ensayo' && a.sha256 === SHA256_ORIGINAL_MEDINA_2025 ? 'Este es el archivo AUTÉNTICO del censo (su SHA-256 coincide con el del diagnóstico agregado): no se usa en el ensayo. Use el espacio de datos reales.'
     : null;
-  return (
-    <div className="inc-rejilla">
-      <Destino tipo={tipo} destino={destino} />
-      <section className="tarjeta inc-bloque" aria-label="Archivo de origen">
-        <h3><FileSpreadsheet size={16} /> 2. Archivo de origen</h3>
-        <label className="campo">
-          <span>Seleccione el XLSX {tipo === 'real' ? 'auténtico del censo' : 'sintético de ensayo'}</span>
-          <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Archivo XLSX del censo" onChange={(e) => void elegir(e.target.files?.[0])} />
-        </label>
-        <p className="muted">El archivo se lee y se procesa <b>en este navegador</b>: no se sube a ningún servidor. Sus bytes solo se mantienen en memoria mientras dure esta sesión y nunca se guardan.</p>
-        {a && (
+  const detallesArchivo = a && (
           <dl className="inc-dl" aria-label="Identificación del archivo">
             <dt>Archivo</dt><dd>{a.nombre}</dd>
             <dt>Tamaño</dt><dd>{mb(a.tamano)}</dd>
@@ -174,11 +190,8 @@ function EtapaArchivo({ tipo, destino, onAnalizar }: { tipo: TipoEspacio; destin
             <dd>{a.sha256 === SHA256_ORIGINAL_MEDINA_2025 ? <span className="chip ok">Coincide con la huella del archivo auténtico</span> : <span className="chip aviso">No coincide con la huella del archivo auténtico</span>}</dd>
             <dt>Marca de sintético</dt><dd>{a.sintetico ? <span className="chip sim">Archivo SINTÉTICO</span> : 'No'}</dd>
           </dl>
-        )}
-        {bloqueo && <div className="t-info error" role="alert"><XCircle size={15} /> {bloqueo}</div>}
-      </section>
-
-      {destino && (
+        );
+  const queSeHara = destino && (
         <section className="tarjeta inc-bloque" aria-label="Qué se hará">
           <h3>Qué se hará</h3>
           {destino.itinerarioId ? (
@@ -201,12 +214,101 @@ function EtapaArchivo({ tipo, destino, onAnalizar }: { tipo: TipoEspacio; destin
               <span className="muted"> Marque esta opción si el censo incluye visitas anteriores a {destino.anio}: se conservan sus fechas originales. Decisión trazada: {personaEspacio(db)?.nombre}, {hoy()}.</span></span>
           </label>
         </section>
-      )}
+      );
+  if (simple) {
+    return (
+      <div className="col" style={{ gap: 10 }}>
+        <DestinoSencillo destino={destino} />
+        <label className="ux-archivo">
+          <FileSpreadsheet size={22} aria-hidden />
+          <span><b>{a ? a.nombre : 'Elija el Excel'}</b><span className="muted">{a ? `${mb(a.tamano)}${a.sintetico ? ' · sintético' : ''}` : tipo === 'real' ? 'Archivo .xlsx del censo' : 'Archivo .xlsx sintético'}</span></span>
+          <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Archivo XLSX del censo" onChange={(e) => void elegir(e.target.files?.[0])} />
+        </label>
+        {bloqueo && <div className="t-info error" role="alert"><XCircle size={15} /> {bloqueo}</div>}
+        {destino && (
+          <details className="ux-plegable">
+            <summary>Detalles y opciones</summary>
+            {detallesArchivo}
+            {queSeHara}
+          </details>
+        )}
+        <div className="inc-nav fila">
+          <span className="esp" />
+          <button className="btn primario" disabled={!destino || !a || !!bloqueo || !!st.cargando} onClick={onAnalizar}>Continuar <ArrowRight size={15} /></button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="inc-rejilla">
+      <Destino tipo={tipo} destino={destino} />
+      <section className="tarjeta inc-bloque" aria-label="Archivo de origen">
+        <h3><FileSpreadsheet size={16} /> 2. Archivo de origen</h3>
+        <label className="campo">
+          <span>Seleccione el XLSX {tipo === 'real' ? 'auténtico del censo' : 'sintético de ensayo'}</span>
+          <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Archivo XLSX del censo" onChange={(e) => void elegir(e.target.files?.[0])} />
+        </label>
+        <p className="muted">El archivo se lee y se procesa <b>en este navegador</b>: no se sube a ningún servidor. Sus bytes solo se mantienen en memoria mientras dure esta sesión y nunca se guardan.</p>
+        {detallesArchivo}
+        {bloqueo && <div className="t-info error" role="alert"><XCircle size={15} /> {bloqueo}</div>}
+      </section>
+
+      {queSeHara}
 
       <div className="inc-nav fila inc-ancho">
         <span className="muted esp">Persona: {personaEspacio(db)?.nombre}</span>
         <button className="btn primario" disabled={!destino || !a || !!bloqueo || !!st.cargando} onClick={onAnalizar}>Siguiente: columnas <ArrowRight size={15} /></button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * UX1 · «Decidir» en la vista sencilla: si no hay nada pendiente se dice y las decisiones quedan plegadas;
+ * si lo hay, se muestran abiertas (las mismas de siempre). Las filas sin local pueden resolverse también
+ * después de incorporar, en «Incidencias».
+ */
+function DecidirSencillo({ destino, children }: { destino: DestinoIncorporacion; children: React.ReactNode }) {
+  const { preparado, decisiones } = useAsistenteEspacio();
+  const db = useEspacios((s) => s.db!);
+  const { resultado, plan } = preparado!;
+  const calles = useMemo(() => conciliacionCalles(db, resultado, destino.municipioId, decisiones), [db, resultado, destino.municipioId, decisiones]);
+  const rec = recuentoRegistros(plan);
+  const sinCalle = calles.porEstado.pendiente.denominaciones + calles.porEstado.ambigua.denominaciones;
+  const nada = !sinCalle && !rec.pendientes && !plan.bloqueos.length;
+  return (
+    <div className="col" style={{ gap: 10 }}>
+      {nada
+        ? <div className="t-info ok"><CheckCircle2 size={15} /> Nada que decidir: todas las filas tienen local y todas las calles están reconocidas.</div>
+        : <div className="t-info aviso" role="note"><AlertTriangle size={15} /> <span>{[sinCalle && `${sinCalle} nombre(s) de calle por relacionar`, rec.pendientes && `${rec.pendientes} fila(s) sin local`].filter(Boolean).join(' · ')}. Puede decidir ahora o dejarlo para «Incidencias», después de incorporar.</span></div>}
+      <details className="ux-plegable" open={!nada}>
+        <summary>{nada ? 'Ver todas las decisiones' : 'Decisiones'}</summary>
+        {children}
+      </details>
+    </div>
+  );
+}
+
+/** UX1 · Destino en la vista sencilla: la campaña ya está elegida en el inicio; solo se elige el itinerario. */
+function DestinoSencillo({ destino }: { destino: DestinoIncorporacion | null }) {
+  const db = useEspacios((s) => s.db!);
+  const sel = useSeleccionEspacio();
+  const st = useAsistenteEspacio();
+  if (!destino) return <div className="t-info aviso" role="note"><AlertTriangle size={15} /> No hay destino disponible para esta campaña.</div>;
+  const its = destino.itinerarioId && destino.campanaId ? itinerariosDe(db, destino.campanaId) : [];
+  const conExcel = new Set(Object.values(db.importaciones).filter((i) => i.campanaId === destino.campanaId && i.estado === 'confirmada').map((i) => i.c1?.itinerario?.id));
+  return (
+    <div className="ux-destino" role="group" aria-label="Destino">
+      <span className="muted">Destino</span>
+      <b>{destino.nombre}</b>
+      {destino.itinerarioId && (
+        <label className="campo">
+          <span className="sr-only">Itinerario</span>
+          <select className="input" aria-label="Itinerario de destino" value={destino.itinerarioId} onChange={(e) => { sel.elegir({ itinerarioId: e.target.value }); st.set({ preparado: null }); }}>
+            {its.map((i) => <option key={i.id} value={i.id}>{i.codigo}{conExcel.has(i.id) ? ' (ya tiene Excel)' : ''}</option>)}
+          </select>
+        </label>
+      )}
     </div>
   );
 }
@@ -300,7 +402,7 @@ function Destino({ tipo, destino }: { tipo: TipoEspacio; destino: DestinoIncorpo
   );
 }
 
-function EtapaDiagnostico({ destino }: { destino: DestinoIncorporacion }) {
+function EtapaDiagnostico({ destino, simple }: { destino: DestinoIncorporacion; simple: boolean }) {
   const { preparado, decisiones, lectura } = useAsistenteEspacio();
   const db = useEspacios((s) => s.db!);
   const { resultado, plan } = preparado!;
@@ -311,7 +413,7 @@ function EtapaDiagnostico({ destino }: { destino: DestinoIncorporacion }) {
   const sen = useMemo(() => senales(resultado), [resultado]);
   const items = useMemo(() => itemsRevision(resultado, plan, decisiones), [resultado, plan, decisiones]);
   const [verCalles, setVerCalles] = useState<EstadoCalle | null>('pendiente');
-  return (
+  const completo = (
     <div className="col" style={{ gap: 12 }}>
       <section className="tarjeta inc-bloque" aria-label="Diagnóstico agregado">
         <h3>{ref ? 'Diagnóstico frente al informe de referencia' : 'Diagnóstico del archivo'}</h3>
@@ -363,6 +465,31 @@ function EtapaDiagnostico({ destino }: { destino: DestinoIncorporacion }) {
       <RevisionGrupos items={items} />
     </div>
   );
+  if (simple) {
+    const rec = recuentoRegistros(plan);
+    const sinCalle = (['pendiente', 'sin-correspondencia', 'ambigua'] as EstadoCalle[]).reduce((n, e) => n + calles.porEstado[e].denominaciones, 0);
+    const graves = sen.filter((x) => x.gravedad === 'error').reduce((n, x) => n + x.filas, 0);
+    return (
+      <div className="col" style={{ gap: 12 }}>
+        <section className="tarjeta inc-bloque" aria-label="Resultado de la comprobación">
+          <h3>Comprobación del archivo</h3>
+          <ul className="inc-lista ux-comprobacion">
+            <li className="ok"><CheckCircle2 size={14} /> {fmt(rec.total)} filas leídas</li>
+            <li className={rec.pendientes ? 'aviso' : 'ok'}>{rec.pendientes ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />} {fmt(rec.vinculados)} con local · {fmt(rec.pendientes)} sin local (se conservan y se revisan después)</li>
+            {cj.disponible && <li className={sinCalle ? 'aviso' : 'ok'}>{sinCalle ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />} {sinCalle ? `${sinCalle} nombre(s) de calle sin reconocer: puede resolverlos en «Decidir»` : 'Todas las calles reconocidas'}</li>}
+            {ref && <li className={diag.diferencias.length ? 'aviso' : 'ok'}>{diag.diferencias.length ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />} {diag.diferencias.length ? `${diag.diferencias.length} indicador(es) no coinciden con el informe de referencia` : 'Coincide con el informe de referencia'}</li>}
+            {graves > 0 && <li className="aviso"><AlertTriangle size={14} /> {fmt(graves)} dato(s) con errores señalados (ningún registro se elimina)</li>}
+          </ul>
+          {plan.bloqueos.length > 0 && <div className="t-info error" role="alert"><Lock size={15} /> <div><b>No se puede incorporar:</b> {plan.bloqueos.map((b) => b.mensaje).join(' ')}</div></div>}
+          <details className="ux-plegable">
+            <summary>Ver la comprobación completa</summary>
+            {completo}
+          </details>
+        </section>
+      </div>
+    );
+  }
+  return completo;
 }
 
 const ENTIDADES: [string, string][] = [
@@ -371,7 +498,7 @@ const ENTIDADES: [string, string][] = [
   ['franquicias', 'Franquicias históricas'], ['digital', 'Presencia digital histórica (borrador)'], ['clasificaciones', 'Clasificaciones propuestas, sin confirmar'],
 ];
 
-function EtapaVistaPrevia({ tipo, destino }: { tipo: TipoEspacio; destino: DestinoIncorporacion }) {
+function EtapaVistaPrevia({ tipo, destino, simple }: { tipo: TipoEspacio; destino: DestinoIncorporacion; simple: boolean }) {
   const st = useAsistenteEspacio();
   const esp = useEspacios();
   const { resultado, plan } = st.preparado!;
@@ -389,8 +516,8 @@ function EtapaVistaPrevia({ tipo, destino }: { tipo: TipoEspacio; destino: Desti
     if (!r.ok) return st.set({ error: r.error ?? 'No se ha incorporado nada.' });
     st.set({ etapa: 6, aplicado: { importacionId: r.importacionId!, campanaId: r.campanaId!, creadas: r.creadas! } });
   };
-  return (
-    <div className="inc-rejilla">
+  const informacion = (
+    <>
       <section className="tarjeta inc-bloque" aria-label="Identificación">
         <h3>Identificación</h3>
         <dl className="inc-dl">
@@ -442,6 +569,54 @@ function EtapaVistaPrevia({ tipo, destino }: { tipo: TipoEspacio; destino: Desti
         </ul>
       </section>
 
+    </>
+  );
+  const respaldoFalta = req.some((r) => r.id === 'respaldo' && !r.ok);
+  if (simple) {
+    return (
+      <div className="col" style={{ gap: 12 }}>
+        <section className="tarjeta inc-bloque" aria-label="Resumen de la incorporación">
+          <h3>Se incorporará en {plan.destino.nombre}{plan.destino.itinerario ? ` · ${plan.destino.itinerario.codigo}` : ''}</h3>
+          <div className="ux-cifras">
+            <div><b>{fmt(rec.preparados)}</b><span>filas</span></div>
+            <div><b>{fmt(rec.vinculados)}</b><span>con local</span></div>
+            <div><b>{fmt(rec.pendientes)}</b><span>sin local (se revisan después)</span></div>
+            {rec.excluidos > 0 && <div><b>{fmt(rec.excluidos)}</b><span>excluidas</span></div>}
+          </div>
+          {(plan.cruces ?? []).length > 0 && <p className="muted" style={{ margin: 0 }}>{(plan.cruces ?? []).length} fila(s) coinciden o no coinciden con otros itinerarios: quedarán en «Incidencias».</p>}
+          <details className="ux-plegable">
+            <summary>Ver la vista previa completa</summary>
+            <div className="inc-rejilla">{informacion}</div>
+          </details>
+        </section>
+        <section className="tarjeta inc-bloque " aria-label="Confirmación">
+        <h3>{simple ? 'Confirmar' : 'Requisitos para incorporar'}</h3>
+        {simple && listo && <div className="t-info ok"><CheckCircle2 size={15} /> Todo listo para incorporar.</div>}
+        {simple && respaldoFalta && <RespaldoTarjeta tipo={tipo} compacto />}
+        <ul className="inc-lista req-lista">
+          {(simple ? req.filter((r) => !r.ok || r.aviso) : req).map((r) => <li key={r.id} className={!r.ok ? 'no' : r.aviso ? 'aviso' : 'ok'}>{!r.ok ? <XCircle size={14} aria-label="no cumplido" /> : r.aviso ? <AlertTriangle size={14} aria-label="revisar" /> : <CheckCircle2 size={14} aria-label="cumplido" />} {r.texto}</li>)}
+        </ul>
+        <label className="fila inc-confirmar">
+          <input type="checkbox" checked={st.revisada} onChange={(e) => st.set({ revisada: e.target.checked })} aria-label="He revisado la vista previa" />
+          <span>{simple ? 'He revisado el resumen y los avisos.' : 'He revisado la vista previa completa: identificación, diagnóstico, calles, recuentos, pendientes y advertencias.'}</span>
+        </label>
+        {esp.soloMemoria && (
+          <div className="t-info aviso" role="note"><Lock size={15} /> <div><b>Análisis sin guardar.</b> Esta vista previa vive solo en la memoria de esta pestaña: no se ha guardado ningún registro y al cerrarla no queda nada.</div></div>
+        )}
+        {tipo === 'real' && !CONFIRMACION_REAL_HABILITADA && (
+          <div className="t-info aviso" role="note"><Lock size={15} /> <div><b>C1e-B · Detenido aquí.</b> La incorporación del censo real no se puede confirmar hasta que revisemos juntos esta vista previa. No se ha incorporado nada.</div></div>
+        )}
+        <div className="fila">
+          <span className="esp" />
+          <button className="btn primario" disabled={!listo || !!esp.ocupado} onClick={incorporar}><ShieldCheck size={15} /> {esp.ocupado ?? 'Incorporar al espacio'}</button>
+        </div>
+      </section>
+      </div>
+    );
+  }
+  return (
+    <div className="inc-rejilla">
+      {informacion}
       <section className="tarjeta inc-bloque inc-ancho" aria-label="Confirmación">
         <h3>Requisitos para incorporar</h3>
         <ul className="inc-lista req-lista">
@@ -466,7 +641,7 @@ function EtapaVistaPrevia({ tipo, destino }: { tipo: TipoEspacio; destino: Desti
   );
 }
 
-function EtapaResultado() {
+function EtapaResultado({ simple }: { simple: boolean }) {
   const st = useAsistenteEspacio();
   const esp = useEspacios();
   const a = st.aplicado!;
@@ -482,12 +657,31 @@ function EtapaResultado() {
     <div className="inc-rejilla">
       <section className="tarjeta inc-bloque inc-ancho" aria-label="Resultado">
         {deshecha ? <div className="t-info aviso"><Undo2 size={15} /> Incorporación deshecha. Su traza se conserva.</div> : <div className="t-info ok"><CheckCircle2 size={15} /> Incorporación aplicada como una única operación y guardada con verificación.</div>}
-        <div className="t-info aviso"><AlertTriangle size={15} /> Descargue y compruebe ahora un <b>respaldo nuevo</b>: el anterior ya no corresponde al estado actual.</div>
-        <div className="ap-resumen">
-          {Object.entries(a.creadas).filter(([, n]) => n).map(([k, n]) => <div key={k}><span className="muted">{k}</span><b>{fmt(n)}</b></div>)}
-        </div>
-        <dl className="inc-dl"><dt>Importación</dt><dd className="mono">{a.importacionId}</dd><dt>Campaña</dt><dd className="mono">{a.campanaId}</dd></dl>
-        <div className="fila">
+        <div className="t-info aviso"><AlertTriangle size={15} /> <span>Descargue y compruebe ahora un <b>respaldo nuevo</b>: el anterior ya no corresponde al estado actual.</span></div>
+        {simple ? (
+          <>
+            <div className="ux-cifras">
+              <div><b>{fmt(a.creadas.registros ?? 0)}</b><span>filas</span></div>
+              <div><b>{fmt(a.creadas.locales ?? 0)}</b><span>locales nuevos</span></div>
+              <div><b>{fmt(a.creadas.observaciones ?? 0)}</b><span>observaciones</span></div>
+            </div>
+            <details className="ux-plegable">
+              <summary>Detalle técnico</summary>
+              <div className="ap-resumen">
+                {Object.entries(a.creadas).filter(([, n]) => n).map(([k, n]) => <div key={k}><span className="muted">{k}</span><b>{fmt(n)}</b></div>)}
+              </div>
+              <dl className="inc-dl"><dt>Importación</dt><dd className="mono ux-id">{a.importacionId}</dd><dt>Campaña</dt><dd className="mono ux-id">{a.campanaId}</dd></dl>
+            </details>
+          </>
+        ) : (
+          <>
+            <div className="ap-resumen">
+              {Object.entries(a.creadas).filter(([, n]) => n).map(([k, n]) => <div key={k}><span className="muted">{k}</span><b>{fmt(n)}</b></div>)}
+            </div>
+            <dl className="inc-dl"><dt>Importación</dt><dd className="mono">{a.importacionId}</dd><dt>Campaña</dt><dd className="mono">{a.campanaId}</dd></dl>
+          </>
+        )}
+        <div className="fila ux-fila-acc">
           {!deshecha && <button className="btn peligro" disabled={!vista?.permitido || !!esp.ocupado} title={vista?.conflictos.join(' · ')} onClick={deshacer}><Undo2 size={15} /> Deshacer la incorporación</button>}
           <span className="esp" />
           <button className="btn" onClick={() => st.reiniciar()}>Cerrar el asistente</button>

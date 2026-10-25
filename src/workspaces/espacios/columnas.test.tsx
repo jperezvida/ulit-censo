@@ -31,7 +31,7 @@ beforeEach(async () => {
 afterEach(() => vi.unstubAllGlobals());
 
 async function abrirEnsayoCon(bytes: Uint8Array, nombre: string) {
-  render(<MemoryRouter initialEntries={['/espacios/ensayo']}><Routes><Route path="/espacios/*" element={<EspaciosApp />} /></Routes></MemoryRouter>);
+  render(<MemoryRouter initialEntries={['/espacios/ensayo/avanzado']}><Routes><Route path="/espacios/*" element={<EspaciosApp />} /></Routes></MemoryRouter>);
   if (await screen.findByRole('region', { name: /Crear el espacio|Estado del espacio/ }, { timeout: 20000 }).then((r) => r.getAttribute('aria-label') === 'Crear el espacio')) {
     fireEvent.change(screen.getByLabelText('Persona responsable'), { target: { value: 'Coordinación de Prueba' } });
     fireEvent.click(screen.getByRole('button', { name: 'Crear el espacio' }));

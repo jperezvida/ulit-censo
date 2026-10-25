@@ -19,7 +19,7 @@ const errorTexto = (e: unknown) => (e instanceof Error ? e.message : String(e));
  * falten y se previsualizan las primeras filas. El perfil puede guardarse para reutilizarlo.
  * Las columnas sin campo se conservan tal cual. Nada se inventa para los campos sin columna.
  */
-export function PasoColumnas({ onContinuar }: { onContinuar: (l: LecturaArchivo) => void }) {
+export function PasoColumnas({ onContinuar, simple = false }: { onContinuar: (l: LecturaArchivo) => void; simple?: boolean }) {
   const archivo = useAsistenteEspacio((s) => s.archivo)!;
   const [leido, setLeido] = useState<LibroLeido | null>(null);
   const [guardados, setGuardados] = useState<PerfilImportacion[]>([]);
@@ -100,8 +100,8 @@ export function PasoColumnas({ onContinuar }: { onContinuar: (l: LecturaArchivo)
   if (!leido || !informe) return <div className="t-info inc-progreso" role="status"><span className="inc-spinner" /> Leyendo el Excel en este navegador…</div>;
   const hojasDatos = informe.hojas;
 
-  return (
-    <div className="col" style={{ gap: 12 }}>
+  const detalle = (
+    <>
       <section className="tarjeta inc-bloque" aria-label="Columnas del archivo">
         <h3>¿Cómo se lee este Excel?</h3>
         <p className="muted" style={{ margin: 0 }}>Compruebe que cada columna corresponde al dato correcto. Si alguna no está reconocida, elija su dato en la lista. Las columnas que no son datos de ULIT se conservan tal cual.</p>
@@ -198,6 +198,24 @@ export function PasoColumnas({ onContinuar }: { onContinuar: (l: LecturaArchivo)
         )}
         {aviso && <div className={`t-info ${aviso.ok ? 'ok' : 'error'}`} role={aviso.ok ? 'status' : 'alert'}>{aviso.ok ? <CheckCircle2 size={15} /> : <XCircle size={15} />} {aviso.texto}</div>}
       </section>
+    </>
+  );
+
+  return (
+    <div className="col" style={{ gap: 12 }}>
+      {simple ? (
+        <>
+          <section className="tarjeta inc-bloque" aria-label="Columnas reconocidas">
+            {ev.lista
+              ? <div className="t-info ok"><CheckCircle2 size={15} /> {asignadas.length} columnas reconocidas{perfil ? ` (${perfil.nombre})` : ''}. Puede continuar.</div>
+              : <div className="t-info aviso" role="alert"><AlertTriangle size={15} /> Hay columnas sin reconocer: ábralas abajo e indique qué dato es cada una.</div>}
+          </section>
+          <details className="ux-plegable" open={!ev.lista}>
+            <summary>Revisar las columnas</summary>
+            <div className="col" style={{ gap: 12 }}>{detalle}</div>
+          </details>
+        </>
+      ) : detalle}
 
       <div className="inc-nav fila">
         <span className="muted esp">{ev.lista ? 'Todo listo para analizar los datos.' : 'Indique la calle (o la dirección completa) y resuelva las columnas dudosas para continuar.'}</span>

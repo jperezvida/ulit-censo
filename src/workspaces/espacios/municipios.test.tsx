@@ -29,7 +29,7 @@ beforeEach(async () => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-const montar = () => render(<MemoryRouter initialEntries={['/espacios/ensayo']}><Routes><Route path="/espacios/*" element={<EspaciosApp />} /></Routes></MemoryRouter>);
+const montar = () => render(<MemoryRouter initialEntries={['/espacios/ensayo/avanzado']}><Routes><Route path="/espacios/*" element={<EspaciosApp />} /></Routes></MemoryRouter>);
 const guardada = () => idbGet<BaseDatos>('db', createStore('ulit-censo-ensayo', 'datos'));
 
 describe('G2 · Municipios y campañas (interfaz)', () => {

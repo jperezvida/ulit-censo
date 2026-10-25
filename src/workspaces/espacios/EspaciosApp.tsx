@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Route, Routes, useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, CheckCircle2, Download, Eye, FileCheck2, FlaskConical, HardDrive, Lock, RotateCcw, ShieldCheck, Upload, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, Download, Eye, FlaskConical, HardDrive, Lock, RotateCcw, ShieldCheck, XCircle } from 'lucide-react';
 import { fmt } from '../../components/ui';
 import { useEspacios } from '../../store/espacios';
 import { BASE_INDEXEDDB, ESPACIO_TXT, personaEspacio, type TipoEspacio } from '../../domain/espacios';
@@ -8,7 +8,8 @@ import { ARCHIVO_SINTETICO_C1E, libroSinteticoC1e } from '../../data/xlsxSinteti
 import { AsistenteEspacio } from './AsistenteEspacio';
 import { useAsistenteEspacio, useSeleccionEspacio } from './estadoAsistenteEspacio';
 import { MunicipiosCampanas } from './MunicipiosCampanas';
-import { leerTexto } from './leerArchivo';
+import { descargar, RespaldoTarjeta } from './Respaldo';
+import { Inicio } from './Inicio';
 import { comprobarGarantias, VERSION_EMBEBIDA, type ResultadoGarantias } from './garantiasNavegador';
 import { entornoDe } from '../../domain/garantias';
 import '../../styles/datos.css';
@@ -17,16 +18,7 @@ import '../../styles/espacios.css';
 
 const MiB = 1024 * 1024;
 
-/** Descarga un archivo generado en el navegador (respaldo o archivo sintético). */
-function descargar(nombre: string, datos: BlobPart, tipo: string) {
-  if (typeof URL.createObjectURL !== 'function') return;
-  const url = URL.createObjectURL(new Blob([datos], { type: tipo }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = nombre;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 2000);
-}
+
 
 
 /**
@@ -38,7 +30,7 @@ export default function EspaciosApp() {
     <div className="esp-app">
       <header className="esp-cab">
         <Link to="/espacios" className="marca-ulit"><b>ULIT</b><span>Censo</span></Link>
-        <span className="esp-cab-tit">Espacios aislados · incorporación del censo real</span>
+        <span className="esp-cab-tit">Censo municipal</span>
         <span className="esp" />
         <span className="mono esp-version" title={`Commit ${VERSION_EMBEBIDA.commit} · rama ${VERSION_EMBEBIDA.rama}`}>versión {VERSION_EMBEBIDA.commit.slice(0, 7)}</span>
         <NavLink to="/campanas" className="btn s oscuro-borde"><ArrowLeft size={14} /> Volver a la demostración</NavLink>
@@ -47,7 +39,7 @@ export default function EspaciosApp() {
         <Routes>
           <Route index element={<Selector />} />
           <Route path="analisis" element={<AnalisisSinGuardar />} />
-          <Route path=":tipo" element={<EspacioPage />} />
+          <Route path=":tipo/*" element={<EspacioPage />} />
         </Routes>
       </main>
     </div>
@@ -166,7 +158,8 @@ function AnalisisSinGuardar() {
 }
 
 function EspacioPage() {
-  const { tipo: param } = useParams();
+  const { tipo: param, '*': resto } = useParams();
+  const avanzado = resto === 'avanzado';
   const tipo = (param === 'real' || param === 'ensayo' ? param : null) as TipoEspacio | null;
   const esp = useEspacios();
   const reiniciarAsistente = useAsistenteEspacio((s) => s.reiniciar);
@@ -193,12 +186,17 @@ function EspacioPage() {
       <div className={`esp-banda esp-${tipo}`} role="banner" aria-label="Espacio activo">
         {tipo === 'real' ? <ShieldCheck size={18} /> : <FlaskConical size={18} />}
         <b>{ESPACIO_TXT[tipo].nombre.toUpperCase()}</b>
-        <span>{tipo === 'real' ? 'Censos auténticos · separado de la demostración y del ensayo' : 'Solo archivos SINTÉTICOS · separado de la demostración y del espacio real'}</span>
+        <span>{tipo === 'real' ? 'Datos auténticos' : 'Solo archivos SINTÉTICOS'}</span>
       </div>
       {esp.fase === 'cargando' && <div className="t-info" role="status">Abriendo el espacio…</div>}
       {esp.fase === 'error' && <div className="t-info error" role="alert"><AlertTriangle size={15} /> {esp.error}</div>}
       {esp.fase === 'sin-crear' && <Crear tipo={tipo} />}
-      {esp.fase === 'listo' && esp.db && esp.tipo === tipo && <Espacio tipo={tipo} />}
+      {esp.fase === 'listo' && esp.db && esp.tipo === tipo && (avanzado ? (
+        <>
+          <div className="fila ux-volver"><Link to={`/espacios/${tipo}`} className="btn s"><ArrowLeft size={14} /> Volver al inicio</Link><span className="muted">Vista completa: todas las opciones y comprobaciones.</span></div>
+          <Espacio tipo={tipo} />
+        </>
+      ) : <Inicio tipo={tipo} />)}
     </div>
   );
 }
@@ -293,45 +291,6 @@ function Almacenamiento({ tipo }: { tipo: TipoEspacio }) {
         {!a?.persistente && <button className="btn s" onClick={() => void pedir()}>Pedir almacenamiento persistente</button>}
         <button className="btn s" onClick={() => void medir()}><RotateCcw size={13} /> Actualizar</button>
       </div>
-    </section>
-  );
-}
-
-function RespaldoTarjeta({ tipo }: { tipo: TipoEspacio }) {
-  const esp = useEspacios();
-  const [msg, setMsg] = useState<{ ok: boolean; texto: string } | null>(null);
-  const actual = !!esp.respaldoVerificado && esp.respaldoVerificado.huella === esp.huella;
-  return (
-    <section className="tarjeta inc-bloque" aria-label="Respaldo">
-      <h3><FileCheck2 size={16} /> Respaldo externo</h3>
-      <p>{actual ? <span className="chip ok">Respaldo comprobado del estado actual</span> : <span className="chip aviso">Sin respaldo comprobado del estado actual</span>}</p>
-      <ol className="inc-lista">
-        <li><button className="btn s" onClick={() => { const r = esp.prepararRespaldo(); descargar(r.nombreArchivo, r.texto, 'application/json'); setMsg({ ok: true, texto: `Descargado ${r.nombreArchivo}. Guárdelo fuera del navegador y compruébelo en el paso 2.` }); }}><Download size={14} /> 1. Descargar respaldo</button></li>
-        <li>
-          <label className="btn s"><Upload size={14} /> 2. Comprobar un respaldo
-            <input type="file" accept=".json,application/json" hidden aria-label="Comprobar un respaldo" onChange={async (e) => {
-              const f = e.target.files?.[0];
-              e.target.value = '';
-              if (!f) return;
-              const r = await esp.verificarRespaldo(await leerTexto(f), f.name);
-              setMsg(!r.ok ? { ok: false, texto: r.error! } : r.coincide ? { ok: true, texto: `Respaldo correcto y completo: coincide con el estado actual (${f.name}).` } : { ok: false, texto: 'Respaldo correcto, pero de un estado anterior: no sirve como respaldo del estado actual.' });
-            }} />
-          </label>
-        </li>
-        <li>
-          <label className="btn s peligro"><Lock size={14} /> Restaurar desde un respaldo
-            <input type="file" accept=".json,application/json" hidden aria-label="Restaurar desde un respaldo" onChange={async (e) => {
-              const f = e.target.files?.[0];
-              e.target.value = '';
-              if (!f) return;
-              if (!confirm(`Se sustituirá el contenido del ${ESPACIO_TXT[tipo].nombre.toLowerCase()} por el del respaldo «${f.name}». Antes se guarda una copia interna del estado actual. ¿Continuar?`)) return;
-              const r = await esp.restaurar(await leerTexto(f));
-              setMsg(r.ok ? { ok: true, texto: 'Respaldo restaurado y verificado.' } : { ok: false, texto: r.error! });
-            }} />
-          </label>
-        </li>
-      </ol>
-      {msg && <div className={`t-info ${msg.ok ? 'ok' : 'error'}`} role="status">{msg.ok ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />} {msg.texto}</div>}
     </section>
   );
 }

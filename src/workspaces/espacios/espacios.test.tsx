@@ -75,7 +75,7 @@ async function columnasMedina() {
 
 describe('C1e · Espacios aislados (interfaz)', () => {
   it('ensayo: archivo local → diagnóstico igual al informe → vista previa → exige respaldo comprobado → incorpora', async () => {
-    montar('/espacios/ensayo');
+    montar('/espacios/ensayo/avanzado');
     expect(screen.getByRole('banner', { name: 'Espacio activo' })).toHaveTextContent(/ESPACIO DE ENSAYO.*SINTÉTICOS/);
     await crearEspacio();
     await crearCampanaHistorica();
@@ -115,7 +115,7 @@ describe('C1e · Espacios aislados (interfaz)', () => {
   }, 180000);
 
   it('real: rechaza el archivo sintético y, con otro archivo, la confirmación queda bloqueada (C1e-B)', async () => {
-    montar('/espacios/real');
+    montar('/espacios/real/avanzado');
     expect(screen.getByRole('banner', { name: 'Espacio activo' })).toHaveTextContent(/ESPACIO DE DATOS REALES/);
     await crearEspacio();
     await crearCampanaHistorica();

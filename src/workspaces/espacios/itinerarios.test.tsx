@@ -55,7 +55,7 @@ async function incorporar(it: 'IT1' | 'IT2') {
 describe('G4 · Itinerarios de una campaña operativa (interfaz)', () => {
   it('IT1 e IT2 en la misma campaña: desglose, consolidado, cruces sin fusionar y conciliación posterior (G5)', async () => {
     vi.stubGlobal('fetch', vi.fn());
-    render(<MemoryRouter initialEntries={['/espacios/ensayo']}><Routes><Route path="/espacios/*" element={<EspaciosApp />} /></Routes></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/espacios/ensayo/avanzado']}><Routes><Route path="/espacios/*" element={<EspaciosApp />} /></Routes></MemoryRouter>);
     await screen.findByRole('region', { name: 'Crear el espacio' }, { timeout: 20000 });
     fireEvent.change(screen.getByLabelText('Persona responsable'), { target: { value: 'Coordinación de Prueba' } });
     fireEvent.click(screen.getByLabelText('Incluir Medina del Campo'));

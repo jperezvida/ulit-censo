@@ -163,7 +163,7 @@ function ReglaCampo({ etiqueta, regla, onCambiar, conValor }: { etiqueta: string
   );
 }
 
-function FormMunicipio({ onCerrar }: { onCerrar: (municipioId?: Id) => void }) {
+export function FormMunicipio({ onCerrar }: { onCerrar: (municipioId?: Id) => void }) {
   const db = useEspacios((s) => s.db!);
   const alta = useEspacios((s) => s.altaMunicipio);
   const ocupado = useEspacios((s) => s.ocupado);
