@@ -6,11 +6,11 @@ import { huella } from '../data/rng';
 import { sha256Texto } from './sha256';
 import { TAXONOMIA_POR_ID, catalogoDeNodo } from './taxonomy';
 import { configTerritorialDe } from './territorio';
-import { motivoNoDestino } from './municipios';
+import { claseCampana, motivoNoDestino } from './municipios';
 import { callesVigentes } from './callejeros';
 import { REGLAS, TIPOS_INCIDENCIA } from './xlsx/reglasInterpretacion';
 import { validarDecisionesCalle, type DecisionCalle } from './conciliacionCalles';
-import { denominacionCalle, localizacionDe, type FilaInterpretada, type OpcionesInterpretacion, type ResultadoInterpretacion } from './xlsx/interpretacion';
+import { denominacionCalle, localizacionDe, type FilaInterpretada, type OpcionesInterpretacion, type Portal, type ResultadoInterpretacion } from './xlsx/interpretacion';
 import type {
   Campana, CeldaOriginal, ColeccionIncorporada, Confianza, DatoDigital, Id, Importacion, LocalFisico, Observacion, Ocupacion, RegistroOrigen,
   RevisionDigital, TrazaIncorporacion, VariableDigital, VinculoHistorico,
@@ -103,6 +103,12 @@ export interface DestinoIncorporacion {
    */
   campanaId?: Id;
   importacionId?: Id;
+  /**
+   * G4 · Itinerario de una campaña OPERATIVA. Con una campaña operativa como destino es obligatorio: el
+   * Excel de ese itinerario se incorpora en la campaña (sin crear otra) y el censo se consolida con los de
+   * los demás itinerarios. La campaña no se modifica.
+   */
+  itinerarioId?: Id;
 }
 
 export type Correspondencia = 'inequivoca' | 'decidida' | 'ambigua' | 'sin-vinculo' | 'excluida';
@@ -152,7 +158,15 @@ export interface PlanIncorporacion {
   hoja: string;
   municipio: { id: Id; nombre: string };
   /** `nueva`: la incorporación crea la campaña; si es false, se incorpora en una campaña ya preparada (G2). */
-  destino: { campanaId: Id; importacionId: Id; anio: number; nombre: string; nueva: boolean };
+  destino: { campanaId: Id; importacionId: Id; anio: number; nombre: string; nueva: boolean; itinerario?: { id: Id; codigo: string } };
+  /** G4 · «operativo»: Excel de un itinerario en una campaña operativa; «historico»: censo histórico (C1c). */
+  modo?: 'historico' | 'operativo';
+  /**
+   * G4 · Filas que coinciden con lo ya incorporado por OTROS itinerarios de la campaña: posibles duplicados
+   * (misma calle, número y nombre) o contradicciones (mismo portal: vacío en uno, ocupado en otro). Nada
+   * se fusiona: quedan para la conciliación supervisada.
+   */
+  cruces?: { fila: number; tipo: 'posible-duplicado' | 'contradiccion'; itinerario: string; detalle: string }[];
   aplicable: boolean;
   bloqueos: Bloqueo[];
   registros: { previstos: number; excluidos: number; candidatasExcluir: { fila: number; decidida: boolean }[] };
@@ -182,7 +196,7 @@ const resumir = (texto: string, alg: AlgoritmoHuella) => (alg === 'sha256' ? sha
 export const algoritmoDe = (traza: Pick<TrazaIncorporacion, 'version' | 'algoritmoHuellas'>): AlgoritmoHuella => traza.algoritmoHuellas ?? (traza.version === 1 ? 'fnv1a-32' : 'sha256');
 const huellaFila = (celdas: Record<string, unknown>, alg: AlgoritmoHuella = 'sha256') => resumir(JSON.stringify(Object.keys(celdas).sort().map((k) => [k, celdas[k]])), alg);
 
-function validarDecisiones(db: BaseDatos, d: DecisionesIncorporacion, filas: Set<number>, municipioId: Id, anio: number): string[] {
+function validarDecisiones(db: BaseDatos, d: DecisionesIncorporacion, filas: Set<number>, municipioId: Id, anio: number, campanaOperativa?: Id): string[] {
   const errores: string[] = [];
   const traza = (x: Trazada, que: string) => {
     if (!x.porId || !db.personas[x.porId]) errores.push(`${que}: la persona «${x.porId}» no existe; toda decisión debe estar firmada.`);
@@ -209,7 +223,9 @@ function validarDecisiones(db: BaseDatos, d: DecisionesIncorporacion, filas: Set
       if (!l || l.municipioId !== municipioId) errores.push(`Correspondencia de la fila ${c.fila}: el local «${c.localId}» no existe en el municipio.`);
       // Una ocupación de otra campaña del MISMO año competiría con la histórica (el orden de
       // ocupaciones es por año): se exige conciliarlo antes.
-      else if (Object.values(db.ocupaciones).some((o) => o.localId === c.localId && anioDe(db, o.desdeCampanaId) === anio)) {
+      // G4: en una campaña operativa, el local puede tener ya la ocupación de OTRO itinerario de la misma
+      // campaña (el mismo establecimiento visto dos veces): se vincula sin crear otra ocupación.
+      else if (Object.values(db.ocupaciones).some((o) => o.localId === c.localId && anioDe(db, o.desdeCampanaId) === anio && o.desdeCampanaId !== campanaOperativa)) {
         errores.push(`Correspondencia de la fila ${c.fila}: el local «${c.localId}» ya tiene una ocupación de otra campaña de ${anio}; hay que conciliarlas primero.`);
       }
     }
@@ -253,10 +269,14 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   const mun = db.municipios[destino.municipioId];
   const bloqueos: Bloqueo[] = [];
   const campanaId = destino.campanaId ?? `camp-hist-${destino.municipioId}-${destino.anio}-${sha.slice(0, 10)}`;
+  // G4: Excel de un itinerario en una campaña OPERATIVA existente (no se crea ni se modifica la campaña).
+  const campDestino = db.campanas[campanaId];
+  const operativo = !!destino.campanaId && !!campDestino && claseCampana(campDestino) === 'operativa';
+  const itinerario = operativo && destino.itinerarioId ? db.itinerarios[destino.itinerarioId] : undefined;
   // Una incorporación deshecha conserva su traza: la siguiente usa otro identificador.
   // Municipio y año forman parte del identificador: el mismo archivo puede incorporarse a ámbitos
   // históricos distintos sin colisionar ni sobrescribir registros.
-  const raizImp = `imp-c1-${destino.municipioId}-${destino.anio}-${sha.slice(0, 16)}`;
+  const raizImp = `imp-c1-${destino.municipioId}-${destino.anio}-${itinerario ? `${itinerario.codigo.toLowerCase().replace(/[^a-z0-9]+/g, '')}-` : ''}${sha.slice(0, 16)}`;
   let importacionId = destino.importacionId ?? raizImp;
   // G2: el mismo archivo puede incorporarse en otra campaña del mismo año (p. ej., dos campañas de 2024):
   // también entonces se usa otro identificador.
@@ -265,8 +285,13 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
 
   if (!mun) bloqueos.push({ codigo: 'destino-invalido', mensaje: `El municipio «${destino.municipioId}» no existe.`, detalles: [] });
   if (!sha) bloqueos.push({ codigo: 'destino-invalido', mensaje: 'Falta la huella SHA-256 del archivo.', detalles: [] });
+  if (operativo) {
+    if (campDestino.municipioId !== destino.municipioId) bloqueos.push({ codigo: 'destino-invalido', mensaje: `La campaña «${campDestino.nombre}» es de otro municipio: no se mezclan datos de municipios distintos.`, detalles: [] });
+    if (campDestino.anio !== destino.anio) bloqueos.push({ codigo: 'destino-invalido', mensaje: `La campaña «${campDestino.nombre}» es de ${campDestino.anio}, no de ${destino.anio}.`, detalles: [] });
+    if (!itinerario || itinerario.campanaId !== campanaId) bloqueos.push({ codigo: 'destino-invalido', mensaje: 'Elija el itinerario de la campaña operativa al que pertenece este Excel.', detalles: [] });
+  }
   const actuales = Object.values(db.campanas).filter((c) => c.municipioId === destino.municipioId && c.tipo !== 'historico-importado' && c.anio >= destino.anio);
-  if (destino.anio >= new Date().getFullYear() || actuales.some((c) => c.anio === destino.anio)) {
+  if (!operativo && (destino.anio >= new Date().getFullYear() || actuales.some((c) => c.anio === destino.anio))) {
     bloqueos.push({ codigo: 'destino-invalido', mensaje: `${destino.anio} no es un año histórico para este municipio: no se incorporan históricos sobre campañas en curso.`, detalles: actuales.filter((c) => c.anio === destino.anio).map((c) => c.nombre) });
   }
 
@@ -283,7 +308,7 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   const interpretadaPorFila = new Map(resultado.filas.map((fi) => [fi.fila, fi]));
   const literalDir = new Map(capa.filas.map((f) => [f.fila, denominacionCalle(f, interpretadaPorFila.get(f.fila)) ?? '']));
   const errores = [
-    ...validarDecisiones(db, decisiones, filasSet, destino.municipioId, destino.anio),
+    ...validarDecisiones(db, decisiones, filasSet, destino.municipioId, destino.anio, operativo ? campanaId : undefined),
     ...validarDecisionesCalle(db, decisiones.calles ?? [], destino.municipioId, new Set(literalDir.values())),
   ];
   if (errores.length) bloqueos.push({ codigo: 'decision-invalida', mensaje: `${errores.length} decisión(es) no válida(s): no se aplica nada.`, detalles: errores });
@@ -294,8 +319,12 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   // El mismo archivo en OTRO año no es la misma incorporación (solo se avisa).
   let reimportacion: PlanIncorporacion['reimportacion'];
   const previas = Object.values(db.importaciones).filter((i) => i.c1 && i.estado === 'confirmada' && i.municipioId === destino.municipioId);
-  const enAmbito = previas.filter((i) => i.c1!.anio === destino.anio && i.c1!.perfil.id === capa.perfil.id && (!destino.campanaId || i.campanaId === destino.campanaId));
-  const identica = enAmbito.find((i) => i.c1!.sha256 === sha && i.c1!.perfil.version === capa.perfil.version);
+  // G4: en una campaña operativa el ámbito es el ITINERARIO (cada uno aporta su archivo); y el mismo
+  // archivo ya incorporado en CUALQUIER itinerario de la campaña es un archivo repetido.
+  const enAmbito = operativo
+    ? previas.filter((i) => i.campanaId === campanaId && (i.c1!.sha256 === sha || (i.c1!.itinerario?.id === destino.itinerarioId && i.c1!.perfil.id === capa.perfil.id)))
+    : previas.filter((i) => i.c1!.anio === destino.anio && i.c1!.perfil.id === capa.perfil.id && (!destino.campanaId || i.campanaId === destino.campanaId));
+  const identica = enAmbito.find((i) => i.c1!.sha256 === sha && (operativo || i.c1!.perfil.version === capa.perfil.version));
   const mismoAmbito = enAmbito.find((i) => i !== identica);
   const enOtroAnio = previas.filter((i) => i.c1!.sha256 === sha && i.c1!.anio !== destino.anio);
   const previa = identica ?? mismoAmbito;
@@ -313,19 +342,21 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
     };
     if (identica) {
       bloqueos.length = 0;
-      bloqueos.push({ codigo: 'reimportacion-identica', mensaje: `Este archivo ya se incorporó (importación «${identica.id}», campaña «${identica.campanaId}»). No se duplica nada.`, detalles: [] });
+      bloqueos.push({ codigo: 'reimportacion-identica', mensaje: `Este archivo ya se incorporó (importación «${identica.id}», campaña «${identica.campanaId}»${identica.c1!.itinerario ? `, itinerario ${identica.c1!.itinerario.codigo}` : ''}). No se duplica nada.`, detalles: [] });
     } else {
       const r = reimportacion;
       bloqueos.push({
         codigo: 'archivo-distinto',
-        mensaje: `Ya hay una incorporación de ${destino.anio} con el mismo perfil y otro archivo u otra versión del perfil (importación «${previa.id}»). Hace falta una nueva conciliación: no se sobrescribe el histórico.`,
+        mensaje: operativo
+          ? `El itinerario ${itinerario?.codigo} ya tiene otro archivo incorporado (importación «${previa.id}»). Para sustituirlo, deshaga antes esa incorporación: no se sobrescribe nada.`
+          : `Ya hay una incorporación de ${destino.anio} con el mismo perfil y otro archivo u otra versión del perfil (importación «${previa.id}»). Hace falta una nueva conciliación: no se sobrescribe el histórico.`,
         detalles: [...(previa.c1!.sha256 === sha ? [`Mismo archivo, perfil v${previa.c1!.perfil.version} → v${capa.perfil.version}`] : []), `${r.filasIguales} fila(s) iguales`, `${r.filasCambiadas.length} cambiada(s)`, `${r.filasNuevas.length} nueva(s)`, `${r.filasDesaparecidas.length} desaparecida(s)`],
       });
     }
   }
 
   if (!bloqueos.some((b) => b.codigo === 'reimportacion-identica')) {
-    if (db.campanas[campanaId]) {
+    if (db.campanas[campanaId] && !operativo) {
       // G2: una campaña elegida como destino debe ser histórica, del mismo municipio y año, y estar vacía.
       const motivo = destino.campanaId ? motivoNoDestino(db, campanaId, destino.municipioId, destino.anio) : `La campaña «${campanaId}» ya existe.`;
       if (motivo) bloqueos.push({ codigo: 'destino-invalido', mensaje: motivo, detalles: [] });
@@ -373,7 +404,9 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
     const negocio = !!calleId && fi.local === 'ocupado' && esValida(fi.celdas.nombre) && !!String(fi.celdas.nombre!.valor).trim();
     const observacion = !!calleId && fi.local !== 'desconocido';
     const sinLocal = (correspondencia: Correspondencia, motivo: MotivoSinLocal, candidatos?: Id[]): PlanFila => ({ ...base, correspondencia, motivo, candidatos, localNuevo: false, negocio, observacion, ocupacion: false });
-    const ocupacion = (localId: Id, nuevo: boolean): PlanFila => ({ ...base, correspondencia: decididas.has(fi.fila) || calleDecidida ? 'decidida' : 'inequivoca', localId, localNuevo: nuevo, negocio, observacion, ocupacion: fi.local === 'vacio' || negocio });
+    // G4: un local que ya tiene ocupación en esta campaña operativa (de otro itinerario) no recibe otra.
+    const yaOcupado = (localId: Id) => operativo && Object.values(db.ocupaciones).some((o) => o.localId === localId && o.desdeCampanaId === campanaId);
+    const ocupacion = (localId: Id, nuevo: boolean): PlanFila => ({ ...base, correspondencia: decididas.has(fi.fila) || calleDecidida ? 'decidida' : 'inequivoca', localId, localNuevo: nuevo, negocio, observacion, ocupacion: (fi.local === 'vacio' || negocio) && (nuevo || !yaOcupado(localId)) });
 
     const dec = decididas.get(fi.fila);
     if (dec && calleId && fi.local !== 'desconocido') {
@@ -414,7 +447,14 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   const gravedad = cuenta(resultado.incidencias.map((i) => i.gravedad));
   const tipos = cuenta(resultado.incidencias.map((i) => i.tipo as string));
   const candidatas = capa.candidatasExcluir.map((c) => ({ fila: c.fila, decidida: excluidas.has(c.fila) }));
+  const cruces = operativo ? crucesConOtrosItinerarios(db, campanaId, destino.itinerarioId, previo.map(({ fi, calleId, portal }) => ({ fi, calleId, portal }))) : [];
+  // Filas cuyo propio Excel indica otro itinerario (columna «itinerario»): se señala, no se corrige.
+  const codigoNum = itinerario ? Number(itinerario.codigo.replace(/\D/g, '')) : NaN;
+  const otroIt = operativo && Number.isFinite(codigoNum) ? resultado.filas.filter((f) => esValida(f.celdas.itinerario) && Number(f.celdas.itinerario.valor) !== codigoNum).map((f) => f.fila) : [];
   const pendientes = [
+    ...(cruces.filter((c) => c.tipo === 'posible-duplicado').length ? [`${cruces.filter((c) => c.tipo === 'posible-duplicado').length} fila(s) coinciden (calle, número y nombre) con lo ya incorporado por otro itinerario: posibles duplicados; no se fusionan, quedan para la conciliación supervisada`] : []),
+    ...(cruces.filter((c) => c.tipo === 'contradiccion').length ? [`${cruces.filter((c) => c.tipo === 'contradiccion').length} fila(s) contradicen a otro itinerario en el mismo portal (vacío frente a ocupado): se conservan las dos observaciones, sin corregir ninguna`] : []),
+    ...(otroIt.length ? [`${otroIt.length} fila(s) indican en su columna «itinerario» un itinerario distinto de ${itinerario!.codigo} (filas ${otroIt.slice(0, 8).join(', ')}${otroIt.length > 8 ? '…' : ''}): compruébelo`] : []),
     ...enOtroAnio.map((i) => `El mismo archivo ya se incorporó como histórico de ${i.c1!.anio} (importación «${i.id}»): comprobar que ${destino.anio} es el año correcto`),
     ...Object.values(REGLAS).filter((r) => r.clase === 'propuesta' && !(op.reglasAutorizadas ?? []).includes(r.id) && resultado.filas.some((f) => Object.values(f.celdas).some((c) => c.regla === r.id && c.estado === 'pendiente')))
       .map((r) => `Regla no autorizada: ${r.id} (${r.descripcion})`),
@@ -427,11 +467,15 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   const plan: Omit<PlanIncorporacion, 'firma'> = {
     archivo: { nombre: capa.archivo.nombre, sha256: sha }, perfil: capa.perfil, hoja: capa.hoja,
     municipio: { id: destino.municipioId, nombre: mun?.nombre ?? destino.municipioId },
-    destino: { campanaId, importacionId, anio: destino.anio, nombre: db.campanas[campanaId]?.nombre ?? destino.nombre ?? `Censo ${destino.anio} · histórico importado`, nueva: !db.campanas[campanaId] },
+    destino: {
+      campanaId, importacionId, anio: destino.anio, nombre: db.campanas[campanaId]?.nombre ?? destino.nombre ?? `Censo ${destino.anio} · histórico importado`, nueva: !db.campanas[campanaId],
+      ...(itinerario ? { itinerario: { id: itinerario.id, codigo: itinerario.codigo } } : {}),
+    },
+    ...(operativo ? { modo: 'operativo' as const, cruces } : {}),
     aplicable: bloqueos.length === 0, bloqueos,
     registros: { previstos: capa.filas.length, excluidos: excluidas.size, candidatasExcluir: candidatas },
     nuevas: {
-      campanas: 1, registros: capa.filas.length, locales: filas.filter((f) => f.localNuevo).length, negocios: negocios.length,
+      campanas: db.campanas[campanaId] ? 0 : 1, registros: capa.filas.length, locales: filas.filter((f) => f.localNuevo).length, negocios: negocios.length,
       observaciones: filas.filter((f) => f.observacion).length, ocupaciones: filas.filter((f) => f.ocupacion).length, vinculos: capa.filas.length - excluidas.size,
       franquicias, digital: digitales, clasificaciones: conClasif,
     },
@@ -448,6 +492,39 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
     pendientes, reimportacion, filas,
   };
   return { ...plan, firma: sha256Texto(JSON.stringify(plan)) };
+}
+
+/**
+ * G4 · Cruces de un Excel de itinerario con lo ya incorporado por OTROS itinerarios de la misma campaña
+ * operativa (por sus observaciones). Solo se señalan: nada se fusiona ni se corrige.
+ *  - posible duplicado: misma calle, número (y sufijo) y nombre del establecimiento;
+ *  - contradicción: mismo portal, vacío en un itinerario y ocupado en otro.
+ * Varios establecimientos distintos en un mismo portal NO son un cruce (C1c-1: locales distintos).
+ */
+export function crucesConOtrosItinerarios(
+  db: BaseDatos, campanaId: Id, itinerarioId: Id | undefined, filas: { fi: FilaInterpretada; calleId?: Id; portal?: Portal }[],
+): NonNullable<PlanIncorporacion['cruces']> {
+  const portal = (calleId: Id, numero: number | null, sufijo?: string) => `${calleId}|${numero ?? ''}|${(sufijo ?? '').toUpperCase()}`;
+  const otras = Object.values(db.observaciones).filter((o) => o.campanaId === campanaId && o.itinerarioId && o.itinerarioId !== itinerarioId && o.datos.numero !== null);
+  const codigo = (id: Id) => db.itinerarios[id]?.codigo ?? id;
+  const porNombre = new Map<string, string>();
+  const porPortal = new Map<string, { vacio: boolean; it: string }[]>();
+  for (const o of otras) {
+    const k = portal(o.calleId, o.datos.numero, o.datos.sufijo);
+    if (o.datos.nombre) porNombre.set(`${k}|${normalizar(o.datos.nombre)}`, codigo(o.itinerarioId!));
+    porPortal.set(k, [...(porPortal.get(k) ?? []), { vacio: o.datos.vacio, it: codigo(o.itinerarioId!) }]);
+  }
+  const res: NonNullable<PlanIncorporacion['cruces']> = [];
+  for (const { fi, calleId, portal: p } of filas) {
+    if (!calleId || p?.tipo !== 'numero' || fi.local === 'desconocido') continue;
+    const k = portal(calleId, p.numero, p.sufijo);
+    const nombre = esValida(fi.celdas.nombre) ? String(fi.celdas.nombre!.valor).trim() : '';
+    const dup = nombre && porNombre.get(`${k}|${normalizar(nombre)}`);
+    if (dup) res.push({ fila: fi.fila, tipo: 'posible-duplicado', itinerario: dup, detalle: `«${nombre}» en el mismo portal que en ${dup}` });
+    const contrario = (porPortal.get(k) ?? []).find((x) => x.vacio !== (fi.local === 'vacio'));
+    if (contrario) res.push({ fila: fi.fila, tipo: 'contradiccion', itinerario: contrario.it, detalle: `${fi.local === 'vacio' ? 'vacío' : 'ocupado'} aquí y ${contrario.vacio ? 'vacío' : 'ocupado'} en ${contrario.it}` });
+  }
+  return res;
 }
 
 // ───────────── Presencia digital y franquicia (solo valores válidos, origen «importado») ─────────────
@@ -530,7 +607,10 @@ export function aplicarIncorporacion(
   const per = periodoDe(destino.anio, decisiones);
   // Nada queda revisado ni validado.
   const estados: Campana['estados'] = { planificacion: 'no-aplica', campo: 'terminado', revision: 'pendiente', validacion: 'pendiente' };
-  const previa = plan.destino.nueva ? undefined : db0.campanas[campanaId];
+  // G4: en una campaña OPERATIVA la campaña no se toca (es de todos sus itinerarios).
+  const operativo = plan.modo === 'operativo';
+  const itinerario = plan.destino.itinerario;
+  const previa = plan.destino.nueva || operativo ? undefined : db0.campanas[campanaId];
   const campana: Campana = previa
     // G2: campaña preparada (vacía): se completa sin perder su identificación ni quién la creó.
     ? { ...previa, periodo: { inicio: per.desde, fin: per.hasta }, estados }
@@ -539,7 +619,7 @@ export function aplicarIncorporacion(
       periodo: { inicio: per.desde, fin: per.hasta }, ambitoCalleIds: [], ampliacionCalleIds: [], estados, procedencia: 'importado',
     };
   if (previa) db.campanas[campanaId] = campana;
-  else crear('campanas', campanaId, campana);
+  else if (!operativo) crear('campanas', campanaId, campana);
 
   const porFila = new Map(resultado.filas.map((f) => [f.fila, f]));
   const exclusiones = new Map((decisiones.exclusiones ?? []).map((e) => [e.fila, e]));
@@ -560,7 +640,7 @@ export function aplicarIncorporacion(
     const regId = `reg-${importacionId}-${pf.fila}`;
     const exc = exclusiones.get(pf.fila);
     const registro: RegistroOrigen = {
-      id: regId, importacionId, fila: pf.fila,
+      id: regId, importacionId, fila: pf.fila, ...(itinerario ? { itinerarioId: itinerario.id } : {}),
       datos: {
         ...Object.fromEntries(capa.columnas.map((c) => [c.cabecera.trim(), textoCelda(fo.celdas[c.clave] ?? { t: 'vacio' })])),
         ...Object.fromEntries((capa.adicionales ?? []).map((a) => [a.cabecera.trim(), textoCelda(fo.adicionales?.[a.letra] ?? { t: 'vacio' })])),
@@ -631,8 +711,10 @@ export function aplicarIncorporacion(
       const vacio = fi.local === 'vacio';
       const obs: Observacion = {
         id: obsId, campanaId, localId, calleId: pf.calleId!, ...(fecha ? { fecha } : {}), registrado: ahora, fuente: 'importacion', tipo: vacio ? 'vacio' : 'confirmado',
-        datos: { numero, ...(sufijo ? { sufijo } : {}), ...(negocioId ? { nombre: String(c.nombre.valor) } : {}), negocioId, vacio, ...(metros !== undefined ? { metrosFachada: metros } : {}) },
-        orden: siguienteOrden(db), nota: `Censo histórico importado (fila ${pf.fila}).`,
+        // G4: en un itinerario se conserva también el nombre observado aunque la fila quede sin local (para los cruces).
+        datos: { numero, ...(sufijo ? { sufijo } : {}), ...(negocioId || (itinerario && !vacio && esValida(c.nombre) && String(c.nombre.valor).trim()) ? { nombre: String(c.nombre.valor) } : {}), negocioId, vacio, ...(metros !== undefined ? { metrosFachada: metros } : {}) },
+        ...(itinerario ? { itinerarioId: itinerario.id, registroId: regId } : {}),
+        orden: siguienteOrden(db), nota: itinerario ? `Itinerario ${itinerario.codigo}: Excel de campo (fila ${pf.fila}).` : `Censo histórico importado (fila ${pf.fila}).`,
         // El histórico es referencia: queda pendiente, nunca verificado.
         verificacion: 'pendiente',
       };
@@ -665,7 +747,7 @@ export function aplicarIncorporacion(
     crear('vinculos', vinculo.id, vinculo);
   });
 
-  db.campanas[campanaId] = { ...campana, ambitoCalleIds: [...ambito] };
+  if (!operativo) db.campanas[campanaId] = { ...campana, ambitoCalleIds: [...ambito] };
 
   // 3. Integridad referencial de TODO lo creado; si falla, no se publica nada.
   const errores = comprobarIntegridad(db, creadas, importacionId);
@@ -675,13 +757,13 @@ export function aplicarIncorporacion(
   const traza: TrazaIncorporacion = {
     version: 2, algoritmoHuellas: 'sha256', sha256: plan.archivo.sha256, perfil: plan.perfil, hoja: plan.hoja, anio: destino.anio,
     columnas: capa.columnas.map((c) => ({ clave: c.clave, letra: c.letra, cabecera: c.cabecera, tipo: c.tipo })), porId: opciones.porId,
-    decisiones: decisiones as Record<string, unknown>, firmaPlan: plan.firma,
+    decisiones: decisiones as Record<string, unknown>, firmaPlan: plan.firma, ...(itinerario ? { itinerario } : {}),
     creadas: Object.fromEntries(COLECCIONES.map((col) => [col, Object.fromEntries(creadas[col].map((id) => [id, huellaEntidad(db, col, id)]))])),
     modificadas: previa ? { campanas: [campanaId] } : {},
     ...(previa ? { campanaPrevia: { valor: previa, huellaDespues: huellaEntidad(db, 'campanas', campanaId) } } : {}),
   };
   const imp: Importacion = {
-    id: importacionId, municipioId: destino.municipioId, campanaId, tipo: 'A-censo-historico', archivo: plan.archivo.nombre, huella: plan.archivo.sha256, fecha: ahora,
+    id: importacionId, municipioId: destino.municipioId, campanaId, tipo: operativo ? 'C-excel-itinerario' : 'A-censo-historico', archivo: plan.archivo.nombre, huella: plan.archivo.sha256, fecha: ahora,
     filas: capa.filas.length, estado: 'confirmada', procedencia: 'importado',
     resumen: { ...resumen, 'registros de origen': creadas.registros.length, 'locales creados': creadas.locales.length, 'negocios creados': creadas.negocios.length, 'observaciones': creadas.observaciones.length, 'ocupaciones': creadas.ocupaciones.length },
     nota: 'C1c · Censo histórico incorporado como referencia: nada queda revisado, verificado ni validado. Los bytes del archivo no se guardan.',
@@ -772,17 +854,22 @@ export function deshacerIncorporacion(db0: BaseDatos, importacionId: Id, porId: 
   const locales = ids.get('locales')!;
   const negocios = ids.get('negocios')!;
   // Referencias posteriores desde entidades que no son de esta incorporación.
-  for (const o of Object.values(db0.observaciones)) if (!nuestro('observaciones', o.id) && (o.campanaId === campanaId || (o.localId && locales.has(o.localId)) || (o.datos.negocioId && negocios.has(o.datos.negocioId)))) conflictos.push(`Observación posterior «${o.id}» sobre datos importados`);
-  for (const o of Object.values(db0.ocupaciones)) if (!nuestro('ocupaciones', o.id) && (locales.has(o.localId) || (o.negocioId && negocios.has(o.negocioId)) || o.desdeCampanaId === campanaId || o.hastaCampanaId === campanaId)) conflictos.push(`Ocupación posterior «${o.id}» sobre datos importados`);
+  // G4: en una campaña OPERATIVA (varios itinerarios) solo cuenta lo que se apoya en los datos de ESTA
+  // incorporación; lo demás de la campaña es de otros itinerarios y no impide deshacer.
+  const deLaCampana = (id: Id | undefined) => !imp.c1!.itinerario && id === campanaId;
+  for (const o of Object.values(db0.observaciones)) if (!nuestro('observaciones', o.id) && (deLaCampana(o.campanaId) || (o.localId && locales.has(o.localId)) || (o.datos.negocioId && negocios.has(o.datos.negocioId)))) conflictos.push(`Observación posterior «${o.id}» sobre datos importados`);
+  for (const o of Object.values(db0.ocupaciones)) if (!nuestro('ocupaciones', o.id) && (locales.has(o.localId) || (o.negocioId && negocios.has(o.negocioId)) || deLaCampana(o.desdeCampanaId) || deLaCampana(o.hastaCampanaId))) conflictos.push(`Ocupación posterior «${o.id}» sobre datos importados`);
   for (const v of Object.values(db0.vinculos)) if (!nuestro('vinculos', v.id) && ((v.localId && locales.has(v.localId)) || (v.candidatos ?? []).some((c) => locales.has(c.localId)) || (v.origen.tipo === 'registro' && ids.get('registros')!.has(v.origen.id)))) conflictos.push(`Vínculo posterior «${v.id}» sobre datos importados`);
   for (const col of ['franquicias', 'digital', 'clasificaciones'] as const) {
-    for (const [k, x] of Object.entries(db0[col])) if (!nuestro(col, k) && (negocios.has(x.negocioId) || x.campanaId === campanaId)) conflictos.push(`${col} posterior «${k}» sobre datos importados`);
+    for (const [k, x] of Object.entries(db0[col])) if (!nuestro(col, k) && (negocios.has(x.negocioId) || deLaCampana(x.campanaId))) conflictos.push(`${col} posterior «${k}» sobre datos importados`);
   }
-  for (const r of Object.values(db0.revisiones)) if (r.campanaId === campanaId || locales.has(r.localId)) conflictos.push(`Revisión posterior de «${r.localId}» en datos importados`);
-  for (const it of Object.values(db0.itinerarios)) if (it.campanaId === campanaId) conflictos.push(`Itinerario posterior «${it.codigo}» en la campaña histórica`);
-  for (const i of Object.values(db0.importaciones)) if (i.id !== importacionId && i.campanaId === campanaId && i.estado === 'confirmada') conflictos.push(`Otra importación «${i.id}» en la misma campaña`);
-  for (const k of [...Object.keys(db0.coberturas), ...Object.keys(db0.situacionesPrevias), ...Object.keys(db0.callesRevisadasPlan)]) if (k.startsWith(`${campanaId}|`)) conflictos.push(`Dato de planificación posterior «${k}» en la campaña histórica`);
-  for (const c of Object.values(db0.campanas)) if (c.campanaReferenciaId === campanaId) conflictos.push(`La campaña «${c.nombre}» usa la campaña histórica como referencia`);
+  for (const r of Object.values(db0.revisiones)) if (deLaCampana(r.campanaId) || locales.has(r.localId)) conflictos.push(`Revisión posterior de «${r.localId}» en datos importados`);
+  if (!imp.c1.itinerario) {
+    for (const it of Object.values(db0.itinerarios)) if (it.campanaId === campanaId) conflictos.push(`Itinerario posterior «${it.codigo}» en la campaña histórica`);
+    for (const i of Object.values(db0.importaciones)) if (i.id !== importacionId && i.campanaId === campanaId && i.estado === 'confirmada') conflictos.push(`Otra importación «${i.id}» en la misma campaña`);
+    for (const k of [...Object.keys(db0.coberturas), ...Object.keys(db0.situacionesPrevias), ...Object.keys(db0.callesRevisadasPlan)]) if (k.startsWith(`${campanaId}|`)) conflictos.push(`Dato de planificación posterior «${k}» en la campaña histórica`);
+    for (const c of Object.values(db0.campanas)) if (c.campanaReferenciaId === campanaId) conflictos.push(`La campaña «${c.nombre}» usa la campaña histórica como referencia`);
+  }
   const previa = imp.c1.campanaPrevia;
   if (previa) {
     if (!db0.campanas[campanaId]) conflictos.push(`campanas «${campanaId}» ya no existe`);

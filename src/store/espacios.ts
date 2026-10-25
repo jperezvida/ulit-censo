@@ -143,10 +143,13 @@ export function requisitosIncorporacion(p: {
       id: 'perfil',
       // G1: cualquier perfil de CENSO histórico (de referencia o creado con la correspondencia de columnas);
       // los itinerarios de campo 2026 no se importan como histórico. G2: en la campaña histórica elegida.
-      ok: !p.plan || p.plan.perfil.id !== PERFIL_ITINERARIO_28.id,
-      texto: !p.plan || p.plan.perfil.id !== PERFIL_ITINERARIO_28.id
-        ? `Censo histórico (perfil «${p.plan?.perfil.id ?? '—'}») en la campaña histórica «${p.plan?.destino.nombre ?? '—'}» (${p.plan?.destino.anio ?? '—'}).`
-        : 'Los itinerarios y datos de campo de 2026 no se importan como censo histórico.',
+      // G4: un Excel de itinerario se incorpora en su campaña OPERATIVA (con cualquier perfil).
+      ok: !p.plan || p.plan.modo === 'operativo' || p.plan.perfil.id !== PERFIL_ITINERARIO_28.id,
+      texto: p.plan?.modo === 'operativo'
+        ? `Excel del itinerario ${p.plan.destino.itinerario?.codigo} (perfil «${p.plan.perfil.id}») en la campaña operativa «${p.plan.destino.nombre}» (${p.plan.destino.anio}).`
+        : !p.plan || p.plan.perfil.id !== PERFIL_ITINERARIO_28.id
+          ? `Censo histórico (perfil «${p.plan?.perfil.id ?? '—'}») en la campaña histórica «${p.plan?.destino.nombre ?? '—'}» (${p.plan?.destino.anio ?? '—'}).`
+          : 'Un Excel de itinerario se incorpora en su campaña operativa (elija «Itinerario de una campaña operativa» en el destino), no como censo histórico.',
     },
     {
       id: 'archivo',

@@ -101,3 +101,6 @@ tr.aviso td { background: #fff6e0; }
   .cj-vias th:nth-child(2), .cj-vias td:nth-child(2) { display: none; }
   .cj-cargas th:nth-child(3), .cj-cargas td:nth-child(3), .cj-cargas th:nth-child(4), .cj-cargas td:nth-child(4) { display: none; }
 }
+
+/* G4 · Campaña operativa */
+.it-color { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: 0; }

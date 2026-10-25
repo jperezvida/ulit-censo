@@ -59,14 +59,19 @@ export const useAsistenteEspacio = create<Estado>((set) => ({
  * asistente comparten esta elección (solo en memoria; se reinicia al cambiar de espacio).
  */
 interface Seleccion {
+  /** G4 · «historico»: censo ya realizado; «operativo»: Excel de un itinerario de una campaña operativa. */
+  modo: 'historico' | 'operativo';
   municipioId: Id | null;
   campanaId: Id | null;
-  elegir: (p: { municipioId?: Id | null; campanaId?: Id | null }) => void;
+  itinerarioId: Id | null;
+  elegir: (p: { modo?: 'historico' | 'operativo'; municipioId?: Id | null; campanaId?: Id | null; itinerarioId?: Id | null }) => void;
   reiniciar: () => void;
 }
 export const useSeleccionEspacio = create<Seleccion>((set) => ({
+  modo: 'historico',
   municipioId: null,
   campanaId: null,
+  itinerarioId: null,
   elegir: (p) => set(p),
-  reiniciar: () => set({ municipioId: null, campanaId: null }),
+  reiniciar: () => set({ modo: 'historico', municipioId: null, campanaId: null, itinerarioId: null }),
 }));

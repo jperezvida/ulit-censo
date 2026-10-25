@@ -161,6 +161,7 @@ export function verificarEspacio(db: BaseDatos, tipo: TipoEspacio): string[] {
   for (const i of Object.values(db.importaciones)) ajeno('Importación', i.id, i.municipioId);
   for (const c of Object.keys(db.campanas)) if (!c.startsWith(pref) && !c.startsWith(`camp-hist-${pref}`)) e.push(`Campaña sin el prefijo del espacio: «${c}».`);
   for (const p of Object.keys(db.personas)) if (!p.startsWith(pref)) e.push(`Persona sin el prefijo del espacio: «${p}».`);
+  for (const i of Object.values(db.itinerarios)) if (!i.id.startsWith(pref) || i.escenarioDemo) e.push(`Itinerario ajeno al espacio: «${i.id}».`);
   // G2: ninguna entidad relaciona datos de municipios distintos.
   e.push(...verificarSeparacionMunicipios(db));
   // Nada simulado en un espacio con datos reales o de ensayo (los sintéticos entran como «importado»).

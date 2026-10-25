@@ -13,7 +13,8 @@ import { Decisiones } from '../imports/incorporacion/Decisiones';
 import { ContextoIncorporacion } from '../imports/incorporacion/contextoIncorporacion';
 import { firmaInterpretacion, hoy } from '../imports/incorporacion/estadoAsistente';
 import { useAsistenteEspacio, useSeleccionEspacio, type EtapaEspacio } from './estadoAsistenteEspacio';
-import { campanasDestino, destinoElegido, FormCampana } from './MunicipiosCampanas';
+import { campanasDestino, campanasOperativas, destinoElegido, FormCampana } from './MunicipiosCampanas';
+import { crearItinerario, itinerariosDe } from '../../domain/campanaOperativa';
 import { callejeroDe } from '../../domain/municipios';
 import { leerBytes } from './leerArchivo';
 import { PasoColumnas } from './PasoColumnas';
@@ -55,7 +56,8 @@ function useDestino(tipo: TipoEspacio): DestinoIncorporacion | null {
   const db = useEspacios((s) => s.db!);
   const sel = useSeleccionEspacio();
   return useMemo(() => {
-    const { municipioId, campana } = destinoElegido(db, tipo, sel);
+    const { municipioId, campana, itinerario } = destinoElegido(db, tipo, sel);
+    if (sel.modo === 'operativo') return municipioId && campana && itinerario ? { municipioId, anio: campana.anio, nombre: campana.nombre, campanaId: campana.id, itinerarioId: itinerario.id } : null;
     return municipioId && campana ? { municipioId, anio: campana.anio, nombre: campana.nombre, campanaId: campana.id } : null;
   }, [db, tipo, sel]);
 }
@@ -75,7 +77,7 @@ export function AsistenteEspacio({ tipo }: { tipo: TipoEspacio }) {
   const puedeIr = (n: EtapaEspacio) => n === 1 || (n === 2 && !!st.archivo && !!elegido && !st.aplicado) || (n <= 5 && !!st.preparado && !st.aplicado) || (n === 6 && !!st.aplicado);
 
   const recalcular = async (decisiones: DecisionesIncorporacion = st.decisiones, forzar = false, lectura = st.lectura) => {
-    const firma = `${destino.campanaId}|${firmaInterpretacion(decisiones)}|${lectura ? JSON.stringify([lectura.perfil.id, lectura.perfil.version, lectura.perfil.columnas, lectura.hoja, lectura.filaCabecera]) : ''}`;
+    const firma = `${destino.campanaId}|${destino.itinerarioId ?? ''}|${firmaInterpretacion(decisiones)}|${lectura ? JSON.stringify([lectura.perfil.id, lectura.perfil.version, lectura.perfil.columnas, lectura.hoja, lectura.filaCabecera]) : ''}`;
     if (!forzar && st.preparado && firma === st.interpretadoCon) {
       try {
         st.set({ decisiones, preparado: { ...st.preparado, plan: planificarIncorporacion(useEspacios.getState().db!, st.preparado.resultado, destino, decisiones) }, error: null, revisada: false });
@@ -179,12 +181,20 @@ function EtapaArchivo({ tipo, destino, onAnalizar }: { tipo: TipoEspacio; destin
       {destino && (
         <section className="tarjeta inc-bloque" aria-label="Qué se hará">
           <h3>Qué se hará</h3>
-          <ul className="inc-lista">
-            <li>Se incorpora en la campaña histórica <b>«{destino.nombre}»</b> ({destino.anio}) de <b>{db.municipios[destino.municipioId]?.nombre}</b>. No se toca la demostración, el otro espacio ni otros municipios.</li>
-            <li><b>Ninguna campaña operativa se modifica</b> (en Medina del Campo, 2026 sigue intacta).</li>
-            <li>Clasificaciones, franquicias, Google, redes y comercio electrónico se conservan como <b>históricos</b>.</li>
-            <li>Cada fila conserva sus valores originales. Varios establecimientos en el mismo portal son <b>locales independientes</b>.</li>
-          </ul>
+          {destino.itinerarioId ? (
+            <ul className="inc-lista">
+              <li>Se incorpora como itinerario <b>{db.itinerarios[destino.itinerarioId]?.codigo}</b> de la campaña operativa <b>«{destino.nombre}»</b> ({destino.anio}) de <b>{db.municipios[destino.municipioId]?.nombre}</b>. No se crea ninguna campaña y la campaña no se modifica.</li>
+              <li>Lo incorporado por <b>otros itinerarios se conserva</b>. Si una fila coincide con ellos (posible duplicado o contradicción), se señala y queda para la conciliación: nada se fusiona solo.</li>
+              <li>Cada fila conserva su archivo, su número de fila, su itinerario y su fecha real. Varios establecimientos en el mismo portal son <b>locales independientes</b>.</li>
+            </ul>
+          ) : (
+            <ul className="inc-lista">
+              <li>Se incorpora en la campaña histórica <b>«{destino.nombre}»</b> ({destino.anio}) de <b>{db.municipios[destino.municipioId]?.nombre}</b>. No se toca la demostración, el otro espacio ni otros municipios.</li>
+              <li><b>Ninguna campaña operativa se modifica</b> (en Medina del Campo, 2026 sigue intacta).</li>
+              <li>Clasificaciones, franquicias, Google, redes y comercio electrónico se conservan como <b>históricos</b>.</li>
+              <li>Cada fila conserva sus valores originales. Varios establecimientos en el mismo portal son <b>locales independientes</b>.</li>
+            </ul>
+          )}
           <label className="fila" style={{ alignItems: 'flex-start', gap: 8 }}>
             <input type="checkbox" aria-label="Aplicar el periodo de trabajo de campo" checked={!!p} onChange={(e) => st.set({ decisiones: { ...st.decisiones, periodoTrabajo: e.target.checked ? periodoPropuesto(db, tipo, destino) : undefined }, preparado: null })} />
             <span><b>Periodo de trabajo de campo:</b> del <input className="input" style={{ width: 140, display: 'inline-block' }} type="date" aria-label="Inicio del periodo" value={p?.desde ?? periodoPropuesto(db, tipo, destino)!.desde} disabled={!p} onChange={(e) => st.set({ decisiones: { ...st.decisiones, periodoTrabajo: periodoPropuesto(db, tipo, destino, e.target.value) }, preparado: null })} /> al {destino.anio}-12-31.
@@ -208,19 +218,30 @@ function Destino({ tipo, destino }: { tipo: TipoEspacio; destino: DestinoIncorpo
   const sel = useSeleccionEspacio();
   const st = useAsistenteEspacio();
   const [nueva, setNueva] = useState(false);
-  const { municipioId } = destinoElegido(db, tipo, sel);
+  const { municipioId, campana: campOp, itinerario } = destinoElegido(db, tipo, sel);
   const opciones = municipioId ? campanasDestino(db, municipioId) : [];
+  const operativas = municipioId ? campanasOperativas(db, municipioId) : [];
+  const its = sel.modo === 'operativo' && campOp ? itinerariosDe(db, campOp.id) : [];
   const cj = municipioId ? callejeroDe(db, municipioId) : null;
-  const cambiar = (p: { municipioId?: string; campanaId?: string | null }) => {
+  const modificar = useEspacios((s) => s.modificar);
+  const [codigo, setCodigo] = useState('');
+  const [errorIt, setErrorIt] = useState<string | null>(null);
+  const cambiar = (p: { modo?: 'historico' | 'operativo'; municipioId?: string; campanaId?: string | null; itinerarioId?: string | null }) => {
     sel.elegir(p);
     // Otro destino: hay que volver a analizar; el periodo propuesto depende del destino.
     const d = destinoElegido(db, tipo, { ...useSeleccionEspacio.getState() });
-    const nuevo = d.municipioId && d.campana ? { municipioId: d.municipioId, anio: d.campana.anio, campanaId: d.campana.id } : null;
+    const nuevo = d.municipioId && d.campana && useSeleccionEspacio.getState().modo === 'historico' ? { municipioId: d.municipioId, anio: d.campana.anio, campanaId: d.campana.id } : null;
     st.set({ preparado: null, decisiones: { ...st.decisiones, periodoTrabajo: nuevo && esCasoC1e(tipo, nuevo) ? periodoPropuesto(db, tipo, nuevo) : undefined } });
   };
   return (
     <section className="tarjeta inc-bloque" aria-label="Destino">
       <h3>1. Destino</h3>
+      {!soloMemoria && (
+        <div className="segmentado" role="radiogroup" aria-label="Qué se incorpora">
+          <button role="radio" aria-checked={sel.modo === 'historico'} className={sel.modo === 'historico' ? 'on' : ''} onClick={() => cambiar({ modo: 'historico', campanaId: null, itinerarioId: null })}>Censo histórico</button>
+          <button role="radio" aria-checked={sel.modo === 'operativo'} className={sel.modo === 'operativo' ? 'on' : ''} onClick={() => cambiar({ modo: 'operativo', campanaId: null, itinerarioId: null })}>Itinerario de una campaña operativa</button>
+        </div>
+      )}
       <div className="destino-ctrl">
         <label className="campo">
           <span>Municipio</span>
@@ -228,21 +249,53 @@ function Destino({ tipo, destino }: { tipo: TipoEspacio; destino: DestinoIncorpo
             {Object.values(db.municipios).map((m) => <option key={m.id} value={m.id}>{m.nombre} ({m.provincia})</option>)}
           </select>
         </label>
-        <label className="campo">
-          <span>Campaña histórica</span>
-          <select className="input" aria-label="Campaña de destino" value={destino?.campanaId ?? ''} disabled={!opciones.length} onChange={(e) => cambiar({ campanaId: e.target.value })}>
-            {!destino && <option value="">— No hay ninguna campaña histórica vacía —</option>}
-            {opciones.map(({ c, motivo }) => <option key={c.id} value={c.id} disabled={!!motivo}>{c.nombre} ({c.anio}){motivo ? ' · ya tiene datos' : ''}</option>)}
-          </select>
-        </label>
+        {sel.modo === 'operativo' ? (
+          <>
+            <label className="campo">
+              <span>Campaña operativa</span>
+              <select className="input" aria-label="Campaña de destino" value={campOp?.id ?? ''} disabled={!operativas.length} onChange={(e) => cambiar({ campanaId: e.target.value, itinerarioId: null })}>
+                {!campOp && <option value="">— No hay ninguna campaña operativa —</option>}
+                {operativas.map((c) => <option key={c.id} value={c.id}>{c.nombre} ({c.anio})</option>)}
+              </select>
+            </label>
+            <label className="campo">
+              <span>Itinerario</span>
+              <select className="input" aria-label="Itinerario de destino" value={itinerario?.id ?? ''} disabled={!its.length} onChange={(e) => cambiar({ itinerarioId: e.target.value })}>
+                {!itinerario && <option value="">— La campaña no tiene itinerarios —</option>}
+                {its.map((i) => <option key={i.id} value={i.id}>{i.codigo} · {i.nombre}</option>)}
+              </select>
+            </label>
+          </>
+        ) : (
+          <label className="campo">
+            <span>Campaña histórica</span>
+            <select className="input" aria-label="Campaña de destino" value={destino?.campanaId ?? ''} disabled={!opciones.length} onChange={(e) => cambiar({ campanaId: e.target.value })}>
+              {!destino && <option value="">— No hay ninguna campaña histórica vacía —</option>}
+              {opciones.map(({ c, motivo }) => <option key={c.id} value={c.id} disabled={!!motivo}>{c.nombre} ({c.anio}){motivo ? ' · ya tiene datos' : ''}</option>)}
+            </select>
+          </label>
+        )}
       </div>
+      {sel.modo === 'operativo' && campOp && !soloMemoria && (
+        <div className="fila cj-fila-acc">
+          <input className="input" aria-label="Código del nuevo itinerario" placeholder="Nuevo itinerario, p. ej. IT1" value={codigo} onChange={(e) => setCodigo(e.target.value)} />
+          <button className="btn s" disabled={!codigo.trim()} onClick={async () => {
+            let creado = '';
+            const r = await modificar('Creando el itinerario…', (x, ctx) => { const c = crearItinerario(x, campOp.id, { codigo }, ctx); creado = c.itinerarioId; return c.db; });
+            setErrorIt(r.ok ? null : r.error ?? null);
+            if (r.ok) { setCodigo(''); cambiar({ itinerarioId: creado }); }
+          }}>Añadir itinerario</button>
+        </div>
+      )}
+      {errorIt && <div className="t-info error" role="alert">{errorIt}</div>}
+      {sel.modo === 'operativo' && !campOp && <p className="muted" style={{ margin: 0 }}>Cree primero la campaña operativa en «Campañas» (tipo «Operativa»).</p>}
       {cj && (cj.disponible
         ? <p className="muted" style={{ margin: 0 }}>Callejero: {cj.texto}.</p>
         : <div className="t-info aviso" role="note"><AlertTriangle size={15} /> <div><b>Este municipio no tiene callejero todavía.</b> Los registros se incorporan y se conservan, pero sin vínculo con calles ni locales: la conciliación territorial queda pendiente.</div></div>)}
-      {municipioId && !soloMemoria && (nueva
+      {municipioId && !soloMemoria && sel.modo === 'historico' && (nueva
         ? <FormCampana municipioId={municipioId} soloHistorica onCerrar={(id) => { setNueva(false); if (id) cambiar({ municipioId, campanaId: id }); }} />
         : <button className="btn s" style={{ alignSelf: 'flex-start' }} onClick={() => setNueva(true)}>Crear una campaña histórica</button>)}
-      {!destino && !nueva && <p className="muted" style={{ margin: 0 }}>Cree primero la campaña histórica en la que se incorporará el Excel (por ejemplo, «Censo 2023 · histórico»).</p>}
+      {!destino && !nueva && sel.modo === 'historico' && <p className="muted" style={{ margin: 0 }}>Cree primero la campaña histórica en la que se incorporará el Excel (por ejemplo, «Censo 2023 · histórico»).</p>}
     </section>
   );
 }
@@ -346,7 +399,7 @@ function EtapaVistaPrevia({ tipo, destino }: { tipo: TipoEspacio; destino: Desti
           <dt>Fichero</dt><dd>{a.nombre} · {mb(a.tamano)}</dd>
           <dt>SHA-256</dt><dd className="mono" style={{ wordBreak: 'break-all' }}>{a.sha256}</dd>
           <dt>Perfil y hoja</dt><dd>{plan.perfil.id} v{plan.perfil.version} · hoja «{plan.hoja}»</dd>
-          <dt>Destino</dt><dd>{plan.destino.nombre} · <span className="mono">{plan.destino.campanaId}</span></dd>
+          <dt>Destino</dt><dd>{plan.destino.nombre}{plan.destino.itinerario ? ` · itinerario ${plan.destino.itinerario.codigo}` : ''} · <span className="mono">{plan.destino.campanaId}</span></dd>
           <dt>Periodo</dt><dd>{per.desde} – {per.hasta}</dd>
           <dt>Decisiones</dt><dd>{[
             st.decisiones.periodoTrabajo && 'periodo de trabajo de campo',
@@ -382,6 +435,7 @@ function EtapaVistaPrevia({ tipo, destino }: { tipo: TipoEspacio; destino: Desti
         <h3>Pendientes y advertencias</h3>
         <ul className="inc-lista">
           {plan.pendientes.map((x) => <li key={x}>{x}</li>)}
+          {(plan.cruces ?? []).map((x) => <li key={`${x.fila}-${x.tipo}`} className="aviso">Fila {x.fila}: {x.tipo === 'posible-duplicado' ? 'posible duplicado' : 'contradicción'} con {x.itinerario} ({x.detalle}).</li>)}
           {diag.diferencias.map((d) => <li key={d.clave} className="aviso">No coincide con el informe: {d.etiqueta} ({String(d.valor)} frente a {String(d.esperado)}).</li>)}
           {a.sha256 !== SHA256_ORIGINAL_MEDINA_2025 && tipo === 'real' && <li className="aviso">El SHA-256 del archivo no es el del diagnóstico agregado.</li>}
           <li>No se toca ninguna campaña operativa (en Medina del Campo, 2026 sigue intacta).</li>

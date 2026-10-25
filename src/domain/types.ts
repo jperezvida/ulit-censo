@@ -237,7 +237,8 @@ export interface Itinerario {
   codigo: string;
   nombre: string;
   color: string;
-  origen: 'app' | 'kml' | 'papel';
+  /** «excel» (G4): itinerario de una campaña operativa cuyos datos llegan en un Excel de campo. */
+  origen: 'app' | 'kml' | 'papel' | 'excel';
   tramos: TramoPlan[];
   asignadosIds: Id[];
   notas?: string;
@@ -361,6 +362,9 @@ export interface Observacion {
   fuente: FuenteObservacion;
   investigadorId?: Id;
   tipo: TipoObservacion;
+  /** G4 · Itinerario y registro de origen (incorporación de un Excel de itinerario en una campaña operativa). */
+  itinerarioId?: Id;
+  registroId?: Id;
   /** Instantánea de lo observado EN ESE MOMENTO (no se recalcula después). */
   datos: { numero: number | null; sufijo?: string; nombre?: string; negocioId?: Id | null; vacio: boolean; metrosFachada?: number };
   /** Orden global de registro (las fechas pueden faltar). NO es la cronología del censo. */
@@ -405,6 +409,8 @@ export interface RegistroOrigen {
   id: Id;
   importacionId: Id;
   fila: number;
+  /** G4 · Itinerario de la campaña operativa al que pertenece la fila (Excel de itinerario). */
+  itinerarioId?: Id;
   /**
    * Representación TEXTUAL por cabecera (compatibilidad con importaciones anteriores). No conserva
    * tipos ni formatos: en las importaciones de C1c el original fiel está en `original`.
@@ -477,6 +483,8 @@ export interface TrazaIncorporacion {
   perfil: { id: string; version: number };
   hoja: string;
   anio: number;
+  /** G4 · Itinerario de la campaña operativa en el que se incorporó el archivo. */
+  itinerario?: { id: Id; codigo: string };
   /** Columnas del perfil con su cabecera EXACTA en el archivo. */
   columnas: { clave: string; letra: string; cabecera: string; tipo: string }[];
   porId: Id;

@@ -13,6 +13,8 @@ import type { BaseDatos } from '../../domain/db';
 import type { Campana, ConfigTerritorialMunicipio, Id } from '../../domain/types';
 import { useAsistenteEspacio, useSeleccionEspacio } from './estadoAsistenteEspacio';
 import { CallejeroMunicipio } from './CallejeroMunicipio';
+import { CampanaOperativa } from './CampanaOperativa';
+import { itinerariosDe } from '../../domain/campanaOperativa';
 
 /**
  * G2 · Municipios y campañas de un espacio. Todo se guarda en la base del espacio en ESTE navegador:
@@ -27,17 +29,28 @@ export const campanasDestino = (db: BaseDatos, municipioId: Id) =>
   Object.values(db.campanas).filter((c) => c.municipioId === municipioId && claseCampana(c) === 'historica').sort(porAnio)
     .map((c) => ({ c, motivo: motivoNoDestino(db, c.id, municipioId, c.anio) }));
 
+/** G4 · Campañas OPERATIVAS de un municipio (destino de los Excel de itinerario). */
+export const campanasOperativas = (db: BaseDatos, municipioId: Id) =>
+  Object.values(db.campanas).filter((c) => c.municipioId === municipioId && claseCampana(c) === 'operativa').sort(porAnio);
+
 /**
  * Municipio y campaña de destino efectivos: los elegidos o, si no hay elección válida, el municipio
- * piloto (o el primero) y su campaña histórica vacía más reciente.
+ * piloto (o el primero) y su campaña histórica vacía más reciente. En modo operativo (G4), su campaña
+ * operativa y el itinerario elegidos (o los primeros).
  */
-export function destinoElegido(db: BaseDatos, tipo: TipoEspacio, sel: { municipioId: Id | null; campanaId: Id | null }) {
+export function destinoElegido(db: BaseDatos, tipo: TipoEspacio, sel: { modo?: 'historico' | 'operativo'; municipioId: Id | null; campanaId: Id | null; itinerarioId?: Id | null }) {
   const municipioId = sel.municipioId && db.municipios[sel.municipioId] ? sel.municipioId
     : db.municipios[municipioDeEspacio(tipo)] ? municipioDeEspacio(tipo) : Object.keys(db.municipios)[0] ?? null;
-  if (!municipioId) return { municipioId: null, campana: null };
+  if (!municipioId) return { municipioId: null, campana: null, itinerario: null };
+  if (sel.modo === 'operativo') {
+    const ops = campanasOperativas(db, municipioId);
+    const campana = ops.find((c) => c.id === sel.campanaId) ?? ops[0] ?? null;
+    const its = campana ? itinerariosDe(db, campana.id) : [];
+    return { municipioId, campana, itinerario: its.find((i) => i.id === sel.itinerarioId) ?? its[0] ?? null };
+  }
   const opciones = campanasDestino(db, municipioId);
   const elegida = opciones.find((o) => o.c.id === sel.campanaId && !o.motivo) ?? opciones.find((o) => !o.motivo);
-  return { municipioId, campana: elegida?.c ?? null };
+  return { municipioId, campana: elegida?.c ?? null, itinerario: null };
 }
 
 export function MunicipiosCampanas({ tipo }: { tipo: TipoEspacio }) {
@@ -45,6 +58,7 @@ export function MunicipiosCampanas({ tipo }: { tipo: TipoEspacio }) {
   const sel = useSeleccionEspacio();
   const [alta, setAlta] = useState(false);
   const [nuevaCampana, setNuevaCampana] = useState(false);
+  const [opAbierta, setOpAbierta] = useState<Id | null>(null);
   const { municipioId } = destinoElegido(db, tipo, sel);
   const municipios = Object.values(db.municipios).sort((a, b) => (a.id === municipioDeEspacio(tipo) ? -1 : b.id === municipioDeEspacio(tipo) ? 1 : a.nombre.localeCompare(b.nombre, 'es')));
   const mun = municipioId ? db.municipios[municipioId] : null;
@@ -99,17 +113,18 @@ export function MunicipiosCampanas({ tipo }: { tipo: TipoEspacio }) {
             <div className="tabla-scroll">
               <table className="tabla ap-tabla camp-tabla" aria-label={`Campañas de ${mun.nombre}`}>
                 <thead><tr><th>Campaña</th><th>Año</th><th>Tipo</th><th>Contenido</th><th /></tr></thead>
-                <tbody>{campanas.map((c) => <FilaCampana key={c.id} c={c} />)}</tbody>
+                <tbody>{campanas.map((c) => <FilaCampana key={c.id} c={c} abierta={opAbierta === c.id} onItinerarios={() => setOpAbierta(opAbierta === c.id ? null : c.id)} />)}</tbody>
               </table>
             </div>
           )}
+          {opAbierta && db.campanas[opAbierta]?.municipioId === mun.id && <CampanaOperativa campanaId={opAbierta} />}
         </section>
       )}
     </div>
   );
 }
 
-function FilaCampana({ c }: { c: Campana }) {
+function FilaCampana({ c, abierta, onItinerarios }: { c: Campana; abierta: boolean; onItinerarios: () => void }) {
   const db = useEspacios((s) => s.db!);
   const sel = useSeleccionEspacio();
   const cont = contenidoCampana(db, c.id);
@@ -121,9 +136,9 @@ function FilaCampana({ c }: { c: Campana }) {
       <td className="num">{c.anio}</td>
       <td>{CLASE_CAMPANA_TXT[clase].nombre}{clase === 'operativa' ? <span className="muted"> · {TIPO_OPERATIVA_TXT[c.tipo as TipoOperativa] ?? c.tipo}</span> : null}</td>
       <td>{cont.vacia ? <span className="muted">Vacía{destino ? ' · lista para incorporar' : ''}</span> : `${fmt(cont.registros)} registros · ${cont.importaciones.length} incorporación(es)`}</td>
-      <td>{destino && (
+      <td>{clase === 'operativa' && <button className={`btn s ${abierta ? 'primario' : ''}`} aria-expanded={abierta} onClick={onItinerarios}>Itinerarios y censo</button>}{destino && (
         <button className="btn s" onClick={() => {
-          sel.elegir({ municipioId: c.municipioId, campanaId: c.id });
+          sel.elegir({ modo: 'historico', municipioId: c.municipioId, campanaId: c.id, itinerarioId: null });
           useAsistenteEspacio.getState().set({ preparado: null, etapa: 1 });
           document.querySelector('[aria-label="Incorporar un censo"]')?.scrollIntoView?.({ behavior: 'smooth' });
         }}>Incorporar un Excel aquí</button>
