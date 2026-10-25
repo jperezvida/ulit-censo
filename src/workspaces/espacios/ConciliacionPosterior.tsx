@@ -119,7 +119,7 @@ function FilaPendiente({ p, deshacible, ocupado, hacer, campanaId }: { p: Pendie
       <div className="muted">{MOTIVO_PENDIENTE_TXT[p.motivo] ?? p.motivo}{p.decision ? ` · mantenida pendiente por ${personas[p.decision.porId]?.nombre ?? p.decision.porId} el ${p.decision.fecha.slice(0, 10)}${p.decision.motivo ? ` («${p.decision.motivo}»)` : ''}` : ''}</div>
       <div className="fila cj-fila-acc">
         {p.candidatos.length > 0 && (<>
-          <select className="input" aria-label={`Local para la fila ${p.fila}`} value={localId} onChange={(e) => setLocalId(e.target.value)}>
+          <select className="input conc-sel" aria-label={`Local para la fila ${p.fila}`} value={localId} onChange={(e) => setLocalId(e.target.value)}>
             {p.candidatos.map((c) => <option key={c.localId} value={c.localId}>{c.portal}{c.mismoPortal ? ' (mismo portal)' : ''}</option>)}
           </select>
           <button className="btn s" disabled={ocupado || !localId} onClick={() => hacer('Vinculando…', (x, porId) => vincularALocal(x, campanaId, p.registroId, localId, { porId }))}><Link2 size={13} /> Vincular</button>

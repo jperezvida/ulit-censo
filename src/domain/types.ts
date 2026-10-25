@@ -538,6 +538,18 @@ export interface TrazaIncorporacion {
    * DESPUÉS. Deshacer la restaura tal como estaba (si nadie la ha cambiado entretanto).
    */
   campanaPrevia?: { valor: Campana; huellaDespues: string };
+  /**
+   * G5 · Al deshacer: quién y cuándo, y una traza MÍNIMA de las conciliaciones posteriores que se hicieron
+   * (y se deshicieron) sobre sus filas antes de deshacer la incorporación. Sin motivos ni datos de la fila.
+   */
+  deshecha?: { porId: Id; fecha: string; conciliaciones?: TrazaConciliacionDeshecha[] };
+}
+
+export interface TrazaConciliacionDeshecha {
+  fila: number;
+  accion: ConciliacionPosterior['accion'];
+  porId: Id;
+  fecha: string;
   deshecha?: { porId: Id; fecha: string };
 }
 

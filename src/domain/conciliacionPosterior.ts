@@ -236,6 +236,7 @@ export function decisionesCampana(db: BaseDatos, campanaId: Id): { vinculoId: Id
  */
 export function deshacerConciliacion(db0: BaseDatos, campanaId: Id, registroId: Id, f: FirmaDecision): BaseDatos {
   const { v, obs } = contexto(db0, campanaId, registroId);
+  if (!puedeConciliar(db0, f.porId)) throw new ErrorDominio('regla', 'Deshace una persona de coordinación, administración o revisión.');
   const lista = v.conciliaciones ?? [];
   const i = lista.map((c) => !c.deshecha).lastIndexOf(true);
   if (i < 0) throw new ErrorDominio('regla', 'No hay ninguna decisión que deshacer en esta fila.');
@@ -244,10 +245,16 @@ export function deshacerConciliacion(db0: BaseDatos, campanaId: Id, registroId: 
   if (c.accion !== 'mantener-pendiente') {
     if (v.localId !== c.localId) conflictos.push('El vínculo de la fila ha cambiado después de la decisión.');
     if (obs && obs.localId !== c.localId) conflictos.push('La observación de la fila ha cambiado después de la decisión.');
+    // Una decisión de estado vigente sobre el local (en cualquier campaña) se apoya en sus observaciones: se retira antes.
+    for (const camp of Object.values(db0.campanas)) {
+      if ((camp.resolucionesEstado ?? []).some((r) => r.localId === c.localId && !r.retirada)) conflictos.push(`El local tiene una decisión de estado vigente en «${camp.nombre}»: retírela antes de deshacer.`);
+    }
     for (const lid of c.creadas.locales) {
       if (Object.values(db0.vinculos).some((x) => x.id !== v.id && x.localId === lid)) conflictos.push('Otra fila está vinculada al local creado.');
       if (Object.values(db0.observaciones).some((o) => o.id !== obs?.id && o.localId === lid)) conflictos.push('Otra observación usa el local creado.');
       if (Object.values(db0.ocupaciones).some((o) => o.localId === lid && !c.creadas.ocupaciones.includes(o.id))) conflictos.push('Otra ocupación usa el local creado.');
+      if (Object.values(db0.revisiones).some((r) => r.localId === lid)) conflictos.push('Una revisión de oficina usa el local creado.');
+      if (Object.values(db0.vinculos).some((x) => (x.candidatos ?? []).some((k) => k.localId === lid))) conflictos.push('Otra fila tiene el local creado como candidato.');
     }
   }
   if (conflictos.length) throw new ErrorDominio('bloqueado', `No se puede deshacer: ${conflictos[0]}`, conflictos);
@@ -338,6 +345,7 @@ export function resolverEstado(db: BaseDatos, campanaId: Id, localId: Id, r: { e
 /** Retira la resolución vigente (se conserva marcada como retirada): el estado vuelve a deducirse de las observaciones. */
 export function retirarResolucion(db: BaseDatos, campanaId: Id, localId: Id, f: FirmaDecision): BaseDatos {
   const camp = asegurarCampana(db, campanaId);
+  if (!puedeConciliar(db, f.porId)) throw new ErrorDominio('regla', 'Retira una persona de coordinación, administración o revisión.');
   const lista = camp.resolucionesEstado ?? [];
   const i = lista.map((x) => x.localId === localId && !x.retirada).lastIndexOf(true);
   if (i < 0) throw new ErrorDominio('regla', 'Ese local no tiene ninguna resolución vigente.');

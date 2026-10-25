@@ -237,4 +237,84 @@ describe('G5 · Conciliación posterior y consolidado fiable', () => {
     const plan = { ...db, itinerarios: { ...db.itinerarios, [e.its.IT1]: { ...db.itinerarios[e.its.IT1], tramos: [{ ...g4[0], etiqueta: 'censar desde cero' }] } } };
     expect(tramosDeducidosSinConfirmar(plan, e.its.IT1)).toEqual([]);
   });
+
+  it('integridad · sin permiso no se deshace una conciliación ni se retira una decisión de estado', async () => {
+    const e = await escenario();
+    const sinPermiso = { ...e.db, personas: { ...e.db.personas, 'p-campo': { id: 'p-campo', nombre: 'Investigación de Campo', iniciales: 'IC', roles: ['investigador' as const], color: '#888' } } };
+    const caf = pend(e, sinPermiso, 'IT2', /CAFETERÍA/);
+    const vacio = e.local('Calle del Olmo', 5);
+    const db1 = vincularALocal(sinPermiso, e.campanaId, caf.registroId, vacio, firma(e));
+    const obs = estadoLocal(db1, e.campanaId, vacio).propuesta!.observacionId;
+    const db2 = resolverEstado(db1, e.campanaId, vacio, { estado: 'ocupado', observacionId: obs }, firma(e));
+    const ajeno = { porId: 'p-campo', ahora: AHORA };
+    expect(() => vincularALocal(db1, e.campanaId, pend(e, db1, 'IT2', /FERRETERÍA/).registroId, e.local('Calle del Olmo', 7), ajeno)).toThrow(/coordinación, administración o revisión/);
+    expect(() => deshacerConciliacion(db2, e.campanaId, caf.registroId, ajeno)).toThrow(/Deshace una persona de coordinación/);
+    expect(() => retirarResolucion(db2, e.campanaId, vacio, ajeno)).toThrow(/Retira una persona de coordinación/);
+    expect(() => resolverEstado(db1, e.campanaId, vacio, { estado: 'dudoso' }, ajeno)).toThrow(/coordinación/);
+    expect(() => deshacerConciliacion(db2, e.campanaId, caf.registroId, { porId: 'p-inexistente', ahora: AHORA })).toThrow(/coordinación/);
+  });
+
+  it('integridad · una decisión de estado vigente bloquea deshacer la conciliación y la importación, con explicación y sin borrarla', async () => {
+    const e = await escenario();
+    // Local creado por conciliación y con una decisión de estado vigente
+    const caf = pend(e, e.db, 'IT2', /CAFETERÍA/);
+    const db1 = crearLocalDistinto(e.db, e.campanaId, caf.registroId, firma(e, 'Otro establecimiento en el mismo portal'));
+    const nuevo = `loc-g5-${caf.registroId}`;
+    const ob = estadoLocal(db1, e.campanaId, nuevo).observaciones[0].id;
+    const db2 = resolverEstado(db1, e.campanaId, nuevo, { estado: 'ocupado', observacionId: ob }, firma(e));
+    expect(() => deshacerConciliacion(db2, e.campanaId, caf.registroId, firma(e))).toThrow(/decisión de estado vigente.*retírela antes/);
+    // Vincular a un local existente y decidir su estado: tampoco se deshace la vinculación sin retirar antes
+    const vacio = e.local('Calle del Olmo', 5);
+    const caf3 = pend(e, db2, 'IT3', /CAFETERÍA/);
+    const db3 = vincularALocal(db2, e.campanaId, caf3.registroId, vacio, firma(e));
+    const db4 = resolverEstado(db3, e.campanaId, vacio, { estado: 'ocupado', observacionId: estadoLocal(db3, e.campanaId, vacio).propuesta!.observacionId }, firma(e));
+    expect(() => deshacerConciliacion(db4, e.campanaId, caf3.registroId, firma(e))).toThrow(/decisión de estado vigente/);
+    // Deshacer la importación de IT1 (de la que es el local vacío) se bloquea por la decisión vigente
+    let err: unknown;
+    try { deshacerIncorporacion(db4, e.imps.IT1, e.porId, AHORA); } catch (x) { err = x; }
+    expect((err as { detalles?: string[] }).detalles?.join(' ')).toMatch(/Decisión de estado vigente sobre el local «.*» en «Censo 2026»: retírela antes de deshacer/);
+    // Ninguna decisión se ha eliminado
+    expect(db4.campanas[e.campanaId].resolucionesEstado).toHaveLength(2);
+    // Retirada la decisión, la conciliación ya se puede deshacer (y la decisión retirada se conserva)
+    const db5 = deshacerConciliacion(retirarResolucion(db4, e.campanaId, vacio, firma(e)), e.campanaId, caf3.registroId, firma(e));
+    expect(db5.campanas[e.campanaId].resolucionesEstado?.map((r) => !!r.retirada)).toEqual([false, true]);
+  });
+
+  it('integridad · una decisión de estado apoyada en observaciones de una importación bloquea deshacerla', async () => {
+    const e = await escenario();
+    // La librería (local de IT2) recibe por conciliación la observación sin fecha de IT3 y se decide su estado
+    const libreria = e.local('Calle Peatonal Mayor', 2);
+    const p3 = pend(e, e.db, 'IT3', /Peatonal/);
+    const db1 = vincularALocal(e.db, e.campanaId, p3.registroId, libreria, firma(e));
+    const db2 = resolverEstado(db1, e.campanaId, libreria, { estado: 'dudoso' }, firma(e));
+    expect(() => deshacerIncorporacion(db2, e.imps.IT2, e.porId, AHORA)).toThrow(/cambio\(s\) posterior\(es\)/);
+    // Retirar y deshacer la conciliación → IT3 y luego IT2 se pueden deshacer
+    const db3 = deshacerConciliacion(retirarResolucion(db2, e.campanaId, libreria, firma(e)), e.campanaId, p3.registroId, firma(e));
+    const db4 = deshacerIncorporacion(deshacerIncorporacion(db3, e.imps.IT3, e.porId, AHORA), e.imps.IT2, e.porId, AHORA);
+    expect(db4.locales[libreria]).toBeUndefined();
+    expect(db4.campanas[e.campanaId].resolucionesEstado).toEqual([expect.objectContaining({ localId: libreria, retirada: expect.anything() })]);
+    expect(verificarEspacio(db4, 'ensayo')).toEqual([]);
+  });
+
+  it('auditoría · al deshacer una importación queda una traza mínima de sus conciliaciones deshechas', async () => {
+    const e = await escenario();
+    const p = pend(e, e.db, 'IT3', /Inexistente/);
+    const caf = pend(e, e.db, 'IT3', /CAFETERÍA/);
+    let db = mantenerPendiente(e.db, e.campanaId, p.registroId, firma(e, 'Texto libre que no debe copiarse'));
+    db = crearLocalDistinto(db, e.campanaId, caf.registroId, { porId: e.porId, ahora: '2026-10-25T11:00:00.000Z', motivo: 'Otro local' });
+    db = deshacerConciliacion(db, e.campanaId, caf.registroId, { porId: e.porId, ahora: '2026-10-25T12:00:00.000Z' });
+    db = deshacerConciliacion(db, e.campanaId, p.registroId, { porId: e.porId, ahora: '2026-10-25T13:00:00.000Z' });
+    const d = deshacerIncorporacion(db, e.imps.IT3, e.porId, '2026-10-25T14:00:00.000Z');
+    const traza = d.importaciones[e.imps.IT3].c1!.deshecha!;
+    expect(traza).toMatchObject({ porId: e.porId, fecha: '2026-10-25T14:00:00.000Z' });
+    expect(traza.conciliaciones).toEqual([
+      { fila: p.fila, accion: 'mantener-pendiente', porId: e.porId, fecha: AHORA, deshecha: { porId: e.porId, fecha: '2026-10-25T13:00:00.000Z' } },
+      { fila: caf.fila, accion: 'local-nuevo', porId: e.porId, fecha: '2026-10-25T11:00:00.000Z', deshecha: { porId: e.porId, fecha: '2026-10-25T12:00:00.000Z' } },
+    ]);
+    // Sin motivos ni datos de la fila; los vínculos y el local se retiran igualmente
+    expect(JSON.stringify(traza)).not.toMatch(/Texto libre|Otro local|CAFETERÍA/);
+    expect(d.vinculos[caf.vinculoId]).toBeUndefined();
+    // Una importación sin conciliaciones no añade la lista
+    expect(deshacerIncorporacion(e.db, e.imps.IT3, e.porId, AHORA).importaciones[e.imps.IT3].c1!.deshecha!.conciliaciones).toBeUndefined();
+  });
 });

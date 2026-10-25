@@ -96,6 +96,7 @@ tr.aviso td { background: #fff6e0; }
 .cj-ficha-fila td { background: var(--superficie-2, #f8f9fb); }
 .cj-fila-acc { flex-wrap: wrap; gap: 6px; }
 .cj-fila-acc .input { flex: 1 1 180px; min-width: 0; }
+.cj-fila-acc .input.conc-sel { flex-basis: 260px; }
 .mun-form textarea.input { width: 100%; }
 @media (max-width: 640px) {
   .cj-vias th:nth-child(2), .cj-vias td:nth-child(2) { display: none; }

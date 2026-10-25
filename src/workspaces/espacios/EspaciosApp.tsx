@@ -262,9 +262,9 @@ function Espacio({ tipo }: { tipo: TipoEspacio }) {
         <section className="tarjeta inc-bloque" aria-label="Incorporaciones">
           <h3>Incorporaciones</h3>
           {importaciones.length === 0 ? <p className="muted">Ninguna.</p> : (
-            <table className="tabla ap-tabla"><tbody>{importaciones.map((i) => (
+            <div className="tabla-scroll"><table className="tabla ap-tabla"><tbody>{importaciones.map((i) => (
               <tr key={i.id}><td>{i.archivo}<div className="mono muted">{i.huella.slice(0, 16)}…</div></td><td>{i.fecha.slice(0, 10)}</td><td>{i.estado === 'descartada' ? 'deshecha' : i.estado}</td><td className="num">{fmt(i.filas)} filas</td></tr>
-            ))}</tbody></table>
+            ))}</tbody></table></div>
           )}
         </section>
       </div>

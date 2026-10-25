@@ -25,6 +25,15 @@ Bajo el desglose por itinerario aparece **«Conciliación posterior»**:
   - **Información sin fecha suficiente:** ninguna fecha, o contradicción cuyas fechas faltan o coinciden. No se deduce estado ni se inventan fechas.
   - La decisión (`ResolucionEstado`) se guarda en `campana.resolucionesEstado`; retirarla la conserva marcada como retirada.
 
+## Cierre de riesgos de integridad
+
+- **Dependencias al deshacer:**
+  - `deshacerConciliacion` se bloquea, con explicación, si el local de la decisión tiene una decisión de estado vigente en cualquier campaña, o si el local creado lo usa otra fila, observación, ocupación, revisión de oficina o candidato.
+  - `deshacerIncorporacion` se bloquea si hay una decisión de estado vigente sobre un local importado o sobre un local con observaciones de esa incorporación.
+  - Las decisiones nunca se eliminan: hay que retirarlas antes, y la retirada se conserva.
+- **Permisos:** deshacer una conciliación y retirar una decisión de estado exigen los mismos roles que tomarlas (coordinación, administración o revisión).
+- **Auditoría:** al deshacer una incorporación, `c1.deshecha.conciliaciones` guarda una traza mínima de las conciliaciones de sus filas: fila, acción, autor, fecha y quién y cuándo la deshizo. No guarda motivos ni datos de la fila.
+
 ## Consolidado corregido (`censoConsolidado`)
 
 - Distingue **filas** (registros de los Excel), **observaciones** y **locales físicos únicos**.
@@ -58,5 +67,4 @@ Encontrar locales en una calle **no** demuestra haberla recorrido entera ni por 
 
 - Cambiar el local de una fila **ya vinculada en la importación** se hace deshaciendo la importación (no desde este panel).
 - Una fila sin calle reconocida solo puede mantenerse pendiente: corregir su calle requiere la conciliación de calles del asistente y volver a importar.
-- Al deshacer una importación se pierde con ella el historial de decisiones deshechas de sus filas (la traza de la importación se conserva).
 - Editor de itinerarios sobre mapa y cobertura real por aceras: fases posteriores.

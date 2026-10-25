@@ -14,6 +14,7 @@ import { denominacionCalle, localizacionDe, type FilaInterpretada, type Opciones
 import type {
   Campana, CeldaOriginal, ColeccionIncorporada, Confianza, DatoDigital, Id, Importacion, LocalFisico, Observacion, Ocupacion, RegistroOrigen,
   RevisionDigital, TrazaIncorporacion, VariableDigital, VinculoHistorico,
+  TrazaConciliacionDeshecha,
 } from './types';
 
 /**
@@ -874,6 +875,14 @@ export function deshacerIncorporacion(db0: BaseDatos, importacionId: Id, porId: 
     for (const [k, x] of Object.entries(db0[col])) if (!nuestro(col, k) && (negocios.has(x.negocioId) || deLaCampana(x.campanaId))) conflictos.push(`${col} posterior «${k}» sobre datos importados`);
   }
   for (const r of Object.values(db0.revisiones)) if (deLaCampana(r.campanaId) || locales.has(r.localId)) conflictos.push(`Revisión posterior de «${r.localId}» en datos importados`);
+  // G5: una decisión de estado VIGENTE sobre un local importado, o sobre un local con observaciones de esta
+  // incorporación, depende de ellas: hay que retirarla antes (nunca se elimina en silencio).
+  const obsPorLocal = new Set(Object.keys(creadas.observaciones ?? {}).map((id) => db0.observaciones[id]?.localId).filter((l): l is Id => !!l));
+  for (const c of Object.values(db0.campanas)) {
+    for (const r of c.resolucionesEstado ?? []) {
+      if (!r.retirada && (locales.has(r.localId) || obsPorLocal.has(r.localId))) conflictos.push(`Decisión de estado vigente sobre el local «${r.localId}» en «${c.nombre}»: retírela antes de deshacer`);
+    }
+  }
   if (!imp.c1.itinerario) {
     for (const it of Object.values(db0.itinerarios)) if (it.campanaId === campanaId) conflictos.push(`Itinerario posterior «${it.codigo}» en la campaña histórica`);
     for (const i of Object.values(db0.importaciones)) if (i.id !== importacionId && i.campanaId === campanaId && i.estado === 'confirmada') conflictos.push(`Otra importación «${i.id}» en la misma campaña`);
@@ -900,6 +909,12 @@ export function deshacerIncorporacion(db0: BaseDatos, importacionId: Id, porId: 
   }
   // G2: la campaña preparada vuelve a quedar exactamente como estaba antes de incorporar.
   if (previa) db.campanas = { ...db.campanas, [campanaId]: previa.valor };
-  db.importaciones = { ...db0.importaciones, [importacionId]: { ...imp, estado: 'descartada', c1: { ...imp.c1, deshecha: { porId, fecha: ahora } }, nota: `${imp.nota ?? ''} Deshecha por ${porId} el ${ahora.slice(0, 10)}.`.trim() } };
+  // G5: traza mínima de las conciliaciones posteriores (todas deshechas, o no se habría llegado aquí).
+  const trazaConc: TrazaConciliacionDeshecha[] = [...ids.get('vinculos')!].flatMap((id) => {
+    const v = db0.vinculos[id];
+    const fila = v?.origen.tipo === 'registro' ? db0.registros[v.origen.id]?.fila : undefined;
+    return (v?.conciliaciones ?? []).map((c) => ({ fila: fila ?? 0, accion: c.accion, porId: c.porId, fecha: c.fecha, ...(c.deshecha ? { deshecha: c.deshecha } : {}) }));
+  }).sort((a, b) => a.fila - b.fila || a.fecha.localeCompare(b.fecha));
+  db.importaciones = { ...db0.importaciones, [importacionId]: { ...imp, estado: 'descartada', c1: { ...imp.c1, deshecha: { porId, fecha: ahora, ...(trazaConc.length ? { conciliaciones: trazaConc } : {}) } }, nota: `${imp.nota ?? ''} Deshecha por ${porId} el ${ahora.slice(0, 10)}.`.trim() } };
   return db;
 }
