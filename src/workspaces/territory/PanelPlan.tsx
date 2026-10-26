@@ -61,14 +61,17 @@ export function PanelPlan(p: Props) {
 
   const nuevo = async () => {
     if (!campana || p.ocupadoEnsayo) return;
-    const codigo = siguienteCodigo(p.itinerarios.map((i) => i.codigo));
+    const usados = new Set(p.itinerarios.map((i) => i.codigo.toUpperCase()));
+    let ordinal = 1;
+    while (usados.has(`IT${ordinal}`)) ordinal++;
+    const codigo = p.modificarEnsayo ? `IT${ordinal}` : siguienteCodigo(p.itinerarios.map((i) => i.codigo));
     let id = '';
     const cambio = (d: BaseDatos) => {
       if (Object.values(d.itinerarios).some((it) => it.campanaId === campana.id && it.codigo === codigo))
         throw new Error('El código del itinerario ha cambiado. Vuelva a abrir el espacio.');
       if (p.modificarEnsayo) {
         // G4: IDs con prefijo de espacio; el creador antiguo es exclusivo de la demostración.
-        const r = crearItinerarioEspacio(d, campana.id, { codigo, nombre: `Itinerario ${codigo.slice(3)}` },
+        const r = crearItinerarioEspacio(d, campana.id, { codigo, nombre: `Itinerario ${codigo}` },
           { prefijo: PREFIJO.ensayo, porId: personaEspacio(d)!.id });
         id = r.itinerarioId;
         return r.db;
