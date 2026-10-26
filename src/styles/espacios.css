@@ -171,3 +171,16 @@ tr.aviso td { background: #fff6e0; }
 }
 .campo.ux-buscar { flex-direction: row; display: flex; align-items: center; }
 .campo.ux-buscar .input { flex: 1; min-width: 0; }
+
+/* Piloto de integración: mapa y lista reutilizan la cartografía y las reglas existentes. */
+.ux-planificador { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--azul-borde, #96baff); border-radius: 10px; }
+.ux-plan-disposicion { display: grid; grid-template-columns: minmax(220px, 290px) minmax(0, 1fr); gap: 12px; }
+.ux-plan-lista { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ux-plan-lista .campo { display: flex; flex-direction: column; gap: 4px; }
+.ux-plan-resultados { display: flex; flex-direction: column; align-items: stretch; gap: 5px; max-height: 315px; overflow-y: auto; }
+.ux-plan-resultados .btn { justify-content: flex-start; text-align: left; white-space: normal; }
+.ux-plan-mapa { min-width: 0; }
+.ux-plan-mapa .mapa, .ux-plan-sin-geo { position: relative; height: 360px; min-height: 240px; width: 100%; border: 1px solid var(--linea); border-radius: 8px; overflow: hidden; }
+.ux-plan-mapa .mapa-lienzo { position: absolute; inset: 0; }
+.ux-plan-sin-geo { display: grid; place-items: center; padding: 25px; text-align: center; color: var(--tinta-3); }
+@media (max-width: 720px) { .ux-plan-disposicion { grid-template-columns: 1fr; } .ux-plan-mapa .mapa { height: 300px; } }

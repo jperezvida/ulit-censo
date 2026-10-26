@@ -14,6 +14,7 @@ import { AsistenteEspacio } from './AsistenteEspacio';
 import { ConciliacionPosterior } from './ConciliacionPosterior';
 import { FormCampana, FormMunicipio } from './MunicipiosCampanas';
 import { RespaldoTarjeta } from './Respaldo';
+import { PlanificadorEnsayo } from './PlanificadorEnsayo';
 import { useAsistenteEspacio, useSeleccionEspacio } from './estadoAsistenteEspacio';
 
 /**
@@ -137,7 +138,7 @@ export function Inicio({ tipo }: { tipo: TipoEspacio }) {
           </nav>
 
           <section className="tarjeta inc-bloque ux-panel" aria-label={VISTAS.find((v) => v.id === vista)!.titulo}>
-            {vista === 'itinerarios' && <PanelItinerarios campana={campana} r={r} onIncorporar={(itinerarioId) => { useSeleccionEspacio.getState().elegir({ itinerarioId }); cambiar({ vista: 'incorporar' }); }} onIncidencias={(itinerarioId) => { setFiltro({ itinerarioId }); cambiar({ vista: 'incidencias' }); }} />}
+            {vista === 'itinerarios' && <PanelItinerarios key={campana.id} campana={campana} r={r} onIncorporar={(itinerarioId) => { useSeleccionEspacio.getState().elegir({ itinerarioId }); cambiar({ vista: 'incorporar' }); }} onIncidencias={(itinerarioId) => { setFiltro({ itinerarioId }); cambiar({ vista: 'incidencias' }); }} />}
             {vista === 'incorporar' && <PanelIncorporar tipo={tipo} campana={campana} onCrearHistorica={() => setAlta('campana')} />}
             {vista === 'incidencias' && (r.archivos
               ? <>{r.incidencias === 0 && <div className="t-info ok"><CheckCircle2 size={15} /> Nada pendiente de revisar.</div>}<ConciliacionPosterior key={`${campana.id}-${JSON.stringify(filtro)}`} campanaId={campana.id} simple filtroInicial={filtro} /></>
@@ -176,6 +177,7 @@ function PanelItinerarios({ campana, r, onIncorporar, onIncidencias }: { campana
   const [codigo, setCodigo] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [abierto, setAbierto] = useState<Id | null>(null);
+  const [planificando, setPlanificando] = useState<Id | null>(null);
   if (r.clase !== 'operativa') return <p className="muted">Las campañas históricas no tienen itinerarios: el censo se incorpora de un único Excel.</p>;
   const desglose = censoConsolidado(db, campana.id).itinerarios;
   const problema = codigo.trim() ? validarItinerario(db, campana.id, codigo)[0] : undefined;
@@ -198,6 +200,7 @@ function PanelItinerarios({ campana, r, onIncorporar, onIncidencias }: { campana
               <div className="fila cj-fila-acc">
                 {!archivo && <button className="btn s primario" onClick={() => onIncorporar(it.id)}><FileUp size={13} /> Incorporar su Excel</button>}
                 {d.pendientes > 0 && <button className="btn s" onClick={() => onIncidencias(it.id)}><ListChecks size={13} /> Ver incidencias</button>}
+                <button className="btn s" aria-expanded={planificando === it.id} onClick={() => setPlanificando(planificando === it.id ? null : it.id)}>{planificando === it.id ? 'Ocultar mapa' : 'Planificar'}</button>
                 {archivo && <button className="btn s" aria-expanded={abierto === it.id} onClick={() => setAbierto(abierto === it.id ? null : it.id)}>{abierto === it.id ? 'Ocultar' : 'Consultar'}</button>}
               </div>
               {abierto === it.id && archivo && (
@@ -212,6 +215,7 @@ function PanelItinerarios({ campana, r, onIncorporar, onIncidencias }: { campana
           );
         })}
       </ul>
+      {planificando && <PlanificadorEnsayo itinerarioId={planificando} onCerrar={() => setPlanificando(null)} />}
       <div className="fila cj-fila-acc ux-nuevo">
         <input className="input" aria-label="Código del itinerario" placeholder="Nuevo itinerario, p. ej. IT4" value={codigo} onChange={(e) => setCodigo(e.target.value)} />
         <button className="btn s" disabled={!codigo.trim() || !!problema || !!ocupado} onClick={async () => {
