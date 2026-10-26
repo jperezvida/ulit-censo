@@ -232,4 +232,46 @@ describe('Mapa del itinerario de ensayo', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Itinerarios' }));
     expect(screen.queryByRole('button', { name: 'Nuevo itinerario' })).toBeNull();
   });
+
+  /** Hace que la escritura vea la base alterada (como si hubiera cambiado justo antes de guardar). */
+  function alterarAlGuardar(alterar: (d: BaseDatos) => BaseDatos) {
+    const original = useEspacios.getState().modificar;
+    act(() => useEspacios.setState({ modificar: (msg, fn) => original(msg, (d, ctx) => fn(alterar(d), ctx)) }));
+    return () => act(() => useEspacios.setState({ modificar: original }));
+  }
+
+  it.each([
+    ['la persona pierde el rol de coordinación', (d: BaseDatos) => ({ ...d, personas: Object.fromEntries(Object.entries(d.personas).map(([k, p]) => [k, { ...p, roles: ['investigador' as const] }])) }), /rol de coordinación/],
+    ['la campaña deja de ser operativa', (d: BaseDatos) => ({ ...d, campanas: Object.fromEntries(Object.entries(d.campanas).map(([k, c]) => [k, { ...c, clase: 'historica' as const, tipo: 'historico-importado' as const }])) }), /han cambiado/],
+  ])('rechaza asignar una calle si %s, sin alterar lo guardado', async (_t, alterar, mensaje) => {
+    const { db, campanaId, itinerarioId, calle } = await preparar();
+    montar(campanaId, itinerarioId);
+    await waitFor(() => expect(mapaFalso.clic).toBeTypeOf('function'));
+    mapaFalso.calleId = calle.id;
+    act(() => mapaFalso.clic!({ point: { x: 10, y: 10 }, lngLat: { lng: 0, lat: 0 } }));
+    const boton = await screen.findByRole('button', { name: 'Asignar calle completa' });
+    const restaurar = alterarAlGuardar(alterar);
+    fireEvent.click(boton);
+    expect(await screen.findByRole('alert')).toHaveTextContent(mensaje);
+    restaurar();
+    expect(await get<BaseDatos>('db', tienda())).toEqual(db);
+  });
+
+  it('rechaza cambiar aceras si la persona pierde el rol, sin alterar lo guardado', async () => {
+    const { campanaId, itinerarioId, calle } = await preparar();
+    montar(campanaId, itinerarioId);
+    await waitFor(() => expect(mapaFalso.clic).toBeTypeOf('function'));
+    mapaFalso.calleId = calle.id;
+    act(() => mapaFalso.clic!({ point: { x: 10, y: 10 }, lngLat: { lng: 0, lat: 0 } }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Asignar calle completa' }));
+    await screen.findByText(/Guardado comprobado/);
+    const antes = (await get<BaseDatos>('db', tienda()))!;
+    const restaurar = alterarAlGuardar((d) => ({ ...d, personas: Object.fromEntries(Object.entries(d.personas).map(([k, p]) => [k, { ...p, roles: ['investigador' as const] }])) }));
+    fireEvent.click(screen.getByText('Avanzado: aceras y división de la calle'));
+    const avanzado = screen.getByText('Avanzado: aceras y división de la calle').closest('details')!;
+    fireEvent.change(within(avanzado).getByRole('combobox'), { target: { value: 'par' } });
+    expect(await screen.findByRole('alert')).toHaveTextContent(/rol de coordinación/);
+    restaurar();
+    expect(await get<BaseDatos>('db', tienda())).toEqual(antes);
+  });
 });

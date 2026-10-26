@@ -20,7 +20,31 @@ function git(cmd: string) {
   }
 }
 const COMMIT = process.env.GITHUB_SHA || git('rev-parse HEAD') || 'desconocido';
-const RAMA = process.env.GITHUB_REF_NAME || git('rev-parse --abbrev-ref HEAD') || 'desconocida';
+/**
+ * Rama de origen. Solo se muestra si está verificada:
+ *  1. GITHUB_REF_NAME (GitHub Actions: la rama que disparó la compilación);
+ *  2. RAMA_COMPILACION (compilaciones manuales), solo si `origin/<rama>` contiene el commit;
+ *  3. la rama local de git, con la misma condición.
+ * Si no se puede verificar (p. ej., una copia local llamada «master» que no existe en el remoto),
+ * se indica «sin verificar»: nunca se muestra una rama que no conste en el repositorio.
+ */
+const gitOk = (cmd: string) => {
+  try {
+    execSync(`git ${cmd}`, { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+};
+const enRemoto = (rama: string) => /^[\w./-]+$/.test(rama) && /^[0-9a-f]{40}$/.test(COMMIT) && gitOk(`merge-base --is-ancestor ${COMMIT} refs/remotes/origin/${rama}`);
+const ramaVerificada = () => {
+  if (process.env.GITHUB_REF_NAME) return process.env.GITHUB_REF_NAME;
+  const pedida = process.env.RAMA_COMPILACION?.trim();
+  if (pedida) return enRemoto(pedida) ? pedida : 'sin verificar';
+  const local = git('rev-parse --abbrev-ref HEAD');
+  return local && local !== 'HEAD' && enRemoto(local) ? local : 'sin verificar';
+};
+const RAMA = ramaVerificada();
 
 function versionJson(): Plugin {
   let salida = 'dist';

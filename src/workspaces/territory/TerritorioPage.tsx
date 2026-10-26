@@ -83,15 +83,23 @@ function TerritorioContenido({ itInicial }: { itInicial?: Id }) {
   const estado = useRef({ editando, itSel, dividiendo, calleSel, dibujo, capa, puedeEditar });
   estado.current = { editando, itSel, dividiendo, calleSel, dibujo, capa, puedeEditar };
 
+  /** Comprobación dentro de la escritura: rol vigente, campaña operativa del municipio, itinerario y calle de su ámbito. */
+  const comprobarEnsayo = (actual: BaseDatos, itId: Id, calleId: Id) => {
+    const c = campana ? actual.campanas[campana.id] : undefined;
+    const it = actual.itinerarios[itId];
+    const calle = actual.calles[calleId];
+    if (!personaEspacio(actual)?.roles.some((rol) => rol === 'coordinador' || rol === 'administrador'))
+      throw new Error('La persona del espacio ya no tiene rol de coordinación o administración: no se guarda.');
+    if (!c || claseCampana(c) !== 'operativa' || c.municipioId !== municipio.id || !it || it.campanaId !== c.id || !calle || calle.municipioId !== municipio.id)
+      throw new Error('El itinerario o la calle han cambiado. Vuelva a abrir el espacio.');
+    return { it, calle };
+  };
+
   const guardarTramoEnsayo = async (itId: Id, calleId: Id, cambio: (actual: BaseDatos, calle: Calle) => BaseDatos, descripcion: string) => {
     if (demo || !puedePlanificarEnsayo || !campana || useEspacios.getState().ocupado) return;
     const r = await modificarEnsayo('Guardando planificación…', (actual) => {
-      const c = actual.campanas[campana.id];
-      const it = actual.itinerarios[itId];
-      const calle = actual.calles[calleId];
-      if (!c || c.tipo === 'historico-importado' || c.municipioId !== municipio.id || !it || it.campanaId !== c.id
-        || !it.tramos.some((t) => t.calleId === calleId) || !calle || calle.municipioId !== municipio.id)
-        throw new Error('El itinerario o la calle han cambiado. Vuelva a abrir el espacio.');
+      const { it, calle } = comprobarEnsayo(actual, itId, calleId);
+      if (!it.tramos.some((t) => t.calleId === calleId)) throw new Error('El itinerario o la calle han cambiado. Vuelva a abrir el espacio.');
       return cambio(actual, calle);
     });
     setErrorEnsayo(r.ok ? null : r.error ?? 'No se ha guardado el cambio.');
@@ -355,11 +363,8 @@ function TerritorioContenido({ itInicial }: { itInicial?: Id }) {
     if (!calle || calle.municipioId !== municipio.id) return;
     const quitar = itActual.tramos.some((t) => t.calleId === calleSel);
     const r = await modificarEnsayo('Guardando planificación…', (actual) => {
-      const c = actual.campanas[campana.id];
-      const i = actual.itinerarios[itActual.id];
-      if (!c || !i || i.campanaId !== c.id || c.tipo === 'historico-importado' || c.municipioId !== municipio.id || actual.calles[calleSel]?.municipioId !== municipio.id)
-        throw new Error('El itinerario o la calle han cambiado. Vuelva a abrir el espacio.');
-      return alternarCalle(actual, i.id, calleSel).db;
+      const { it } = comprobarEnsayo(actual, itActual.id, calleSel);
+      return alternarCalle(actual, it.id, calleSel).db;
     });
     setErrorEnsayo(r.ok ? null : r.error ?? 'No se ha guardado el cambio.');
     setGuardadoEnsayo(r.ok ? `${calle.nombre} ${quitar ? 'retirada' : 'añadida'} a ${itActual.codigo}. Guardado comprobado.` : null);
