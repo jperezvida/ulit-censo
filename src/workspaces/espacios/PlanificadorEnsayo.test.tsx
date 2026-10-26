@@ -54,8 +54,8 @@ beforeEach(async () => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-async function preparar() {
-  let db = crearBaseEspacio('ensayo', { persona: { nombre: 'Coordinadora Sintética', roles: ['coordinador'] }, calles: [], detalleCallejero: '', espacioId: 'prueba-plan', incluirMedina: false });
+async function preparar(roles: ('coordinador' | 'investigador')[] = ['coordinador']) {
+  let db = crearBaseEspacio('ensayo', { persona: { nombre: 'Coordinadora Sintética', roles }, calles: [], detalleCallejero: '', espacioId: 'prueba-plan', incluirMedina: false });
   const opciones = { prefijo: PREFIJO.ensayo, porId: db.meta.espacioCreadoPorId!, anioActual: 2026 };
   const villa = { nombre: 'Villa Sintética de Arriba', ine: '99001' };
   const m = altaMunicipio(db, { ...villa, provincia: 'Provincia Sintética', territorio: TERRITORIO_INICIAL }, opciones);
@@ -188,4 +188,48 @@ describe('Mapa del itinerario de ensayo', () => {
     expect(guardada.locales).toEqual(db.locales);
   });
 
+
+  it('el itinerario creado usa identificador propio del ensayo y su nombre y color persisten tras recargar', async () => {
+    const { campanaId, itinerarioId } = await preparar();
+    montar(campanaId, itinerarioId);
+    fireEvent.click(await screen.findByRole('button', { name: 'Itinerarios' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Nuevo itinerario' }));
+    await waitFor(async () => expect(Object.values((await get<BaseDatos>('db', tienda()))!.itinerarios)).toHaveLength(2));
+    const nuevo = Object.values((await get<BaseDatos>('db', tienda()))!.itinerarios).find((it) => it.id !== itinerarioId)!;
+    expect(nuevo).toMatchObject({ codigo: 'IT2', campanaId, origen: 'excel' });
+    expect(nuevo.id.startsWith(`${PREFIJO.ensayo}-it-`)).toBe(true);
+    const nombre = await screen.findByRole('textbox', { name: 'Nombre del itinerario' });
+    fireEvent.change(nombre, { target: { value: 'Ruta sur' } });
+    fireEvent.blur(nombre);
+    await waitFor(async () => expect((await get<BaseDatos>('db', tienda()))!.itinerarios[nuevo.id].nombre).toBe('Ruta sur'));
+    fireEvent.change(screen.getByTitle('Color del itinerario'), { target: { value: '#123456' } });
+    await waitFor(async () => expect((await get<BaseDatos>('db', tienda()))!.itinerarios[nuevo.id].color).toBe('#123456'));
+    useEspacios.getState().cerrar();
+    await useEspacios.getState().abrir('ensayo');
+    expect(useEspacios.getState().db?.itinerarios[nuevo.id]).toMatchObject({ nombre: 'Ruta sur', color: '#123456' });
+  });
+
+  it('un itinerario con la revisión cerrada no se modifica: se avisa y la base queda igual', async () => {
+    const { db, campanaId, itinerarioId, calle } = await preparar();
+    const bloqueada = { ...db, oficinaItinerarios: { ...db.oficinaItinerarios, [itinerarioId]: { itinerarioId, campanaId, estado: 'revision-cerrada' as const, historial: [] } } };
+    await set('db', bloqueada, tienda());
+    montar(campanaId, itinerarioId);
+    await waitFor(() => expect(mapaFalso.clic).toBeTypeOf('function'));
+    mapaFalso.calleId = calle.id;
+    act(() => mapaFalso.clic!({ point: { x: 10, y: 10 }, lngLat: { lng: 0, lat: 0 } }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Asignar calle completa' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/cerrado o validado/);
+    expect((await get<BaseDatos>('db', tienda()))!.itinerarios).toEqual(bloqueada.itinerarios);
+  });
+
+  it('sin rol de coordinación o administración no se ofrece planificar ni crear itinerarios', async () => {
+    const { campanaId, itinerarioId, calle } = await preparar(['investigador']);
+    montar(campanaId, itinerarioId);
+    await waitFor(() => expect(mapaFalso.clic).toBeTypeOf('function'));
+    mapaFalso.calleId = calle.id;
+    act(() => mapaFalso.clic!({ point: { x: 10, y: 10 }, lngLat: { lng: 0, lat: 0 } }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Asignar calle completa' })).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'Itinerarios' }));
+    expect(screen.queryByRole('button', { name: 'Nuevo itinerario' })).toBeNull();
+  });
 });

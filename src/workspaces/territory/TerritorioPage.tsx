@@ -395,8 +395,9 @@ function TerritorioContenido({ itInicial }: { itInicial?: Id }) {
           />
           ) : <div className="rotulo">Planificación · {municipio.nombre}</div>}
         </div>
-        {!demo && errorEnsayo && <div className="t-info error" role="alert">{errorEnsayo}</div>}
-        {!demo && guardadoEnsayo && <div className="t-info ok" role="status">{guardadoEnsayo}</div>}
+        {/* Con el inspector de calle abierto, el aviso se muestra solo allí (una vez). */}
+        {!demo && !(calleSel && db.calles[calleSel]) && errorEnsayo && <div className="t-info error" role="alert">{errorEnsayo}</div>}
+        {!demo && !(calleSel && db.calles[calleSel]) && guardadoEnsayo && <div className="t-info ok" role="status">{guardadoEnsayo}</div>}
         {tab === 'plan' ? (
           <PanelPlan
             itinerarios={itinerarios}
