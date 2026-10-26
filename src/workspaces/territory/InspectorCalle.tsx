@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, Scissors, X } from 'lucide-react';
 import { useFichaLocal } from '../../store/contexto';
@@ -11,7 +11,7 @@ import { EstadoCob, SelloProcedencia, fmtFecha } from '../../components/ui';
 import { formatoDistancia } from '../../domain/geo';
 
 export function InspectorCalle({
-  calleId, itActual, editando, dividiendo, setDividiendo, onCerrar, onIt, onAlternarEnsayo, onAcerasEnsayo, onRestablecerEnsayo, ocupadoEnsayo, errorEnsayo, guardadoEnsayo,
+  calleId, itActual, editando, dividiendo, setDividiendo, onCerrar, onIt, onAlternarEnsayo, onAcerasEnsayo, onRestablecerEnsayo, onEtiquetaEnsayo, ocupadoEnsayo, errorEnsayo, guardadoEnsayo,
 }: {
   calleId: Id;
   itActual?: Itinerario;
@@ -23,6 +23,7 @@ export function InspectorCalle({
   onAlternarEnsayo?: () => Promise<void>;
   onAcerasEnsayo?: (acera: Acera) => Promise<void>;
   onRestablecerEnsayo?: () => Promise<void>;
+  onEtiquetaEnsayo?: (etiqueta: string) => Promise<void>;
   ocupadoEnsayo?: string | null;
   errorEnsayo?: string | null;
   guardadoEnsayo?: string | null;
@@ -82,6 +83,14 @@ export function InspectorCalle({
             {tramoActual.segmentoIds?.length ? `${tramoActual.segmentoIds.length} de ${calle.segmentos.length} segmentos en este itinerario.` : 'Calle completa: todos los segmentos.'} Pulsa un segmento del mapa para incluirlo o excluirlo.
           </p>
         </details>}
+        {tramoActual && onEtiquetaEnsayo && (
+          <EtiquetaEnsayo
+            key={`${itActual.id}/${calleId}`}
+            etiqueta={tramoActual.etiqueta}
+            ocupado={!!ocupadoEnsayo}
+            onGuardar={onEtiquetaEnsayo}
+          />
+        )}
         {errorEnsayo && <div className="t-info error" role="alert">{errorEnsayo} Si otra pestaña cambió el espacio, vuelva al inicio y ábralo de nuevo.</div>}
         {guardadoEnsayo && <div className="t-info ok" role="status">{guardadoEnsayo}</div>}
       </div>}
@@ -223,4 +232,29 @@ export function InspectorCalle({
       {calle.refsFuente.length > 0 && <div className="muted mono" style={{ fontSize: 10.5, padding: '0 2px' }}>{calle.refsFuente.slice(0, 3).join(' · ')}{calle.refsFuente.length > 3 ? ' …' : ''}</div>}
     </aside>
   );
+}
+
+/** Edición diferida: el ensayo solo guarda al confirmar, nunca en cada pulsación. */
+function EtiquetaEnsayo({ etiqueta, ocupado, onGuardar }: {
+  etiqueta?: string;
+  ocupado: boolean;
+  onGuardar: (etiqueta: string) => Promise<void>;
+}) {
+  const [borrador, setBorrador] = useState(etiqueta ?? '');
+  useEffect(() => { setBorrador(etiqueta ?? ''); }, [etiqueta]);
+  const limpio = borrador.trim();
+  return <div className="campo" style={{ marginTop: 8 }}>
+    <span className="etq">Etiqueta de planificación</span>
+    <input
+      className="input"
+      aria-label="Etiqueta de planificación"
+      placeholder="p. ej. Censar desde cero"
+      value={borrador}
+      disabled={ocupado}
+      onChange={(e) => setBorrador(e.target.value)}
+    />
+    <button type="button" className="btn s" disabled={ocupado || limpio === (etiqueta ?? '')} onClick={() => void onGuardar(limpio)}>
+      Guardar etiqueta
+    </button>
+  </div>;
 }
