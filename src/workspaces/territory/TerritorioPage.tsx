@@ -518,6 +518,7 @@ function TerritorioContenido({ itInicial }: { itInicial?: Id }) {
           onAlternarEnsayo={!demo && puedePlanificarEnsayo ? guardarCalleEnsayo : undefined}
           onAcerasEnsayo={!demo && puedePlanificarEnsayo && itActual ? (acera: Acera) => guardarTramoEnsayo(itActual.id, calleSel, (actual) => actualizarTramo(actual, itActual.id, calleSel, { acera }), 'Aceras actualizadas') : undefined}
           onRestablecerEnsayo={!demo && puedePlanificarEnsayo && itActual ? () => guardarTramoEnsayo(itActual.id, calleSel, (actual) => actualizarTramo(actual, itActual.id, calleSel, { segmentoIds: undefined }), 'Calle completa') : undefined}
+          onEtiquetaEnsayo={!demo && puedePlanificarEnsayo && itActual ? (etiqueta: string) => guardarTramoEnsayo(itActual.id, calleSel, (actual) => actualizarTramo(actual, itActual.id, calleSel, { etiqueta: etiqueta || undefined }), 'Etiqueta actualizada') : undefined}
           ocupadoEnsayo={ocupado}
           errorEnsayo={errorEnsayo}
           guardadoEnsayo={guardadoEnsayo}
