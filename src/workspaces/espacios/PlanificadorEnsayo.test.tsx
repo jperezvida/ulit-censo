@@ -153,4 +153,39 @@ describe('Mapa del itinerario de ensayo', () => {
     expect(useEspacios.getState().db?.itinerarios[itinerarioId].tramos[0].etiqueta).toBe('Revisar portales pares');
   });
 
+
+  it('crea un itinerario en el ensayo, lo renombra y conserva los datos originales', async () => {
+    const { db, campanaId, itinerarioId } = await preparar();
+    montar(campanaId, itinerarioId);
+    fireEvent.click(await screen.findByRole('button', { name: 'Itinerarios' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Nuevo itinerario' }));
+    await waitFor(async () => expect(Object.values((await get<BaseDatos>('db', tienda()))!.itinerarios).length).toBe(2));
+    const nombre = await screen.findByRole('textbox', { name: 'Nombre del itinerario' });
+    fireEvent.change(nombre, { target: { value: 'Ruta norte' } });
+    fireEvent.blur(nombre);
+    await waitFor(async () => expect(Object.values((await get<BaseDatos>('db', tienda()))!.itinerarios).find((it) => it.id !== itinerarioId)?.nombre).toBe('Ruta norte'));
+    const guardada = (await get<BaseDatos>('db', tienda()))!;
+    expect(guardada.itinerarios[itinerarioId]).toEqual(db.itinerarios[itinerarioId]);
+    expect(guardada.locales).toEqual(db.locales);
+    expect(guardada.importaciones).toEqual(db.importaciones);
+  });
+
+  it('reordena calles del itinerario del ensayo sin alterar sus asignaciones', async () => {
+    const { db, campanaId, itinerarioId, calle } = await preparar();
+    const otra = Object.values(db.calles).find((c) => c.id !== calle.id && c.municipioId === calle.municipioId)!;
+    expect(otra).toBeDefined();
+    const original = db.itinerarios[itinerarioId];
+    await set('db', { ...db, itinerarios: { ...db.itinerarios, [itinerarioId]: {
+      ...original, tramos: [{ calleId: calle.id, acera: 'ambas', orden: 1 }, { calleId: otra.id, acera: 'ambas', orden: 2 }],
+    } } }, tienda());
+    montar(campanaId, itinerarioId);
+    const subir = await screen.findAllByRole('button', { name: 'Subir' });
+    expect(subir).toHaveLength(2);
+    fireEvent.click(subir[1]);
+    await waitFor(async () => expect((await get<BaseDatos>('db', tienda()))!.itinerarios[itinerarioId].tramos.map((t) => t.calleId)).toEqual([otra.id, calle.id]));
+    const guardada = (await get<BaseDatos>('db', tienda()))!;
+    expect(guardada.itinerarios[itinerarioId].tramos.map((t) => t.orden)).toEqual([1, 2]);
+    expect(guardada.locales).toEqual(db.locales);
+  });
+
 });
