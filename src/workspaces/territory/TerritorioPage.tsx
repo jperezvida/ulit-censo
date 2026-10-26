@@ -8,7 +8,7 @@ import { useStore } from '../../store/store';
 import { useEspacios } from '../../store/espacios';
 import { TerritorioDemo, TerritorioEnsayo, useContextoTerritorio } from './contextoTerritorio';
 import { itinerariosDe, situacionPrevia } from '../../domain/consultas';
-import { alternarCalle, alternarSegmento, registrarOmision } from '../../domain/itinerarios';
+import { actualizarTramo, alternarCalle, alternarSegmento, registrarOmision } from '../../domain/itinerarios';
 import { geojsonCalles, geojsonLocales, type Capa } from './capas';
 import { PanelPlan } from './PanelPlan';
 import { InspectorCalle } from './InspectorCalle';
@@ -17,7 +17,8 @@ import { Leyenda } from './Leyenda';
 import { Segmentado, Sim } from '../../components/ui';
 import { centroide, distanciaPuntoLinea } from '../../domain/geo';
 import { normalizar } from '../../domain/text';
-import type { Id, LngLat } from '../../domain/types';
+import type { Acera, Calle, Id, LngLat } from '../../domain/types';
+import type { BaseDatos } from '../../domain/db';
 import '../../styles/territorio.css';
 
 const ANCHO = ['interpolate', ['linear'], ['zoom'], 13, 1.6, 15, 3.5, 17, 7, 19, 14] as const;
@@ -76,11 +77,33 @@ function TerritorioContenido({ itInicial }: { itInicial?: Id }) {
   const estado = useRef({ editando, itSel, dividiendo, calleSel, dibujo, capa, puedeEditar });
   estado.current = { editando, itSel, dividiendo, calleSel, dibujo, capa, puedeEditar };
 
+  const guardarTramoEnsayo = async (itId: Id, calleId: Id, cambio: (actual: BaseDatos, calle: Calle) => BaseDatos, descripcion: string) => {
+    if (demo || !puedePlanificarEnsayo || !campana || useEspacios.getState().ocupado) return;
+    const r = await modificarEnsayo('Guardando planificación…', (actual) => {
+      const c = actual.campanas[campana.id];
+      const it = actual.itinerarios[itId];
+      const calle = actual.calles[calleId];
+      if (!c || c.tipo === 'historico-importado' || c.municipioId !== municipio.id || !it || it.campanaId !== c.id
+        || !it.tramos.some((t) => t.calleId === calleId) || !calle || calle.municipioId !== municipio.id)
+        throw new Error('El itinerario o la calle han cambiado. Vuelva a abrir el espacio.');
+      return cambio(actual, calle);
+    });
+    setErrorEnsayo(r.ok ? null : r.error ?? 'No se ha guardado el cambio.');
+    setGuardadoEnsayo(r.ok ? `${descripcion}. Guardado comprobado.` : null);
+  };
+
   const clicCalle = useCallback(
     (calleId: Id, segId: Id) => {
       const st = estado.current;
       if (st.dibujo) return;
       const it = st.itSel ? dbVigente().itinerarios[st.itSel] : undefined;
+      if (!demo && puedePlanificarEnsayo && st.dividiendo && st.calleSel === calleId && it?.tramos.some((t) => t.calleId === calleId)) {
+        void guardarTramoEnsayo(it.id, calleId, (actual, calle) => {
+          if (!calle.segmentos.some((s) => s.id === segId)) throw new Error('El segmento ha cambiado. Vuelva a abrir el espacio.');
+          return alternarSegmento(actual, it.id, calle, segId);
+        }, 'Segmentos ajustados');
+        return;
+      }
       if (st.editando && it && st.puedeEditar) {
         if (st.dividiendo && st.calleSel === calleId && it.tramos.some((t) => t.calleId === calleId)) {
           const calle = dbVigente().calles[calleId];
@@ -102,9 +125,13 @@ function TerritorioContenido({ itInicial }: { itInicial?: Id }) {
       }
       setCalleSel(calleId);
       setDividiendo(false);
+      setErrorEnsayo(null);
+      setGuardadoEnsayo(null);
     },
-    [aplicar, avisar, dbVigente],
+    [aplicar, avisar, dbVigente, demo, puedePlanificarEnsayo, guardarTramoEnsayo],
   );
+  const clicCalleRef = useRef(clicCalle);
+  clicCalleRef.current = clicCalle;
 
   // ── Instalación de capas ──
   const alListo = useCallback(
@@ -177,13 +204,13 @@ function TerritorioContenido({ itInicial }: { itInicial?: Id }) {
           }
         }
         const f = m.queryRenderedFeatures([[e.point.x - 6, e.point.y - 6], [e.point.x + 6, e.point.y + 6]], { layers: ['hit'] })[0];
-        if (f) clicCalle(f.properties.calleId, f.properties.segId);
+        if (f) clicCalleRef.current(f.properties.calleId, f.properties.segId);
         else if (!st.editando) setCalleSel(null);
       });
       setMapaListo(true);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [clicCalle],
+    [],
   );
 
   // Ajuste inicial a la extensión del ámbito
@@ -489,6 +516,8 @@ function TerritorioContenido({ itInicial }: { itInicial?: Id }) {
           }}
           onIt={(id) => setItSel(id)}
           onAlternarEnsayo={!demo && puedePlanificarEnsayo ? guardarCalleEnsayo : undefined}
+          onAcerasEnsayo={!demo && puedePlanificarEnsayo && itActual ? (acera: Acera) => guardarTramoEnsayo(itActual.id, calleSel, (actual) => actualizarTramo(actual, itActual.id, calleSel, { acera }), 'Aceras actualizadas') : undefined}
+          onRestablecerEnsayo={!demo && puedePlanificarEnsayo && itActual ? () => guardarTramoEnsayo(itActual.id, calleSel, (actual) => actualizarTramo(actual, itActual.id, calleSel, { segmentoIds: undefined }), 'Calle completa') : undefined}
           ocupadoEnsayo={ocupado}
           errorEnsayo={errorEnsayo}
           guardadoEnsayo={guardadoEnsayo}

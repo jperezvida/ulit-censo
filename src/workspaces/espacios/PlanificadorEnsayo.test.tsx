@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { clear, createStore, get, set } from 'idb-keyval';
 import { useEffect } from 'react';
@@ -13,7 +13,7 @@ import { leerOsmMunicipio } from '../../domain/fuentesCallejero';
 import { osmVillaSintetica } from '../../data/callejeroSintetico';
 import type { BaseDatos } from '../../domain/db';
 
-const mapaFalso = vi.hoisted(() => ({ clic: null as null | ((e: unknown) => void), calleId: '' }));
+const mapaFalso = vi.hoisted(() => ({ clic: null as null | ((e: unknown) => void), calleId: '', segId: 'seg-1' }));
 vi.mock('maplibre-gl', async (importOriginal) => ({
   ...await importOriginal<typeof import('maplibre-gl')>(),
   Marker: class {
@@ -30,7 +30,7 @@ vi.mock('../../components/mapa/MapaBase', () => ({
         getSource: () => ({ setData: () => undefined }),
         fitBounds: () => undefined,
         setLayoutProperty: () => undefined, setFilter: () => undefined,
-        queryRenderedFeatures: () => [{ properties: { calleId: mapaFalso.calleId, segId: 'seg-1' } }],
+        queryRenderedFeatures: () => [{ properties: { calleId: mapaFalso.calleId, segId: mapaFalso.segId } }],
         on: (evento: string, capa: string | ((e: unknown) => void)) => {
           if (evento === 'click' && typeof capa === 'function') mapaFalso.clic = capa;
         },
@@ -50,6 +50,7 @@ beforeEach(async () => {
   useEspacios.getState().cerrar();
   mapaFalso.clic = null;
   mapaFalso.calleId = '';
+  mapaFalso.segId = 'seg-1';
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -67,7 +68,7 @@ async function preparar() {
   db = c.db;
   const it = crearItinerario(db, c.campanaId, { codigo: 'IT1' }, opciones);
   db = it.db;
-  const calle = Object.values(db.calles).find((x) => x.municipioId === m.municipioId && x.segmentos.length)!;
+  const calle = Object.values(db.calles).find((x) => x.municipioId === m.municipioId && x.nombre.includes('Olmo') && x.segmentos.length > 1)!;
   await set('db', db, tienda());
   return { db, campanaId: c.campanaId, itinerarioId: it.itinerarioId, calle };
 }
@@ -112,5 +113,25 @@ describe('Mapa del itinerario de ensayo', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Asignar calle completa' }));
     await screen.findByRole('alert');
     expect((await get<BaseDatos>('db', tienda()))!.itinerarios[itinerarioId]).toEqual(externa.itinerarios[itinerarioId]);
+  });
+
+  it('guarda acera y división de segmentos en el planificador original', async () => {
+    const { campanaId, itinerarioId, calle } = await preparar();
+    montar(campanaId, itinerarioId);
+    await waitFor(() => expect(mapaFalso.clic).toBeTypeOf('function'));
+    mapaFalso.calleId = calle.id;
+    act(() => mapaFalso.clic!({ point: { x: 10, y: 10 }, lngLat: { lng: 0, lat: 0 } }));
+    fireEvent.click(screen.getByRole('button', { name: 'Asignar calle completa' }));
+    await screen.findByText(/Guardado comprobado/);
+    fireEvent.click(screen.getByText('Avanzado: aceras y división de la calle'));
+    const avanzado = screen.getByText('Avanzado: aceras y división de la calle').closest('details')!;
+    fireEvent.change(within(avanzado).getByRole('combobox'), { target: { value: 'par' } });
+    await waitFor(async () => expect((await get<BaseDatos>('db', tienda()))!.itinerarios[itinerarioId].tramos[0].acera).toBe('par'));
+    fireEvent.click(screen.getByRole('button', { name: 'Dividir por segmentos' }));
+    mapaFalso.segId = calle.segmentos[0].id;
+    act(() => mapaFalso.clic!({ point: { x: 10, y: 10 }, lngLat: { lng: 0, lat: 0 } }));
+    await waitFor(async () => expect((await get<BaseDatos>('db', tienda()))!.itinerarios[itinerarioId].tramos[0].segmentoIds).toEqual(calle.segmentos.slice(1).map((s) => s.id)));
+    fireEvent.click(screen.getByRole('button', { name: 'Volver a calle completa' }));
+    await waitFor(async () => expect((await get<BaseDatos>('db', tienda()))!.itinerarios[itinerarioId].tramos[0].segmentoIds).toBeUndefined());
   });
 });

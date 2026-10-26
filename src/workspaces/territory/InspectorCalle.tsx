@@ -11,7 +11,7 @@ import { EstadoCob, SelloProcedencia, fmtFecha } from '../../components/ui';
 import { formatoDistancia } from '../../domain/geo';
 
 export function InspectorCalle({
-  calleId, itActual, editando, dividiendo, setDividiendo, onCerrar, onIt, onAlternarEnsayo, ocupadoEnsayo, errorEnsayo, guardadoEnsayo,
+  calleId, itActual, editando, dividiendo, setDividiendo, onCerrar, onIt, onAlternarEnsayo, onAcerasEnsayo, onRestablecerEnsayo, ocupadoEnsayo, errorEnsayo, guardadoEnsayo,
 }: {
   calleId: Id;
   itActual?: Itinerario;
@@ -21,6 +21,8 @@ export function InspectorCalle({
   onCerrar: () => void;
   onIt: (id: Id) => void;
   onAlternarEnsayo?: () => Promise<void>;
+  onAcerasEnsayo?: (acera: Acera) => Promise<void>;
+  onRestablecerEnsayo?: () => Promise<void>;
   ocupadoEnsayo?: string | null;
   errorEnsayo?: string | null;
   guardadoEnsayo?: string | null;
@@ -62,6 +64,24 @@ export function InspectorCalle({
         <b>{tramoActual ? `En ${itActual.codigo}` : `Aún no está en ${itActual.codigo}`}</b>
         {onAlternarEnsayo ? <button className="btn s primario" disabled={!!ocupadoEnsayo} onClick={() => void onAlternarEnsayo()}>{ocupadoEnsayo ?? (tramoActual ? 'Quitar calle completa' : 'Asignar calle completa')}</button>
           : <span className="muted">Solo la persona coordinadora puede cambiar la planificación.</span>}
+        {tramoActual && onAcerasEnsayo && <details className="t-avanzado" open={dividiendo || tramoActual.acera !== 'ambas' || !!tramoActual.segmentoIds?.length}>
+          <summary>Avanzado: aceras y división de la calle</summary>
+          <div className="campo" style={{ marginTop: 8 }}>
+            <span className="etq">Aceras asignadas</span>
+            <select className="input" value={tramoActual.acera} disabled={!!ocupadoEnsayo} onChange={(e) => void onAcerasEnsayo(e.target.value as Acera)}>
+              {(['ambas', 'par', 'impar'] as Acera[]).map((a) => <option key={a} value={a}>{ACERA_TXT[a]}</option>)}
+            </select>
+          </div>
+          <div className="fila" style={{ marginTop: 8 }}>
+            <button className={`btn s ${dividiendo ? 'activo' : ''}`} onClick={() => setDividiendo(!dividiendo)} disabled={calle.segmentos.length < 2 || !!ocupadoEnsayo}>
+              <Scissors size={13} /> {dividiendo ? 'Dividiendo: pulsa segmentos' : 'Dividir por segmentos'}
+            </button>
+            {!!tramoActual.segmentoIds?.length && <button className="btn s fantasma" disabled={!!ocupadoEnsayo} onClick={() => void onRestablecerEnsayo?.()}>Volver a calle completa</button>}
+          </div>
+          <p className="muted" style={{ fontSize: 11.5, margin: '6px 0 0' }}>
+            {tramoActual.segmentoIds?.length ? `${tramoActual.segmentoIds.length} de ${calle.segmentos.length} segmentos en este itinerario.` : 'Calle completa: todos los segmentos.'} Pulsa un segmento del mapa para incluirlo o excluirlo.
+          </p>
+        </details>}
         {errorEnsayo && <div className="t-info error" role="alert">{errorEnsayo} Si otra pestaña cambió el espacio, vuelva al inicio y ábralo de nuevo.</div>}
         {guardadoEnsayo && <div className="t-info ok" role="status">{guardadoEnsayo}</div>}
       </div>}
