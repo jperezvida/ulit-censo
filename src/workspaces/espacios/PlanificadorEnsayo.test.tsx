@@ -134,4 +134,23 @@ describe('Mapa del itinerario de ensayo', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Volver a calle completa' }));
     await waitFor(async () => expect((await get<BaseDatos>('db', tienda()))!.itinerarios[itinerarioId].tramos[0].segmentoIds).toBeUndefined());
   });
+
+  it('guarda la etiqueta de una calle del ensayo y la recupera al reabrir', async () => {
+    const { campanaId, itinerarioId, calle } = await preparar();
+    montar(campanaId, itinerarioId);
+    await waitFor(() => expect(mapaFalso.clic).toBeTypeOf('function'));
+    mapaFalso.calleId = calle.id;
+    act(() => mapaFalso.clic!({ point: { x: 10, y: 10 }, lngLat: { lng: 0, lat: 0 } }));
+    fireEvent.click(screen.getByRole('button', { name: 'Asignar calle completa' }));
+    await screen.findByText(/Guardado comprobado/);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Etiqueta de planificación' }), { target: { value: ' Revisar portales pares ' } });
+    // No debe guardarse hasta pulsar expresamente el botón.
+    expect((await get<BaseDatos>('db', tienda()))!.itinerarios[itinerarioId].tramos[0].etiqueta).toBeUndefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar etiqueta' }));
+    await waitFor(async () => expect((await get<BaseDatos>('db', tienda()))!.itinerarios[itinerarioId].tramos[0].etiqueta).toBe('Revisar portales pares'));
+    useEspacios.getState().cerrar();
+    await useEspacios.getState().abrir('ensayo');
+    expect(useEspacios.getState().db?.itinerarios[itinerarioId].tramos[0].etiqueta).toBe('Revisar portales pares');
+  });
+
 });
