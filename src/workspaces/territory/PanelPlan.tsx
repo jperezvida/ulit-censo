@@ -15,6 +15,8 @@ import type { Id, Itinerario } from '../../domain/types';
 import { Avatar, Avatares, Barra, EstadoCob, Pct, Sim, fmt } from '../../components/ui';
 import { formatoDistancia } from '../../domain/geo';
 import { COLORES_IT } from '../../data/semilla';
+import { crearItinerario as crearItinerarioEspacio } from '../../domain/campanaOperativa';
+import { personaEspacio, PREFIJO } from '../../domain/espacios';
 import { ImportarKML } from './ImportarKML';
 
 export function revisionItinerario(db: BaseDatos, it: Itinerario) {
@@ -64,6 +66,13 @@ export function PanelPlan(p: Props) {
     const cambio = (d: BaseDatos) => {
       if (Object.values(d.itinerarios).some((it) => it.campanaId === campana.id && it.codigo === codigo))
         throw new Error('El código del itinerario ha cambiado. Vuelva a abrir el espacio.');
+      if (p.modificarEnsayo) {
+        // G4: IDs con prefijo de espacio; el creador antiguo es exclusivo de la demostración.
+        const r = crearItinerarioEspacio(d, campana.id, { codigo, nombre: `Itinerario ${codigo.slice(3)}` },
+          { prefijo: PREFIJO.ensayo, porId: personaEspacio(d)!.id });
+        id = r.itinerarioId;
+        return r.db;
+      }
       const r = crearItinerario(d, campana.id, { codigo, nombre: `Itinerario ${codigo.slice(3)}`, color: COLORES_IT[p.itinerarios.length % COLORES_IT.length] });
       id = r.id;
       return r.db;
