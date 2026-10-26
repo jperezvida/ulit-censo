@@ -14,18 +14,21 @@
 //   6. Despliegue con la CLI; se lee su respuesta JSON y se consulta el despliegue en la API:
 //      debe ser de este proyecto, READY y de tipo PREVIEW. Si Vercel lo hubiera creado como producción,
 //      se ELIMINA de inmediato y se falla.
-//   7. Protección comprobada SIN sesión sobre el despliegue (scripts/vercel/proteccion.mjs).
+//   7. Protección comprobada SIN sesión sobre el despliegue (scripts/vercel/proteccion.mjs). Si Vercel aún
+//      responde 404 (dirección todavía no activa), se repite cada 5 s hasta 60 s; un 404 nunca vale.
+//      Si no se acredita, se elimina el despliegue y la dirección fija sigue como estaba.
 //   8. Retirada de los despliegues de producción indicados (solo los de la lista, de este proyecto y de
 //      tipo producción): primero sus alias y después el despliegue. Comprobación POR LA API de que ninguno
 //      de sus alias (los detectados y los de $ALIAS_PRODUCCION) apunta ya a él, de que el proyecto no
 //      tiene ningún despliegue de producción ni un destino de producción activo, y de que su dominio de
 //      producción no sirve la aplicación.
 //   9. Solo entonces se asigna la dirección fija; se verifica por la API que apunta a este despliegue y,
-//      sin sesión, que está protegida. Si no, se retira la dirección y el despliegue, y se falla.
+//      sin sesión, que está protegida (con la misma espera ante 404). Si no, la dirección vuelve al
+//      despliegue anterior (si lo había), se elimina el nuevo y se falla.
 // El token se lee de VERCEL_TOKEN (secreto del entorno «preview» de GitHub) y nunca se imprime.
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, readFileSync } from 'node:fs';
-import { comprobarDireccion, evaluarConfiguracion, evaluarRespuestaSinSesion } from './proteccion.mjs';
+import { esperarProteccion, evaluarConfiguracion, evaluarRespuestaSinSesion } from './proteccion.mjs';
 
 /**
  * Interpreta la salida estándar de `vercel deploy`. Con `--non-interactive` es un JSON
@@ -98,6 +101,11 @@ const resumen = (t) => {
   if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${t}\n`);
 };
 class Fallo extends Error {}
+/** Muestra cada intento de comprobación de la protección (con el motivo y el error de Vercel, si lo hay). */
+const mostrarIntento = (n, r) => {
+  console.log(`Comprobación sin sesión · intento ${n}${r.ok ? ' · protegida' : ''}`);
+  for (const x of r.resultados) console.log(`  ${x.ok ? '✔' : '✘'} ${x.url} → ${x.motivo}`);
+};
 const fallar = (m) => {
   throw new Fallo(m);
 };
@@ -213,13 +221,13 @@ async function principal() {
   const urlDespliegue = env.URL_DESPLIEGUE ?? `https://${dep.url}`;
   resumen(`- Despliegue \`${dep.id}\`: **preview** confirmada por la API.`);
 
-  // 7. Protección del despliegue, sin sesión.
-  const prot = await comprobarDireccion(urlDespliegue);
-  for (const x of prot.resultados) console.log(`${x.ok ? '✔' : '✘'} ${x.url} → ${x.motivo}`);
+  // 7. Protección del despliegue, sin sesión (con espera limitada si Vercel aún responde 404).
+  const prot = await esperarProteccion(urlDespliegue, { informar: mostrarIntento });
   if (!prot.ok) {
     await eliminar(dep.id);
-    fallar('El despliegue no está protegido (o no se ha podido confirmar). Se ha eliminado y NO se ha asignado la dirección fija.');
+    fallar(`El despliegue no está protegido (o no se ha podido confirmar: ${prot.motivo ?? 'ver detalle'}). Se ha eliminado y NO se ha asignado la dirección fija.`);
   }
+  resumen(`- Protección del despliegue acreditada en el intento ${prot.intentos}.`);
 
   // 8. Retirada de los despliegues de producción indicados: primero sus alias (solo los que apuntan a ese
   //    despliegue), después el despliegue. Luego, verificación por la API del estado final.
@@ -273,8 +281,21 @@ async function principal() {
 
   // 9. Dirección fija, verificada por la API y sin sesión.
   const urlFija = env.URL_FIJA ?? `https://${env.DIRECCION_FIJA}`;
+  // Despliegue al que apunta ahora la dirección fija: si algo falla, se le devuelve la dirección.
+  const previa = await api('GET', `/v4/aliases/${env.DIRECCION_FIJA}`);
+  const anterior = previa.status === 200 && typeof previa.json?.deploymentId === 'string' && previa.json.deploymentId !== dep.id ? previa.json.deploymentId : null;
   const quitar = async () => {
-    await api('DELETE', `/v2/aliases/${env.DIRECCION_FIJA}`);
+    let restaurada = false;
+    if (anterior) {
+      const d = await api('GET', `/v13/deployments/${anterior}`);
+      if (d.status === 200 && d.json?.projectId === ID && d.json?.target !== 'production') {
+        const r = await api('POST', `/v2/deployments/${anterior}/aliases`, { alias: env.DIRECCION_FIJA });
+        const v = await api('GET', `/v4/aliases/${env.DIRECCION_FIJA}`);
+        restaurada = r.status === 200 && v.status === 200 && v.json?.deploymentId === anterior;
+      }
+    }
+    if (!restaurada) await api('DELETE', `/v2/aliases/${env.DIRECCION_FIJA}`);
+    console.log(restaurada ? `✔ La dirección fija vuelve a ${anterior}` : '✘ No se ha podido devolver la dirección fija al despliegue anterior: se ha retirado');
     await eliminar(dep.id);
   };
   const asignado = await api('POST', `/v2/deployments/${dep.id}/aliases`, { alias: env.DIRECCION_FIJA });
@@ -283,8 +304,7 @@ async function principal() {
     await quitar();
     fallar('No se puede confirmar que la dirección fija apunte a esta preview. Se ha retirado.');
   }
-  const fija = await comprobarDireccion(urlFija);
-  for (const x of fija.resultados) console.log(`${x.ok ? '✔' : '✘'} ${x.url} → ${x.motivo}`);
+  const fija = await esperarProteccion(urlFija, { informar: mostrarIntento });
   if (!fija.ok) {
     await quitar();
     fallar(`La dirección fija ${urlFija} no está protegida (o no se ha podido confirmar). Se ha retirado. No use esta vista previa.`);

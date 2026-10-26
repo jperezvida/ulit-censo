@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterAll, describe, expect, it } from 'vitest';
 import { createServer, type Server } from 'node:http';
-import { comprobarDireccion, evaluarConfiguracion, evaluarRespuestaSinSesion } from '../../scripts/vercel/proteccion.mjs';
+import { comprobarDireccion, esperarProteccion, evaluarConfiguracion, evaluarRespuestaSinSesion, type ComprobacionDireccion } from '../../scripts/vercel/proteccion.mjs';
 
 /** Servidores que imitan las respuestas posibles de un despliegue SIN sesión. */
 type Modo = 'protegido-401' | 'redireccion-sso' | 'redireccion-ajena' | 'abierto' | 'sin-server' | 'abierto-con-401';
@@ -73,3 +73,83 @@ describe('Protección de la vista previa · evaluación de respuestas sin sesió
   });
 });
 
+
+/** Respuestas simuladas de una comprobación de las tres rutas. */
+const RUTAS = ['/', '/index.html', '/version.json'];
+const intento = (estado: 'protegida' | '404' | 'abierta' | 'mixta'): ComprobacionDireccion => {
+  const r = (i: number) => {
+    const e = estado === 'mixta' ? (i === 2 ? '404' : 'protegida') : estado;
+    return e === 'protegida' ? { url: `x${RUTAS[i]}`, ok: true, motivo: '401', status: 401 }
+      : e === '404' ? { url: `x${RUTAS[i]}`, ok: false, motivo: 'responde 404 sin sesión: accesible para cualquiera', status: 404 }
+      : { url: `x${RUTAS[i]}`, ok: false, motivo: 'responde 200 sin sesión: accesible para cualquiera', status: 200 };
+  };
+  const resultados = RUTAS.map((_, i) => r(i));
+  return { ok: resultados.every((x) => x.ok), resultados };
+};
+/** Reloj y espera simulados: cada `dormir` avanza el reloj sin esperar de verdad. */
+function simulado(secuencia: ComprobacionDireccion[]) {
+  let t = 0;
+  let i = 0;
+  const esperas: number[] = [];
+  return {
+    esperas,
+    opciones: {
+      comprobar: async () => secuencia[Math.min(i++, secuencia.length - 1)],
+      dormir: async (ms: number) => { esperas.push(ms); t += ms; },
+      ahora: () => t,
+    },
+    llamadas: () => i,
+  };
+}
+
+describe('Protección de la vista previa · espera limitada ante 404 (dirección aún no activa)', () => {
+  it('un 404 nunca acredita la protección', () => {
+    expect(evaluarRespuestaSinSesion({ status: 404, server: 'Vercel', error: 'DEPLOYMENT_NOT_FOUND' })).toEqual({ ok: false, motivo: 'responde 404 sin sesión: accesible para cualquiera (x-vercel-error: DEPLOYMENT_NOT_FOUND)' });
+  });
+
+  it('respuesta protegida a la primera: se acepta sin esperar', async () => {
+    const s = simulado([intento('protegida')]);
+    const r = await esperarProteccion('x', s.opciones);
+    expect([r.ok, r.intentos, s.esperas]).toEqual([true, 1, []]);
+  });
+
+  it('404 transitorio: se repite cada 5 s y se acepta cuando las TRES rutas están protegidas en el mismo intento', async () => {
+    const s = simulado([intento('404'), intento('404'), intento('mixta'), intento('protegida')]);
+    const r = await esperarProteccion('x', s.opciones);
+    expect([r.ok, r.intentos]).toEqual([true, 4]);
+    expect(s.esperas).toEqual([5000, 5000, 5000]);
+  });
+
+  it('404 persistente: se rinde a los 60 s (13 intentos) sin aceptar nada', async () => {
+    const s = simulado([intento('404')]);
+    const r = await esperarProteccion('x', s.opciones);
+    expect(r.ok).toBe(false);
+    expect(r.intentos).toBe(13);
+    expect(s.esperas.reduce((a, b) => a + b, 0)).toBe(60_000);
+    expect(r.motivo).toMatch(/404 persistente durante 60 s \(13 intentos\)/);
+  });
+
+  it('una respuesta abierta (200) detiene la espera al instante: no se reintenta', async () => {
+    const s = simulado([intento('404'), intento('abierta'), intento('protegida')]);
+    const r = await esperarProteccion('x', s.opciones);
+    expect([r.ok, r.intentos, s.esperas.length]).toEqual([false, 2, 1]);
+    expect(r.motivo).toMatch(/no se reintenta/);
+  });
+
+  it('con un servidor real: 404 de Vercel durante unos intentos y después la redirección al inicio de sesión', async () => {
+    let peticiones = 0;
+    const s = createServer((_req, res) => {
+      peticiones++;
+      if (peticiones <= 6) res.writeHead(404, { server: 'Vercel', 'x-vercel-error': 'DEPLOYMENT_NOT_FOUND' }).end('The deployment could not be found');
+      else res.writeHead(302, { server: 'Vercel', location: 'https://vercel.com/sso-api?url=x' }).end();
+    });
+    await new Promise<void>((ok) => s.listen(0, '127.0.0.1', ok));
+    servidores.push(s);
+    const base = `http://127.0.0.1:${(s.address() as { port: number }).port}`;
+    const vistos: string[] = [];
+    const r = await esperarProteccion(base, { intervaloMs: 10, limiteMs: 1000, informar: (_n, x) => vistos.push(...x.resultados.map((y) => y.motivo)) });
+    expect([r.ok, r.intentos, peticiones]).toEqual([true, 3, 9]);
+    expect(vistos[0]).toMatch(/404.*DEPLOYMENT_NOT_FOUND/);
+    expect(r.resultados.map((x) => x.motivo)).toEqual(Array(3).fill('redirección 302 al inicio de sesión de Vercel (https://vercel.com/sso-api)'));
+  });
+});
