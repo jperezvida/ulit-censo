@@ -10,6 +10,7 @@ import { useAsistenteEspacio, useSeleccionEspacio } from './estadoAsistenteEspac
 import { MunicipiosCampanas } from './MunicipiosCampanas';
 import { descargar, RespaldoTarjeta } from './Respaldo';
 import { Inicio } from './Inicio';
+import { PlanificadorEnsayo } from './PlanificadorEnsayo';
 import { comprobarGarantias, VERSION_EMBEBIDA, type ResultadoGarantias } from './garantiasNavegador';
 import { entornoDe } from '../../domain/garantias';
 import '../../styles/datos.css';
@@ -191,7 +192,9 @@ function EspacioPage() {
       {esp.fase === 'cargando' && <div className="t-info" role="status">Abriendo el espacio…</div>}
       {esp.fase === 'error' && <div className="t-info error" role="alert"><AlertTriangle size={15} /> {esp.error}</div>}
       {esp.fase === 'sin-crear' && <Crear tipo={tipo} />}
-      {esp.fase === 'listo' && esp.db && esp.tipo === tipo && (avanzado ? (
+      {esp.fase === 'listo' && esp.db && esp.tipo === tipo && (resto?.startsWith('planificar/') && tipo === 'ensayo' ? (
+        <PlanificadorEnsayo ruta={resto} />
+      ) : avanzado ? (
         <>
           <div className="fila ux-volver"><Link to={`/espacios/${tipo}`} className="btn s"><ArrowLeft size={14} /> Volver al inicio</Link><span className="muted">Vista completa: todas las opciones y comprobaciones.</span></div>
           <Espacio tipo={tipo} />

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle, ArrowDownUp, ArrowLeft, ChevronDown, ChevronUp, Clock, FileUp, GripVertical, Pencil, Plus, Printer, Route,
@@ -10,12 +10,13 @@ import { asignacionDelAmbito, detectarSolapes, estadoTramo, estimarCarga, progre
 import {
   actualizarTramo, alternarCalle, crearItinerario, editarItinerario, eliminarItinerario, moverTramo, ordenarItinerario, siguienteCodigo,
 } from '../../domain/itinerarios';
-import { useContexto, useIndices } from '../../store/contexto';
-import { useStore } from '../../store/store';
+import { useContextoTerritorio } from './contextoTerritorio';
 import type { Id, Itinerario } from '../../domain/types';
 import { Avatar, Avatares, Barra, EstadoCob, Pct, Sim, fmt } from '../../components/ui';
 import { formatoDistancia } from '../../domain/geo';
 import { COLORES_IT } from '../../data/semilla';
+import { crearItinerario as crearItinerarioEspacio } from '../../domain/campanaOperativa';
+import { personaEspacio, PREFIJO } from '../../domain/espacios';
 import { ImportarKML } from './ImportarKML';
 
 export function revisionItinerario(db: BaseDatos, it: Itinerario) {
@@ -42,12 +43,13 @@ interface Props {
   resaltando: Id[] | null;
   onImprimir: (id: Id) => void;
   sinPrevios: Set<Id>;
+  /** Escritura verificada exclusiva del espacio de ensayo. Nunca usa el almacén de demostración. */
+  modificarEnsayo?: (cambio: (db: BaseDatos) => BaseDatos, descripcion: string, itinerarioId?: Id) => Promise<boolean>;
+  ocupadoEnsayo?: string | null;
 }
 
 export function PanelPlan(p: Props) {
-  const { db, campana } = useContexto();
-  const ix = useIndices();
-  const aplicar = useStore((s) => s.aplicar);
+  const { db, campana, ix, aplicar, demo } = useContextoTerritorio();
   const [kml, setKml] = useState(false);
   const asig = useMemo(() => (campana ? asignacionDelAmbito(campana, p.itinerarios, db.calles) : null), [campana, p.itinerarios, db.calles]);
   const solapes = useMemo(() => detectarSolapes(p.itinerarios), [p.itinerarios]);
@@ -57,16 +59,34 @@ export function PanelPlan(p: Props) {
 
   if (it) return <DetalleItinerario {...p} it={it} />;
 
-  const nuevo = () => {
-    const codigo = siguienteCodigo(p.itinerarios.map((i) => i.codigo));
+  const nuevo = async () => {
+    if (!campana || p.ocupadoEnsayo) return;
+    const usados = new Set(p.itinerarios.map((i) => i.codigo.toUpperCase()));
+    let ordinal = 1;
+    while (usados.has(`IT${ordinal}`)) ordinal++;
+    const codigo = p.modificarEnsayo ? `IT${ordinal}` : siguienteCodigo(p.itinerarios.map((i) => i.codigo));
     let id = '';
-    aplicar((d) => {
+    const cambio = (d: BaseDatos) => {
+      if (Object.values(d.itinerarios).some((it) => it.campanaId === campana.id && it.codigo === codigo))
+        throw new Error('El código del itinerario ha cambiado. Vuelva a abrir el espacio.');
+      if (p.modificarEnsayo) {
+        // G4: IDs con prefijo de espacio; el creador antiguo es exclusivo de la demostración.
+        const r = crearItinerarioEspacio(d, campana.id, { codigo, nombre: `Itinerario ${codigo}` },
+          { prefijo: PREFIJO.ensayo, porId: personaEspacio(d)!.id });
+        id = r.itinerarioId;
+        return r.db;
+      }
       const r = crearItinerario(d, campana.id, { codigo, nombre: `Itinerario ${codigo.slice(3)}`, color: COLORES_IT[p.itinerarios.length % COLORES_IT.length] });
       id = r.id;
       return r.db;
-    }, `${codigo} creado`);
-    p.setItSel(id);
-    p.setEditando(true);
+    };
+    if (p.modificarEnsayo) {
+      if (!await p.modificarEnsayo(cambio, `${codigo} creado`)) return;
+    } else {
+      aplicar(cambio, `${codigo} creado`);
+    }
+    if (id) p.setItSel(id);
+    p.setEditando(demo);
   };
 
   const conmutar = (ids: Id[]) => p.resaltar(p.resaltando && p.resaltando.join() === ids.join() ? null : ids);
@@ -131,23 +151,23 @@ export function PanelPlan(p: Props) {
           ))}
       </div>
 
-      {p.puedeEditar && (
+      {(p.puedeEditar || p.modificarEnsayo) && (
         <div className="fila" style={{ padding: '4px 16px 16px', flexWrap: 'wrap' }}>
-          <button className="btn primario" onClick={nuevo}>
+          <button className="btn primario" disabled={!!p.ocupadoEnsayo} onClick={() => void nuevo()}>
             <Plus size={15} /> Nuevo itinerario
           </button>
-          <button className="btn" onClick={() => setKml(true)}>
+          {demo && <button className="btn" onClick={() => setKml(true)}>
             <FileUp size={15} /> Importar KML/KMZ
-          </button>
+          </button>}
         </div>
       )}
-      {!p.puedeEditar && campana.tipo !== 'historico-importado' && <p className="muted" style={{ padding: '0 16px', fontSize: 12 }}>Activa el rol Coordinador para editar itinerarios.</p>}
+      {!p.puedeEditar && demo && campana.tipo !== 'historico-importado' && <p className="muted" style={{ padding: '0 16px', fontSize: 12 }}>Activa el rol Coordinador para editar itinerarios.</p>}
       {kml && <ImportarKML onCerrar={() => setKml(false)} onCreado={(id) => { setKml(false); p.setItSel(id); }} />}
     </div>
   );
 }
 
-function situacionCorta(db: BaseDatos, campanaId: Id, calleId: Id, ix: ReturnType<typeof useIndices>) {
+function situacionCorta(db: BaseDatos, campanaId: Id, calleId: Id, ix: ReturnType<typeof useContextoTerritorio>['ix']) {
   const s = situacionPrevia(db, db.campanas[campanaId], calleId, ix.obs);
   return { 'con-registros': 'con registros', 'no-censada': 'no censada', 'censada-sin-locales': 'censada sin locales', 'sin-informacion': 'sin información', 'pendiente-relacionar': 'pendiente de relacionar' }[s];
 }
@@ -164,8 +184,7 @@ function AlertaFila({ tono, n, txt, onClick, on }: { tono: 'ok' | 'aviso' | 'err
 }
 
 function TarjetaIt({ it, onClick }: { it: Itinerario; onClick: () => void }) {
-  const { db, campana } = useContexto();
-  const ix = useIndices();
+  const { db, campana, ix } = useContextoTerritorio();
   const prog = progresoItinerario(db, it);
   const carga = useMemo(() => estimarCarga(db, campana!, it.tramos, ix.obs), [db, campana, it.tramos, ix.obs]);
   const rev = useMemo(() => revisionItinerario(db, it), [db, it]);
@@ -214,12 +233,23 @@ function EstadoFase({ t, ok, parcial }: { t: string; ok: boolean; parcial: boole
 
 function DetalleItinerario(p: Props & { it: Itinerario }) {
   const { it } = p;
-  const { db, campana } = useContexto();
-  const ix = useIndices();
-  const aplicar = useStore((s) => s.aplicar);
+  const { db, campana, ix, aplicar, demo } = useContextoTerritorio();
   const nav = useNavigate();
   const [arrastre, setArrastre] = useState<number | null>(null);
   const [personas, setPersonas] = useState(false);
+  const gestionable = p.puedeEditar || !!p.modificarEnsayo;
+  const [nombreEnsayo, setNombreEnsayo] = useState(it.nombre);
+  useEffect(() => { setNombreEnsayo(it.nombre); }, [it.id, it.nombre]);
+  const operar = (cambio: (d: BaseDatos) => BaseDatos, descripcion: string, silencioso = true) => {
+    if (p.modificarEnsayo) void p.modificarEnsayo(cambio, descripcion, it.id);
+    else aplicar(cambio, descripcion, { silencioso });
+  };
+  const guardarNombre = () => {
+    if (demo || !p.modificarEnsayo || p.ocupadoEnsayo) return;
+    const nombre = nombreEnsayo.trim();
+    if (!nombre) { setNombreEnsayo(it.nombre); return; }
+    if (nombre !== it.nombre) operar((d) => editarItinerario(d, it.id, { nombre }), 'Nombre actualizado');
+  };
   const carga = useMemo(() => estimarCarga(db, campana!, it.tramos, ix.obs), [db, campana, it.tramos, ix.obs]);
   const prog = progresoItinerario(db, it);
   const rev = useMemo(() => revisionItinerario(db, it), [db, it]);
@@ -233,9 +263,16 @@ function DetalleItinerario(p: Props & { it: Itinerario }) {
           <ArrowLeft size={14} /> Itinerarios
         </button>
         <div className="fila" style={{ marginTop: 8 }}>
-          <input type="color" className="t-color" value={it.color} disabled={!p.puedeEditar} onChange={(e) => aplicar((d) => editarItinerario(d, it.id, { color: e.target.value }), 'Color cambiado', { silencioso: true })} title="Color del itinerario" />
+          <input type="color" className="t-color" value={it.color} disabled={!gestionable || !!p.ocupadoEnsayo} onChange={(e) => operar((d) => editarItinerario(d, it.id, { color: e.target.value }), 'Color cambiado')} title="Color del itinerario" />
           <span className="t-it-cod mono">{it.codigo}</span>
-          <input className="t-nombre" value={it.nombre} disabled={!p.puedeEditar} onChange={(e) => aplicar((d) => editarItinerario(d, it.id, { nombre: e.target.value }), 'Nombre', { silencioso: true })} aria-label="Nombre del itinerario" />
+          <input
+            className="t-nombre" aria-label="Nombre del itinerario"
+            value={demo ? it.nombre : nombreEnsayo}
+            disabled={!gestionable || !!p.ocupadoEnsayo}
+            onChange={(e) => demo ? operar((d) => editarItinerario(d, it.id, { nombre: e.target.value }), 'Nombre') : setNombreEnsayo(e.target.value)}
+            onBlur={guardarNombre}
+            onKeyDown={(e) => { if (!demo && e.key === 'Enter') e.currentTarget.blur(); }}
+          />
         </div>
         {it.escenarioDemo && <div className="t-demo"><Sim texto="Escenario de demostración" /> {it.escenarioDemo}</div>}
         <div className="fila" style={{ marginTop: 10, flexWrap: 'wrap' }}>
@@ -291,17 +328,17 @@ function DetalleItinerario(p: Props & { it: Itinerario }) {
             <Route size={14} /> {p.editando ? 'Editando en mapa' : 'Editar en mapa'}
           </button>
         )}
-        {p.puedeEditar && (
-          <button className="btn s" onClick={() => aplicar((d) => ordenarItinerario(d, it.id), 'Orden sugerido por proximidad')} title="Reordenar por recorrido de vecino más cercano">
+        {gestionable && (
+          <button className="btn s" disabled={!!p.ocupadoEnsayo} onClick={() => operar((d) => ordenarItinerario(d, it.id), 'Orden sugerido por proximidad', false)} title="Reordenar por recorrido de vecino más cercano">
             <ArrowDownUp size={14} /> Ordenar
           </button>
         )}
-        <button className="btn s" onClick={() => p.onImprimir(it.id)}>
+        {demo && <button className="btn s" onClick={() => p.onImprimir(it.id)}>
           <Printer size={14} /> Hoja de campo
-        </button>
-        <button className="btn s" onClick={() => nav(`/campo/it/${it.id}`)}>
+        </button>}
+        {demo && <button className="btn s" onClick={() => nav(`/campo/it/${it.id}`)}>
           <Smartphone size={14} /> Campo
-        </button>
+        </button>}
       </div>
 
       {solapesIt.length > 0 && (
@@ -310,8 +347,8 @@ function DetalleItinerario(p: Props & { it: Itinerario }) {
         </div>
       )}
 
-      <div className="rotulo" style={{ margin: '14px 16px 6px' }}>Calles numeradas · arrastra para reordenar</div>
-      {it.tramos.length === 0 && <div className="t-info">Sin calles todavía. Pulsa “Editar en mapa” y selecciona calles directamente sobre el mapa.</div>}
+      <div className="rotulo" style={{ margin: '14px 16px 6px' }}>Calles numeradas{gestionable ? ' · arrastra para reordenar' : ''}</div>
+      {it.tramos.length === 0 && <div className="t-info">Sin calles todavía. Selecciona una calle en el mapa para planificarla.</div>}
       <ol className="t-tramos">
         {it.tramos.map((t, i) => {
           const c = db.calles[t.calleId];
@@ -320,16 +357,16 @@ function DetalleItinerario(p: Props & { it: Itinerario }) {
           return (
             <li
               key={t.calleId}
-              draggable={p.puedeEditar}
+              draggable={gestionable && !p.ocupadoEnsayo}
               onDragStart={() => setArrastre(i)}
               onDragOver={(e) => e.preventDefault()}
               onDrop={() => {
-                if (arrastre !== null && arrastre !== i) aplicar((d) => moverTramo(d, it.id, arrastre, i), 'Orden actualizado', { silencioso: true });
+                if (arrastre !== null && arrastre !== i) operar((d) => moverTramo(d, it.id, arrastre, i), 'Orden actualizado');
                 setArrastre(null);
               }}
               className={arrastre === i ? 'arrastrando' : ''}
             >
-              {p.puedeEditar && <GripVertical size={14} className="t-asa" />}
+              {gestionable && <GripVertical size={14} className="t-asa" />}
               <span className="t-num" style={{ background: it.color }}>{t.orden}</span>
               <button className="t-tramo-nom" onClick={() => p.onCalle(t.calleId)}>
                 <span>{c?.nombre ?? '¿?'}</span>
@@ -354,10 +391,10 @@ function DetalleItinerario(p: Props & { it: Itinerario }) {
                   <option key={id} value={id}>{db.personas[id]?.iniciales}</option>
                 ))}
               </select>
-              {p.puedeEditar && (
+              {gestionable && (
                 <span className="t-mov">
-                  <button onClick={() => aplicar((d) => moverTramo(d, it.id, i, i - 1), 'Subida', { silencioso: true })} disabled={i === 0} aria-label="Subir"><ChevronUp size={12} /></button>
-                  <button onClick={() => aplicar((d) => moverTramo(d, it.id, i, i + 1), 'Bajada', { silencioso: true })} disabled={i === it.tramos.length - 1} aria-label="Bajar"><ChevronDown size={12} /></button>
+                  <button onClick={() => operar((d) => moverTramo(d, it.id, i, i - 1), 'Subida')} disabled={i === 0 || !!p.ocupadoEnsayo} aria-label="Subir"><ChevronUp size={12} /></button>
+                  <button onClick={() => operar((d) => moverTramo(d, it.id, i, i + 1), 'Bajada')} disabled={i === it.tramos.length - 1 || !!p.ocupadoEnsayo} aria-label="Bajar"><ChevronDown size={12} /></button>
                 </span>
               )}
               {p.puedeEditar && p.editando && (
