@@ -1,0 +1,21 @@
+name: CI piloto mapa ensayo (sin despliegue)
+on:
+  push:
+    branches: ['integracion/piloto-mapa-ensayo']
+permissions:
+  contents: read
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run comprobar-datos
+      - run: npm run build

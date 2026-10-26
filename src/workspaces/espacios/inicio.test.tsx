@@ -15,6 +15,8 @@ import { leerOsmMunicipio } from '../../domain/fuentesCallejero';
 import { crearItinerario } from '../../domain/campanaOperativa';
 import type { BaseDatos } from '../../domain/db';
 
+vi.mock('../../components/mapa/MapaBase', () => ({ MapaBase: () => <div data-testid="mapa-compartido">Cartografía reutilizada</div> }));
+
 /**
  * UX1 · Recorrido de la pantalla de inicio sencilla con datos SINTÉTICOS: cuatro accesos con cifras
  * reales, importación guiada (con respaldo y confirmación obligatorios), incidencias, censo y
@@ -161,4 +163,43 @@ describe('UX1 · Inicio sencillo', () => {
     expect(await within(panel).findByRole('group', { name: 'Destino' })).toHaveTextContent(/Censo 2024 · histórico/);
     expect(within(panel).queryByLabelText('Itinerario de destino')).toBeNull();
   }, 60000);
+
+  it('integra la planificación de calles con un itinerario importado y conserva registros tras recargar', async () => {
+    vi.stubGlobal('fetch', vi.fn());
+    await sembrar();
+    montar();
+    await screen.findByRole('region', { name: 'Municipio y campaña' }, { timeout: 20000 });
+    const lista = within(screen.getByRole('list', { name: 'Itinerarios' }));
+    fireEvent.click(within(lista.getAllByRole('listitem')[0]).getByRole('button', { name: 'Incorporar su Excel' }));
+    await incorporar('IT1');
+    fireEvent.click(acceso('Itinerarios'));
+    const antes = (await idbGet<BaseDatos>('db', tienda()))!;
+    const itId = Object.values(antes.itinerarios).find((i) => i.codigo === 'IT1')!.id;
+    const registrosAntes = JSON.stringify(antes.registros);
+    const observacionesAntes = JSON.stringify(antes.observaciones);
+    const localesAntes = JSON.stringify(antes.locales);
+    const importacionesAntes = JSON.stringify(antes.importaciones);
+    fireEvent.click(within(screen.getByRole('list', { name: 'Itinerarios' }).querySelectorAll('li')[0] as HTMLElement).getByRole('button', { name: 'Planificar' }));
+    const p = screen.getByRole('region', { name: 'Planificador de IT1' });
+    expect(within(p).getByTestId('mapa-compartido')).toBeInTheDocument();
+    fireEvent.change(within(p).getByLabelText('Buscar calle en el planificador'), { target: { value: 'Olmo' } });
+    fireEvent.click(within(p).getByRole('button', { name: /Calle del Olmo/ }));
+    fireEvent.click(within(p).getByRole('button', { name: 'Añadir calle al itinerario' }));
+    await waitFor(async () => {
+      const d = (await idbGet<BaseDatos>('db', tienda()))!;
+      expect(d.itinerarios[itId].tramos).toHaveLength(1);
+    }, { timeout: 20000 });
+    const despues = (await idbGet<BaseDatos>('db', tienda()))!;
+    expect(JSON.stringify(despues.registros)).toBe(registrosAntes);
+    expect(JSON.stringify(despues.observaciones)).toBe(observacionesAntes);
+    expect(JSON.stringify(despues.locales)).toBe(localesAntes);
+    expect(JSON.stringify(despues.importaciones)).toBe(importacionesAntes);
+    cleanup();
+    useEspacios.getState().cerrar();
+    montar();
+    await screen.findByRole('region', { name: 'Municipio y campaña' }, { timeout: 20000 });
+    fireEvent.click(within(screen.getByRole('list', { name: 'Itinerarios' }).querySelectorAll('li')[0] as HTMLElement).getByRole('button', { name: 'Planificar' }));
+    expect(screen.getByRole('region', { name: 'Planificador de IT1' })).toHaveTextContent('1 calle(s) planificadas');
+  }, 240000);
+
 });
