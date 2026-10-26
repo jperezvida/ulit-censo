@@ -137,7 +137,7 @@ export function Inicio({ tipo }: { tipo: TipoEspacio }) {
           </nav>
 
           <section className="tarjeta inc-bloque ux-panel" aria-label={VISTAS.find((v) => v.id === vista)!.titulo}>
-            {vista === 'itinerarios' && <PanelItinerarios campana={campana} r={r} onIncorporar={(itinerarioId) => { useSeleccionEspacio.getState().elegir({ itinerarioId }); cambiar({ vista: 'incorporar' }); }} onIncidencias={(itinerarioId) => { setFiltro({ itinerarioId }); cambiar({ vista: 'incidencias' }); }} />}
+            {vista === 'itinerarios' && <PanelItinerarios tipo={tipo} campana={campana} r={r} onIncorporar={(itinerarioId) => { useSeleccionEspacio.getState().elegir({ itinerarioId }); cambiar({ vista: 'incorporar' }); }} onIncidencias={(itinerarioId) => { setFiltro({ itinerarioId }); cambiar({ vista: 'incidencias' }); }} />}
             {vista === 'incorporar' && <PanelIncorporar tipo={tipo} campana={campana} onCrearHistorica={() => setAlta('campana')} />}
             {vista === 'incidencias' && (r.archivos
               ? <>{r.incidencias === 0 && <div className="t-info ok"><CheckCircle2 size={15} /> Nada pendiente de revisar.</div>}<ConciliacionPosterior key={`${campana.id}-${JSON.stringify(filtro)}`} campanaId={campana.id} simple filtroInicial={filtro} /></>
@@ -169,7 +169,7 @@ function indicador(v: Vista, r: ResumenCampana): { num: string; sub: string } {
 
 // ───────────── Itinerarios ─────────────
 
-function PanelItinerarios({ campana, r, onIncorporar, onIncidencias }: { campana: Campana; r: ResumenCampana; onIncorporar: (id: Id) => void; onIncidencias: (id: Id) => void }) {
+function PanelItinerarios({ tipo, campana, r, onIncorporar, onIncidencias }: { tipo: TipoEspacio; campana: Campana; r: ResumenCampana; onIncorporar: (id: Id) => void; onIncidencias: (id: Id) => void }) {
   const db = useEspacios((s) => s.db!);
   const modificar = useEspacios((s) => s.modificar);
   const ocupado = useEspacios((s) => s.ocupado);
@@ -199,6 +199,7 @@ function PanelItinerarios({ campana, r, onIncorporar, onIncidencias }: { campana
                 {!archivo && <button className="btn s primario" onClick={() => onIncorporar(it.id)}><FileUp size={13} /> Incorporar su Excel</button>}
                 {d.pendientes > 0 && <button className="btn s" onClick={() => onIncidencias(it.id)}><ListChecks size={13} /> Ver incidencias</button>}
                 {archivo && <button className="btn s" aria-expanded={abierto === it.id} onClick={() => setAbierto(abierto === it.id ? null : it.id)}>{abierto === it.id ? 'Ocultar' : 'Consultar'}</button>}
+                {tipo === 'ensayo' && Object.values(db.calles).some((c) => c.municipioId === campana.municipioId && c.segmentos.length > 0) && <Link className="btn s" to={`/espacios/ensayo/planificar/${campana.id}/${it.id}`}><MapPinned size={13} /> Planificar en mapa</Link>}
               </div>
               {abierto === it.id && archivo && (
                 <dl className="inc-dl ux-detalle" aria-label={`Detalle de ${it.codigo}`}>
