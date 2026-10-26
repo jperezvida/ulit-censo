@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, Scissors, X } from 'lucide-react';
-import { useContexto, useFichaLocal, useIndices, useRol } from '../../store/contexto';
-import { useStore } from '../../store/store';
+import { useFichaLocal } from '../../store/contexto';
+import { useContextoTerritorio } from './contextoTerritorio';
 import { coberturaCalle, direccionVigente, itinerariosDe, localesPrevios, negocioEn, ESTADO_COBERTURA_TXT, SITUACION_TXT, situacionPrevia } from '../../domain/consultas';
 import { ACERA_TXT, actualizarTramo, alternarCalle, asegurarEnAmbito, fijarSituacionPrevia, marcarCalleRevisada, quitarDeAmbito } from '../../domain/itinerarios';
 import { kCC } from '../../domain/db';
@@ -11,7 +11,7 @@ import { EstadoCob, SelloProcedencia, fmtFecha } from '../../components/ui';
 import { formatoDistancia } from '../../domain/geo';
 
 export function InspectorCalle({
-  calleId, itActual, editando, dividiendo, setDividiendo, onCerrar, onIt,
+  calleId, itActual, editando, dividiendo, setDividiendo, onCerrar, onIt, onAlternarEnsayo, ocupadoEnsayo, errorEnsayo, guardadoEnsayo,
 }: {
   calleId: Id;
   itActual?: Itinerario;
@@ -20,14 +20,14 @@ export function InspectorCalle({
   setDividiendo: (v: boolean) => void;
   onCerrar: () => void;
   onIt: (id: Id) => void;
+  onAlternarEnsayo?: () => Promise<void>;
+  ocupadoEnsayo?: string | null;
+  errorEnsayo?: string | null;
+  guardadoEnsayo?: string | null;
 }) {
-  const { db, campana, referencia, prefs } = useContexto();
-  const ix = useIndices();
-  const aplicar = useStore((s) => s.aplicar);
+  const { db, campana, referencia, personaId, ix, aplicar, puedeEditar, demo } = useContextoTerritorio();
   const ficha = useFichaLocal();
   const nav = useNavigate();
-  const { tiene } = useRol();
-  const puedeEditar = tiene('coordinador') && campana?.tipo !== 'historico-importado';
   const calle = db.calles[calleId];
   const previos = useMemo(() => localesPrevios(db, referencia?.id ?? (campana?.tipo === 'historico-importado' ? campana.id : undefined), calleId, ix.obs), [db, referencia, campana, calleId, ix.obs]);
   if (!campana || !calle) return null;
@@ -57,6 +57,14 @@ export function InspectorCalle({
           <X size={16} />
         </button>
       </div>
+
+      {!demo && itActual && <div className="t-insp-bloque destacado" style={{ ['--c' as string]: itActual.color }}>
+        <b>{tramoActual ? `En ${itActual.codigo}` : `Aún no está en ${itActual.codigo}`}</b>
+        {onAlternarEnsayo ? <button className="btn s primario" disabled={!!ocupadoEnsayo} onClick={() => void onAlternarEnsayo()}>{ocupadoEnsayo ?? (tramoActual ? 'Quitar calle completa' : 'Asignar calle completa')}</button>
+          : <span className="muted">Solo la persona coordinadora puede cambiar la planificación.</span>}
+        {errorEnsayo && <div className="t-info error" role="alert">{errorEnsayo} Si otra pestaña cambió el espacio, vuelva al inicio y ábralo de nuevo.</div>}
+        {guardadoEnsayo && <div className="t-info ok" role="status">{guardadoEnsayo}</div>}
+      </div>}
 
       {editando && itActual && (
         <div className="t-insp-bloque destacado" style={{ ['--c' as string]: itActual.color }}>
@@ -132,7 +140,7 @@ export function InspectorCalle({
         </div>
         {sit !== 'con-registros' && enAmbito && (
           <label className="t-revisada">
-            <input type="checkbox" checked={!!revisada} disabled={!puedeEditar} onChange={(e) => aplicar((d) => marcarCalleRevisada(d, campana.id, calleId, prefs.personaId, e.target.checked), e.target.checked ? 'Calle marcada como revisada' : 'Revisión retirada')} />
+            <input type="checkbox" checked={!!revisada} disabled={!puedeEditar} onChange={(e) => aplicar((d) => marcarCalleRevisada(d, campana.id, calleId, personaId, e.target.checked), e.target.checked ? 'Calle marcada como revisada' : 'Revisión retirada')} />
             <span>
               <b>Calle sin registros previos revisada</b>
               <br />
@@ -179,7 +187,7 @@ export function InspectorCalle({
               const d = direccionVigente(l);
               return (
                 <li key={l.id}>
-                  <button onClick={() => ficha.abrir(l.id)}>
+                  <button disabled={!demo} onClick={() => ficha.abrir(l.id)}>
                     <span className="mono num">{d.numero ?? 's/n'}{d.sufijo ? ` ${d.sufijo}` : ''}</span>
                     <span className={n ? '' : 'muted'}>{n?.nombre ?? 'Vacío'}</span>
                   </button>
@@ -188,7 +196,7 @@ export function InspectorCalle({
             })}
           </ul>
         )}
-        {previos.length > 0 && (
+        {demo && previos.length > 0 && (
           <button className="btn s" onClick={() => nav(`/oficina?calle=${calleId}`)}>Ver en la bandeja de oficina</button>
         )}
       </div>

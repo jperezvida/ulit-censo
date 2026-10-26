@@ -10,8 +10,7 @@ import { asignacionDelAmbito, detectarSolapes, estadoTramo, estimarCarga, progre
 import {
   actualizarTramo, alternarCalle, crearItinerario, editarItinerario, eliminarItinerario, moverTramo, ordenarItinerario, siguienteCodigo,
 } from '../../domain/itinerarios';
-import { useContexto, useIndices } from '../../store/contexto';
-import { useStore } from '../../store/store';
+import { useContextoTerritorio } from './contextoTerritorio';
 import type { Id, Itinerario } from '../../domain/types';
 import { Avatar, Avatares, Barra, EstadoCob, Pct, Sim, fmt } from '../../components/ui';
 import { formatoDistancia } from '../../domain/geo';
@@ -45,9 +44,7 @@ interface Props {
 }
 
 export function PanelPlan(p: Props) {
-  const { db, campana } = useContexto();
-  const ix = useIndices();
-  const aplicar = useStore((s) => s.aplicar);
+  const { db, campana, ix, aplicar, demo } = useContextoTerritorio();
   const [kml, setKml] = useState(false);
   const asig = useMemo(() => (campana ? asignacionDelAmbito(campana, p.itinerarios, db.calles) : null), [campana, p.itinerarios, db.calles]);
   const solapes = useMemo(() => detectarSolapes(p.itinerarios), [p.itinerarios]);
@@ -141,13 +138,13 @@ export function PanelPlan(p: Props) {
           </button>
         </div>
       )}
-      {!p.puedeEditar && campana.tipo !== 'historico-importado' && <p className="muted" style={{ padding: '0 16px', fontSize: 12 }}>Activa el rol Coordinador para editar itinerarios.</p>}
+      {!p.puedeEditar && demo && campana.tipo !== 'historico-importado' && <p className="muted" style={{ padding: '0 16px', fontSize: 12 }}>Activa el rol Coordinador para editar itinerarios.</p>}
       {kml && <ImportarKML onCerrar={() => setKml(false)} onCreado={(id) => { setKml(false); p.setItSel(id); }} />}
     </div>
   );
 }
 
-function situacionCorta(db: BaseDatos, campanaId: Id, calleId: Id, ix: ReturnType<typeof useIndices>) {
+function situacionCorta(db: BaseDatos, campanaId: Id, calleId: Id, ix: ReturnType<typeof useContextoTerritorio>['ix']) {
   const s = situacionPrevia(db, db.campanas[campanaId], calleId, ix.obs);
   return { 'con-registros': 'con registros', 'no-censada': 'no censada', 'censada-sin-locales': 'censada sin locales', 'sin-informacion': 'sin información', 'pendiente-relacionar': 'pendiente de relacionar' }[s];
 }
@@ -164,8 +161,7 @@ function AlertaFila({ tono, n, txt, onClick, on }: { tono: 'ok' | 'aviso' | 'err
 }
 
 function TarjetaIt({ it, onClick }: { it: Itinerario; onClick: () => void }) {
-  const { db, campana } = useContexto();
-  const ix = useIndices();
+  const { db, campana, ix } = useContextoTerritorio();
   const prog = progresoItinerario(db, it);
   const carga = useMemo(() => estimarCarga(db, campana!, it.tramos, ix.obs), [db, campana, it.tramos, ix.obs]);
   const rev = useMemo(() => revisionItinerario(db, it), [db, it]);
@@ -214,9 +210,7 @@ function EstadoFase({ t, ok, parcial }: { t: string; ok: boolean; parcial: boole
 
 function DetalleItinerario(p: Props & { it: Itinerario }) {
   const { it } = p;
-  const { db, campana } = useContexto();
-  const ix = useIndices();
-  const aplicar = useStore((s) => s.aplicar);
+  const { db, campana, ix, aplicar, demo } = useContextoTerritorio();
   const nav = useNavigate();
   const [arrastre, setArrastre] = useState<number | null>(null);
   const [personas, setPersonas] = useState(false);
@@ -296,12 +290,12 @@ function DetalleItinerario(p: Props & { it: Itinerario }) {
             <ArrowDownUp size={14} /> Ordenar
           </button>
         )}
-        <button className="btn s" onClick={() => p.onImprimir(it.id)}>
+        {demo && <button className="btn s" onClick={() => p.onImprimir(it.id)}>
           <Printer size={14} /> Hoja de campo
-        </button>
-        <button className="btn s" onClick={() => nav(`/campo/it/${it.id}`)}>
+        </button>}
+        {demo && <button className="btn s" onClick={() => nav(`/campo/it/${it.id}`)}>
           <Smartphone size={14} /> Campo
-        </button>
+        </button>}
       </div>
 
       {solapesIt.length > 0 && (
@@ -310,8 +304,8 @@ function DetalleItinerario(p: Props & { it: Itinerario }) {
         </div>
       )}
 
-      <div className="rotulo" style={{ margin: '14px 16px 6px' }}>Calles numeradas · arrastra para reordenar</div>
-      {it.tramos.length === 0 && <div className="t-info">Sin calles todavía. Pulsa “Editar en mapa” y selecciona calles directamente sobre el mapa.</div>}
+      <div className="rotulo" style={{ margin: '14px 16px 6px' }}>Calles numeradas{p.puedeEditar ? ' · arrastra para reordenar' : ''}</div>
+      {it.tramos.length === 0 && <div className="t-info">Sin calles todavía. Selecciona una calle en el mapa para planificarla.</div>}
       <ol className="t-tramos">
         {it.tramos.map((t, i) => {
           const c = db.calles[t.calleId];

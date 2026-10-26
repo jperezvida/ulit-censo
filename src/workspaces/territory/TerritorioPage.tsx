@@ -3,8 +3,10 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { LngLatBounds, Marker, type GeoJSONSource, type Map as MLMap, type MapLayerMouseEvent } from 'maplibre-gl';
 import { Layers, MapPinned, PenLine, Search, Users, X } from 'lucide-react';
 import { MapaBase } from '../../components/mapa/MapaBase';
-import { useContexto, useFichaLocal, useIndices, useRol } from '../../store/contexto';
+import { useFichaLocal } from '../../store/contexto';
 import { useStore } from '../../store/store';
+import { useEspacios } from '../../store/espacios';
+import { TerritorioDemo, TerritorioEnsayo, useContextoTerritorio } from './contextoTerritorio';
 import { itinerariosDe, situacionPrevia } from '../../domain/consultas';
 import { alternarCalle, alternarSegmento, registrarOmision } from '../../domain/itinerarios';
 import { geojsonCalles, geojsonLocales, type Capa } from './capas';
@@ -21,28 +23,35 @@ import '../../styles/territorio.css';
 const ANCHO = ['interpolate', ['linear'], ['zoom'], 13, 1.6, 15, 3.5, 17, 7, 19, 14] as const;
 
 export default function TerritorioPage() {
-  const { db, municipio, campana, referencia } = useContexto();
-  const ix = useIndices();
-  const aplicar = useStore((s) => s.aplicar);
-  const avisar = useStore((s) => s.avisar);
-  const { tiene } = useRol();
-  const puedeEditar = tiene('coordinador') && campana?.tipo !== 'historico-importado';
+  return <TerritorioDemo><TerritorioContenido /></TerritorioDemo>;
+}
+
+export function TerritorioEnsayoPage({ campanaId, itinerarioId }: { campanaId: Id; itinerarioId: Id }) {
+  return <TerritorioEnsayo campanaId={campanaId}><TerritorioContenido itInicial={itinerarioId} /></TerritorioEnsayo>;
+}
+
+function TerritorioContenido({ itInicial }: { itInicial?: Id }) {
+  const { db, municipio, campana, referencia, ix, aplicar, avisar, puedeEditar, puedePlanificarEnsayo, demo, dbVigente } = useContextoTerritorio();
+  const modificarEnsayo = useEspacios((s) => s.modificar);
+  const ocupado = useEspacios((s) => s.ocupado);
+  const [errorEnsayo, setErrorEnsayo] = useState<string | null>(null);
+  const [guardadoEnsayo, setGuardadoEnsayo] = useState<string | null>(null);
   const ficha = useFichaLocal();
   const fichaRef = useRef(ficha);
   fichaRef.current = ficha;
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
 
-  const [capa, setCapa] = useState<Capa>((params.get('capa') as Capa) || 'plan');
-  const [tab, setTab] = useState<'plan' | 'equipo'>((params.get('tab') as 'equipo') || 'plan');
-  const itSel = params.get('it');
+  const [capa, setCapa] = useState<Capa>(itInicial ? 'plan' : ((params.get('capa') as Capa) || 'plan'));
+  const [tab, setTab] = useState<'plan' | 'equipo'>(itInicial ? 'plan' : ((params.get('tab') as 'equipo') || 'plan'));
+  const itSel = demo ? params.get('it') : (params.get('it') && db.itinerarios[params.get('it')!]?.campanaId === campana?.id ? params.get('it') : itInicial) ?? null;
   const setItSel = (id: Id | null) => {
     const p = new URLSearchParams(params);
     if (id) p.set('it', id);
     else p.delete('it');
     setParams(p, { replace: true });
   };
-  const [editando, setEditando] = useState(params.get('editar') === '1');
+  const [editando, setEditando] = useState(demo && params.get('editar') === '1');
   const [calleSel, setCalleSel] = useState<Id | null>(null);
   const [dividiendo, setDividiendo] = useState(false);
   const [verAnteriores, setVerAnteriores] = useState(false);
@@ -71,21 +80,21 @@ export default function TerritorioPage() {
     (calleId: Id, segId: Id) => {
       const st = estado.current;
       if (st.dibujo) return;
-      const it = st.itSel ? useStore.getState().db!.itinerarios[st.itSel] : undefined;
+      const it = st.itSel ? dbVigente().itinerarios[st.itSel] : undefined;
       if (st.editando && it && st.puedeEditar) {
         if (st.dividiendo && st.calleSel === calleId && it.tramos.some((t) => t.calleId === calleId)) {
-          const calle = useStore.getState().db!.calles[calleId];
+          const calle = dbVigente().calles[calleId];
           aplicar((d) => alternarSegmento(d, it.id, calle, segId), 'Tramo ajustado', { silencioso: true });
           return;
         }
-        const otros = Object.values(useStore.getState().db!.itinerarios).filter((x) => x.campanaId === it.campanaId && x.id !== it.id && x.tramos.some((t) => t.calleId === calleId));
+        const otros = Object.values(dbVigente().itinerarios).filter((x) => x.campanaId === it.campanaId && x.id !== it.id && x.tramos.some((t) => t.calleId === calleId));
         let anadida = false;
         aplicar((d) => {
           const r = alternarCalle(d, it.id, calleId);
           anadida = r.anadida;
           return r.db;
         }, 'Itinerario actualizado', { silencioso: true });
-        const nombre = useStore.getState().db!.calles[calleId]?.nombre;
+        const nombre = dbVigente().calles[calleId]?.nombre;
         if (anadida && otros.length) avisar(`${nombre}: añadida a ${it.codigo}, pero ya estaba en ${otros.map((o) => o.codigo).join(', ')} → solape. Usa “Avanzado” para repartir aceras o tramos.`, 'error');
         else avisar(anadida ? `${nombre} añadida a ${it.codigo} (calle completa, ambas aceras)` : `${nombre} quitada de ${it.codigo}`, 'ok', true);
         setCalleSel(calleId);
@@ -94,7 +103,7 @@ export default function TerritorioPage() {
       setCalleSel(calleId);
       setDividiendo(false);
     },
-    [aplicar, avisar],
+    [aplicar, avisar, dbVigente],
   );
 
   // ── Instalación de capas ──
@@ -288,6 +297,22 @@ export default function TerritorioPage() {
     return Object.values(db.calles).filter((c) => c.municipioId === municipio.id && normalizar(c.nombre).includes(q)).slice(0, 8);
   }, [busqueda, db.calles, municipio.id]);
 
+  const guardarCalleEnsayo = async () => {
+    if (demo || !puedePlanificarEnsayo || !campana || !itActual || itActual.campanaId !== campana.id || !calleSel || ocupado) return;
+    const calle = db.calles[calleSel];
+    if (!calle || calle.municipioId !== municipio.id) return;
+    const quitar = itActual.tramos.some((t) => t.calleId === calleSel);
+    const r = await modificarEnsayo('Guardando planificación…', (actual) => {
+      const c = actual.campanas[campana.id];
+      const i = actual.itinerarios[itActual.id];
+      if (!c || !i || i.campanaId !== c.id || c.tipo === 'historico-importado' || c.municipioId !== municipio.id || actual.calles[calleSel]?.municipioId !== municipio.id)
+        throw new Error('El itinerario o la calle han cambiado. Vuelva a abrir el espacio.');
+      return alternarCalle(actual, i.id, calleSel).db;
+    });
+    setErrorEnsayo(r.ok ? null : r.error ?? 'No se ha guardado el cambio.');
+    setGuardadoEnsayo(r.ok ? `${calle.nombre} ${quitar ? 'retirada' : 'añadida'} a ${itActual.codigo}. Guardado comprobado.` : null);
+  };
+
   if (municipio.fuenteCallejero === 'sin-geometria') {
     return (
       <div className="pagina">
@@ -295,7 +320,7 @@ export default function TerritorioPage() {
           <MapPinned size={32} />
           <h2 style={{ margin: 0, color: 'var(--tinta)' }}>{municipio.nombre} no tiene callejero cartográfico en el prototipo</h2>
           <p style={{ maxWidth: 520 }}>Es un municipio de demostración de volumen (≈5.000 locales ficticios) pensado para probar la Oficina y el Análisis. La planificación cartográfica se prueba en Medina del Campo.</p>
-          <button className="btn primario" onClick={() => useStore.getState().setPrefs({ municipioId: 'mun-medina', campanaId: 'camp-medina-2026' })}>Ir a Medina del Campo</button>
+          {demo && <button className="btn primario" onClick={() => useStore.getState().setPrefs({ municipioId: 'mun-medina', campanaId: 'camp-medina-2026' })}>Ir a Medina del Campo</button>}
         </div>
       </div>
     );
@@ -307,6 +332,7 @@ export default function TerritorioPage() {
     <div className={`territorio ${calleSel ? 'con-inspector' : ''}`}>
       <aside className="t-panel scroll-fino">
         <div className="t-panel-tabs">
+          {demo ? (
           <Segmentado
             valor={tab}
             onCambio={(v) => setTab(v)}
@@ -315,6 +341,7 @@ export default function TerritorioPage() {
               { v: 'equipo', t: <><Users size={14} /> Equipo y progreso</> },
             ]}
           />
+          ) : <div className="rotulo">Planificación · {municipio.nombre}</div>}
         </div>
         {tab === 'plan' ? (
           <PanelPlan
@@ -338,7 +365,7 @@ export default function TerritorioPage() {
               if (ids?.length) enfocarCalles(ids);
             }}
             resaltando={resaltar}
-            onImprimir={(id) => nav(`/imprimir/${id}`)}
+            onImprimir={(id) => { if (demo) nav(`/imprimir/${id}`); }}
             sinPrevios={sinPrevios}
           />
         ) : (
@@ -354,7 +381,7 @@ export default function TerritorioPage() {
       </aside>
 
       <section className="t-mapa">
-        <MapaBase centro={municipio.centro!} zoom={15} onListo={alListo} />
+        <MapaBase centro={municipio.centro ?? Object.values(db.calles).find((c) => c.municipioId === municipio.id && c.segmentos.length)?.segmentos[0].coords[0] ?? [-4.91, 41.31]} zoom={15} onListo={alListo} />
 
         <div className="t-barra panel-flotante">
           <div className="t-busca">
@@ -383,7 +410,7 @@ export default function TerritorioPage() {
               </div>
             )}
           </div>
-          <Segmentado
+          {demo && <Segmentado
             valor={capa}
             onCambio={setCapa}
             opciones={[
@@ -391,7 +418,7 @@ export default function TerritorioPage() {
               { v: 'cobertura', t: 'Cobertura' },
               { v: 'actividad', t: 'Actividad' },
             ]}
-          />
+          />}
           <label className="t-check" title={referencia ? `Superponer itinerarios de ${referencia.nombre}` : 'Sin campaña de referencia'}>
             <input type="checkbox" checked={verAnteriores} disabled={!referencia} onChange={(e) => {
               setVerAnteriores(e.target.checked);
@@ -438,7 +465,7 @@ export default function TerritorioPage() {
           ) : (
             <span className="chip real" title={`${db.meta.detalleCallejero} · Datos © colaboradores de OpenStreetMap, licencia ODbL (openstreetmap.org/copyright)`}>Callejero real · © OSM (ODbL)</span>
           )}
-          <Sim texto={fuenteCallejero === 'simulado' ? 'Itinerarios y locales de demostración' : 'Locales, números de portal e itinerarios ficticios'} title={fuenteCallejero === 'simulado' ? undefined : 'Las calles son reales; los locales, sus números de portal y sus ubicaciones son de demostración: no son direcciones comprobadas.'} />
+          {demo ? <Sim texto={fuenteCallejero === 'simulado' ? 'Itinerarios y locales de demostración' : 'Locales, números de portal e itinerarios ficticios'} title={fuenteCallejero === 'simulado' ? undefined : 'Las calles son reales; los locales, sus números de portal y sus ubicaciones son de demostración: no son direcciones comprobadas.'} /> : <span className="chip aviso">Espacio de ensayo · datos sintéticos</span>}
         </div>
 
         <Leyenda capa={capa} />
@@ -449,7 +476,6 @@ export default function TerritorioPage() {
           </div>
         )}
       </section>
-
       {calleSel && db.calles[calleSel] && (
         <InspectorCalle
           calleId={calleSel}
@@ -462,6 +488,10 @@ export default function TerritorioPage() {
             setDividiendo(false);
           }}
           onIt={(id) => setItSel(id)}
+          onAlternarEnsayo={!demo && puedePlanificarEnsayo ? guardarCalleEnsayo : undefined}
+          ocupadoEnsayo={ocupado}
+          errorEnsayo={errorEnsayo}
+          guardadoEnsayo={guardadoEnsayo}
         />
       )}
     </div>

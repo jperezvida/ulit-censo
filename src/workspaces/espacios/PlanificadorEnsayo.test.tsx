@@ -13,7 +13,15 @@ import { leerOsmMunicipio } from '../../domain/fuentesCallejero';
 import { osmVillaSintetica } from '../../data/callejeroSintetico';
 import type { BaseDatos } from '../../domain/db';
 
-const mapaFalso = vi.hoisted(() => ({ clic: null as null | ((e: unknown) => void) }));
+const mapaFalso = vi.hoisted(() => ({ clic: null as null | ((e: unknown) => void), calleId: '' }));
+vi.mock('maplibre-gl', async (importOriginal) => ({
+  ...await importOriginal<typeof import('maplibre-gl')>(),
+  Marker: class {
+    setLngLat() { return this; }
+    addTo() { return this; }
+    remove() { return this; }
+  },
+}));
 vi.mock('../../components/mapa/MapaBase', () => ({
   MapaBase: ({ onListo }: { onListo: (m: unknown) => void }) => {
     useEffect(() => {
@@ -21,12 +29,16 @@ vi.mock('../../components/mapa/MapaBase', () => ({
         addSource: () => undefined, addLayer: () => undefined,
         getSource: () => ({ setData: () => undefined }),
         fitBounds: () => undefined,
-        on: (evento: string, capa: string, fn: (e: unknown) => void) => {
-          if (evento === 'click' && capa === 'calles-ensayo-hit') mapaFalso.clic = fn;
+        setLayoutProperty: () => undefined, setFilter: () => undefined,
+        queryRenderedFeatures: () => [{ properties: { calleId: mapaFalso.calleId, segId: 'seg-1' } }],
+        on: (evento: string, capa: string | ((e: unknown) => void)) => {
+          if (evento === 'click' && typeof capa === 'function') mapaFalso.clic = capa;
         },
         getCanvas: () => ({ style: {} }),
       });
-    }, [onListo]);
+      // El mapa real instala las capas una vez, al cargar su estilo.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
     return <div data-testid="mapa-reutilizado" />;
   },
 }));
@@ -37,6 +49,7 @@ beforeEach(async () => {
   localStorage.clear();
   useEspacios.getState().cerrar();
   mapaFalso.clic = null;
+  mapaFalso.calleId = '';
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -72,7 +85,8 @@ describe('Mapa del itinerario de ensayo', () => {
     await screen.findByRole('region', { name: 'Planificación en mapa del ensayo' });
     expect(screen.getByTestId('mapa-reutilizado')).toBeInTheDocument();
     await waitFor(() => expect(mapaFalso.clic).toBeTypeOf('function'));
-    act(() => mapaFalso.clic!({ features: [{ properties: { calleId: calle.id } }] }));
+    mapaFalso.calleId = calle.id;
+    act(() => mapaFalso.clic!({ point: { x: 10, y: 10 }, lngLat: { lng: 0, lat: 0 } }));
     fireEvent.click(await screen.findByRole('button', { name: 'Asignar calle completa' }));
     await screen.findByText(/Guardado comprobado/);
     const guardada = (await get<BaseDatos>('db', tienda()))!;
@@ -90,7 +104,8 @@ describe('Mapa del itinerario de ensayo', () => {
     montar(campanaId, itinerarioId);
     await screen.findByRole('region', { name: 'Planificación en mapa del ensayo' });
     await waitFor(() => expect(mapaFalso.clic).toBeTypeOf('function'));
-    act(() => mapaFalso.clic!({ features: [{ properties: { calleId: calle.id } }] }));
+    mapaFalso.calleId = calle.id;
+    act(() => mapaFalso.clic!({ point: { x: 10, y: 10 }, lngLat: { lng: 0, lat: 0 } }));
     await screen.findByRole('button', { name: 'Asignar calle completa' });
     const externa = { ...db, itinerarios: { ...db.itinerarios, [itinerarioId]: { ...db.itinerarios[itinerarioId], notas: 'Cambio en otra pestaña' } } };
     await set('db', externa, tienda());
