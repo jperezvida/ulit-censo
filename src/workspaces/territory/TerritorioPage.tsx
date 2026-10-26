@@ -8,6 +8,8 @@ import { useStore } from '../../store/store';
 import { useEspacios } from '../../store/espacios';
 import { TerritorioDemo, TerritorioEnsayo, useContextoTerritorio } from './contextoTerritorio';
 import { itinerariosDe, situacionPrevia } from '../../domain/consultas';
+import { claseCampana } from '../../domain/municipios';
+import { personaEspacio } from '../../domain/espacios';
 import { actualizarTramo, alternarCalle, alternarSegmento, registrarOmision } from '../../domain/itinerarios';
 import { geojsonCalles, geojsonLocales, type Capa } from './capas';
 import { PanelPlan } from './PanelPlan';
@@ -45,11 +47,15 @@ function TerritorioContenido({ itInicial }: { itInicial?: Id }) {
 
   const [capa, setCapa] = useState<Capa>(itInicial ? 'plan' : ((params.get('capa') as Capa) || 'plan'));
   const [tab, setTab] = useState<'plan' | 'equipo'>(itInicial ? 'plan' : ((params.get('tab') as 'equipo') || 'plan'));
-  const itSel = demo ? params.get('it') : (params.get('it') && db.itinerarios[params.get('it')!]?.campanaId === campana?.id ? params.get('it') : itInicial) ?? null;
+  const itSolicitado = params.get('it');
+  const itSel = demo ? itSolicitado : params.has('it')
+    ? (itSolicitado && db.itinerarios[itSolicitado]?.campanaId === campana?.id ? itSolicitado : null)
+    : (itInicial ?? null);
   const setItSel = (id: Id | null) => {
     const p = new URLSearchParams(params);
     if (id) p.set('it', id);
-    else p.delete('it');
+    else if (demo) p.delete('it');
+    else p.set('it', '');
     setParams(p, { replace: true });
   };
   const [editando, setEditando] = useState(demo && params.get('editar') === '1');
@@ -90,6 +96,25 @@ function TerritorioContenido({ itInicial }: { itInicial?: Id }) {
     });
     setErrorEnsayo(r.ok ? null : r.error ?? 'No se ha guardado el cambio.');
     setGuardadoEnsayo(r.ok ? `${descripcion}. Guardado comprobado.` : null);
+  };
+
+  const modificarPlanEnsayo = async (cambio: (actual: BaseDatos) => BaseDatos, descripcion: string, itId?: Id): Promise<boolean> => {
+    if (demo || !puedePlanificarEnsayo || !campana || ocupado) return false;
+    const r = await modificarEnsayo('Guardando planificación…', (actual) => {
+      const c = actual.campanas[campana.id];
+      const persona = personaEspacio(actual);
+      const it = itId ? actual.itinerarios[itId] : undefined;
+      if (!c || c.municipioId !== municipio.id || claseCampana(c) !== 'operativa'
+        || !actual.municipios[municipio.id]
+        || !persona?.roles.some((rol) => rol === 'coordinador' || rol === 'administrador')
+        || (itId && (!it || it.campanaId !== c.id))) {
+        throw new Error('La campaña, el itinerario o los permisos han cambiado. Vuelva a abrir el espacio.');
+      }
+      return cambio(actual);
+    });
+    setErrorEnsayo(r.ok ? null : r.error ?? 'No se ha guardado el cambio.');
+    setGuardadoEnsayo(r.ok ? `${descripcion}. Guardado comprobado.` : null);
+    return r.ok;
   };
 
   const clicCalle = useCallback(
@@ -370,6 +395,8 @@ function TerritorioContenido({ itInicial }: { itInicial?: Id }) {
           />
           ) : <div className="rotulo">Planificación · {municipio.nombre}</div>}
         </div>
+        {!demo && errorEnsayo && <div className="t-info error" role="alert">{errorEnsayo}</div>}
+        {!demo && guardadoEnsayo && <div className="t-info ok" role="status">{guardadoEnsayo}</div>}
         {tab === 'plan' ? (
           <PanelPlan
             itinerarios={itinerarios}
@@ -383,6 +410,8 @@ function TerritorioContenido({ itInicial }: { itInicial?: Id }) {
             editando={editando}
             setEditando={setEditando}
             puedeEditar={puedeEditar}
+            modificarEnsayo={!demo && puedePlanificarEnsayo ? modificarPlanEnsayo : undefined}
+            ocupadoEnsayo={ocupado}
             onCalle={(id) => {
               setCalleSel(id);
               enfocarCalles([id]);
