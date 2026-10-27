@@ -74,7 +74,7 @@ describe('Campo en el espacio de ensayo (solo lectura)', () => {
     // Planificada no es censada; sin sincronización simulada
     expect(screen.getAllByText(/Pendiente/).length).toBeGreaterThan(0);
     expect(screen.getByText(/planificada no es censada/)).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('Solo lectura · sin sincronización');
+    expect(screen.getByRole('status')).toHaveTextContent('Solo «Sin cambios» · sin sincronización');
     expect(screen.queryByText(/Sin conexión \(simulado\)|Conectado|sin sincronizar/)).toBeNull();
     // Nunca se ha leído la demostración y la base del ensayo no cambia
     expect(useStore.getState().db).toBeNull();
@@ -93,7 +93,7 @@ describe('Campo en el espacio de ensayo (solo lectura)', () => {
     fireEvent.click(screen.getByRole('button', { name: new RegExp(`Registrado ${nObs}`) }));
     expect(screen.getByText('FERRETERÍA SINTÉTICA')).toBeInTheDocument();
     for (const n of ['Local nuevo', 'Finalizar calle', 'Sin cambios', 'Registrar cambios']) expect(screen.queryByRole('button', { name: new RegExp(n) })).toBeNull();
-    expect(screen.getByRole('note')).toHaveTextContent(/Solo lectura/);
+    expect(screen.getAllByRole('note').map((n) => n.textContent).join(' ')).toMatch(/solo está habilitado «Sin cambios»/);
     // Calle siguiente/anterior dentro del itinerario y regreso
     fireEvent.click(screen.getByRole('button', { name: 'Calle anterior' }));
     await screen.findByRole('heading', { name: 'Calle Real' });
@@ -130,7 +130,7 @@ describe('Campo en el espacio de ensayo (solo lectura)', () => {
     render(<MemoryRouter initialEntries={[`/campo/it/${it.id}`]}><Routes><Route path="/campo/*" element={<CampoApp />} /></Routes></MemoryRouter>);
     expect(screen.getByRole('heading', { name: it.nombre })).toBeInTheDocument();
     expect(screen.getByText(/Conectado/)).toBeInTheDocument();
-    expect(screen.queryByText(/Solo lectura/)).toBeNull();
+    expect(screen.queryByText(/Solo «Sin cambios»/)).toBeNull();
     expect(useEspacios.getState().db).toBeNull();
   });
 });

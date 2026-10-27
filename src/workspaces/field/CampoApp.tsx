@@ -72,7 +72,8 @@ function CampoMarco({ children }: { children: ReactNode }) {
           <li>Los cambios se reflejan al instante en Territorio y Oficina.</li>
           <li>El modo sin conexión es una <b>simulación</b>: no existe todavía motor de sincronización.</li>
         </ul> : <ul>
-          <li><b>Espacio de ensayo · solo lectura.</b> Aquí todavía no se registra nada desde Campo.</li>
+          <li><b>Espacio de ensayo.</b> Solo se puede confirmar «Sin cambios» un local del censo anterior; el resto es de consulta.</li>
+          <li>Quién registra se declara en este dispositivo (persona investigadora asignada): no es una autenticación.</li>
           <li>Sin sincronización móvil: no hay motor de sincronización.</li>
           <li>Una calle planificada no está censada hasta que se recorra y se finalice.</li>
         </ul>}
@@ -92,8 +93,13 @@ export function BarraEstado() {
   if (c.soloLectura) {
     return (
       <div className="m-estado">
-        <span className="m-red" role="status">Solo lectura · sin sincronización</span>
+        <span className="m-red" role="status">Solo «Sin cambios» · sin sincronización</span>
         <span className="esp" />
+        <select className="m-persona" aria-label="Quién registra (declarado en este dispositivo, no autenticado)" title="Persona investigadora asignada al itinerario. Es una declaración en este dispositivo, no una autenticación."
+          value={c.investigadorId ?? ''} onChange={(e) => c.elegirInvestigador?.(e.target.value || null)}>
+          <option value="">{c.investigadores?.length ? 'Quién registra…' : 'Sin investigadores asignados'}</option>
+          {c.investigadores?.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+        </select>
         <button className={`m-sol ${prefs.modoSol ? 'on' : ''}`} onClick={() => setPrefs({ modoSol: !prefs.modoSol })} title="Modo sol: alto contraste para exterior" aria-pressed={prefs.modoSol}>
           <Sun size={15} />
         </button>
