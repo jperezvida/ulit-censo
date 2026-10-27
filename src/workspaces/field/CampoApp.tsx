@@ -13,9 +13,13 @@ import { CapturaCalle } from './CapturaCalle';
 import { MiniMapa } from './MiniMapa';
 import '../../styles/campo.css';
 
-export function useCtxCampo(campanaId: Id): () => Contexto {
+/** Contexto de campo. Con itinerario, las operaciones no pueden salir de su ámbito. */
+export function useCtxCampo(campanaId: Id, itinerarioId?: Id): () => Contexto {
   const prefs = useStore((s) => s.prefs);
-  return () => ({ campanaId, investigadorId: prefs.campoPersonaId, fecha: new Date().toISOString(), fuente: 'campo-app', sinConexion: prefs.sinConexion });
+  return () => ({
+    campanaId, investigadorId: prefs.campoPersonaId, fecha: new Date().toISOString(), fuente: 'campo-app', sinConexion: prefs.sinConexion,
+    alcance: itinerarioId ? { itinerarioId } : undefined,
+  });
 }
 
 export default function CampoApp() {

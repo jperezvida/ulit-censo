@@ -427,3 +427,26 @@
     bottom: 68px;
   }
 }
+.guia-transicion { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; padding: 8px 10px; border-radius: 8px; background: var(--azul-suave, #eef4ff); border: 1px solid var(--azul-borde, #c9dcf7); font-size: 12px; }
+.version-app { font-size: 11px; color: rgba(255,255,255,.6); }
+
+/* ───── La barra superior nunca es más ancha que la ventana ─────
+   (si lo era, toda la página se desplazaba en horizontal y los paneles se descolocaban).
+   Sin `overflow: hidden` en la barra, para no recortar los menús desplegables. */
+.barra-sup { min-width: 0; }
+.barra-sup > .marca-ulit,
+.barra-der { flex-shrink: 0; }
+.barra-sup > .ctx-wrap { flex-shrink: 1; min-width: 0; }
+.barra-sup .ctx { max-width: 100%; min-width: 0; }
+.ctx-mun, .ctx-camp { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ctx-camp { max-width: 240px; }
+.barra-sup .espacios { flex: 1 1 auto; min-width: 0; overflow: hidden; }
+.espacio span { white-space: nowrap; }
+@media (max-width: 1680px) {
+  .version-app,
+  .barra-der .btn .ocultar-m { display: none; }
+}
+@media (max-width: 1400px) {
+  .ctx-camp { display: none; }
+}
+.menu { max-width: calc(100vw - 20px); }

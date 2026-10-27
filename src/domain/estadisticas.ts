@@ -1,5 +1,5 @@
 import type { BaseDatos } from './db';
-import { kMet } from './db';
+import { kNC } from './db';
 import { direccionVigente, indiceObservaciones, indiceOcupaciones, observacionEn, ocupacionEn } from './consultas';
 import { grupoActividad } from './taxonomy';
 import type { Campana, Id } from './types';
@@ -32,15 +32,15 @@ export function resumenCampana(db: BaseDatos, campanaId: Id, calles?: Set<Id>): 
       continue;
     }
     r.ocupados++;
-    const neg = db.negocios[oc.negocioId];
-    const g = grupoActividad(neg?.actividadId)?.nombre ?? 'Sin clasificar';
+    const g = grupoActividad(db.clasificaciones[kNC(oc.negocioId, campanaId)]?.actividadId)?.nombre ?? 'Sin clasificar';
     r.porGrupo[g] = (r.porGrupo[g] ?? 0) + 1;
-    const m = db.metricas[kMet(oc.negocioId, campanaId)];
-    if (m?.verificada) {
+    // Solo cuentan revisiones digitales VERIFICADAS en esta campaña.
+    const m = db.digital[kNC(oc.negocioId, campanaId)];
+    if (m?.estado === 'verificada') {
       r.digital.verificados++;
-      if (m.web) r.digital.conWeb++;
-      if (m.instagram) r.digital.conInstagram++;
-      if (m.googleBusiness) r.digital.conGoogle++;
+      if (m.datos.web?.respuesta === 'si') r.digital.conWeb++;
+      if (m.datos.instagram?.respuesta === 'si') r.digital.conInstagram++;
+      if (m.datos.googleBusiness?.respuesta === 'si') r.digital.conGoogle++;
     } else r.digital.sinVerificar++;
   }
   return r;

@@ -1,5 +1,6 @@
 import type { BaseDatos } from './db';
 import { nuevoId } from './db';
+import { comprobarAlcance, comprobarEditable, type Alcance } from './bloqueo';
 import { direccionVigente, ocupacionEn } from './consultas';
 import { similitud } from './text';
 import type { Confianza, Id, LocalFisico, VinculoHistorico } from './types';
@@ -72,10 +73,16 @@ export type DecisionConciliacion =
  * "mismo-local" fusiona el local creado en campo con el local físico anterior,
  * de modo que el histórico queda en un único espacio.
  */
-export function resolverVinculo(db0: BaseDatos, vinculoId: Id, decision: DecisionConciliacion, revisorId: Id): BaseDatos {
+export function resolverVinculo(db0: BaseDatos, vinculoId: Id, decision: DecisionConciliacion, revisorId: Id, alcance?: Alcance): BaseDatos {
   const db: BaseDatos = { ...db0 };
   const v = db.vinculos[vinculoId];
   if (!v) return db0;
+  const obsOrigen = v.origen.tipo === 'observacion' ? db.observaciones[v.origen.id] : undefined;
+  // Ambos extremos (el local de campo y, si se fusiona, el anterior) deben ser editables y
+  // estar dentro del itinerario de trabajo: se comprueba antes de modificar nada.
+  const afectados = [v.localId, decision.tipo === 'mismo-local' ? decision.localAnteriorId : undefined].filter((x): x is Id => !!x);
+  comprobarAlcance(db0, alcance, afectados);
+  if (obsOrigen) for (const id of afectados) comprobarEditable(db0, obsOrigen.campanaId, { localId: id });
   if (decision.tipo === 'indeterminado') {
     db.vinculos = { ...db.vinculos, [vinculoId]: { ...v, confianza: 'sin-vinculo', criterio: 'Revisado: evidencia insuficiente, queda indeterminado', revisadoPorId: revisorId } };
     return db;

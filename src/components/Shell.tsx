@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { BarChart3, ChevronDown, Compass, Database, FolderKanban, Inbox, Map, Smartphone, UserCog } from 'lucide-react';
+import { BarChart3, ChevronDown, Compass, Database, FolderKanban, Inbox, Map, PieChart, ShieldCheck, Smartphone, UserCog } from 'lucide-react';
 import { useStore } from '../store/store';
 import { useContexto, useFichaLocal } from '../store/contexto';
 import type { Rol } from '../domain/types';
@@ -13,6 +13,7 @@ const ESPACIOS = [
   { to: '/oficina', txt: 'Oficina', icono: Inbox },
   { to: '/datos', txt: 'Datos', icono: Database },
   { to: '/analisis', txt: 'Análisis', icono: BarChart3 },
+  { to: '/visualizacion', txt: 'Visualización', icono: PieChart },
 ];
 
 const ROLES: { r: Rol; t: string; d: string }[] = [
@@ -81,9 +82,14 @@ export function Shell() {
         </nav>
 
         <div className="barra-der">
+          <span className="mono ocultar-m version-app" title={`Versión en ejecución: commit ${import.meta.env.VITE_COMMIT ?? '?'} · rama ${import.meta.env.VITE_RAMA ?? '?'}`}>v {String(import.meta.env.VITE_COMMIT ?? '').slice(0, 7)}</span>
           <span className="chip sim sim-global" title="Todos los locales, negocios, personas, itinerarios y resultados son ficticios">
             Datos simulados
           </span>
+          <button className="btn s oscuro-borde" onClick={() => nav('/espacios')} title="Espacios aislados: ensayo y datos reales (separados de esta demostración)">
+            <ShieldCheck size={15} />
+            <span className="ocultar-m">Datos reales</span>
+          </button>
           <button className="btn s oscuro-borde" onClick={() => nav('/campo')} title="Abrir la app de campo (móvil)">
             <Smartphone size={15} />
             <span className="ocultar-m">Campo</span>
@@ -99,6 +105,12 @@ export function Shell() {
             </button>
             {menu === 'rol' && (
               <div className="menu panel-flotante derecha" role="menu" onMouseLeave={() => setMenu(null)}>
+                <div className="rotulo sin-linea">Persona de demostración (sin autenticación)</div>
+                <label className="menu-item">
+                  <select className="input" aria-label="Persona de escritorio" value={prefs.personaId} onChange={(e) => setPrefs({ personaId: e.target.value })}>
+                    {Object.values(db.personas).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                  </select>
+                </label>
                 <div className="rotulo sin-linea">Roles de demostración (sin autenticación)</div>
                 {ROLES.map(({ r, t, d }) => (
                   <label key={r} className="menu-item check">

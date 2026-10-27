@@ -137,3 +137,83 @@
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* C1a · análisis previo de importación */
+.ap-resumen {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px;
+}
+.ap-resumen > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--linea);
+  border-radius: 8px;
+  background: var(--superficie-2);
+  font-size: 12.5px;
+  min-width: 0;
+}
+.ap-resumen b {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ap-tit {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+.ap-tabla {
+  font-size: 12.5px;
+  width: 100%;
+}
+.ap-perfiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 8px;
+}
+.ap-perfil {
+  border: 1px solid var(--linea);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ap-perfil.ok {
+  border-color: #9fdcc2;
+  background: #f3fbf7;
+}
+.ap-lista {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+}
+.ap-lista li.ap-ausente,
+.ap-lista li.ap-difiere {
+  color: #8a5a00;
+}
+.ap-mal {
+  color: #a3341b;
+}
+.ap-garantias {
+  font-size: 12px;
+  color: #087a52;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+/* C1b: incidencias por tipo con textos largos (se ajustan en vez de ensanchar el modal) */
+.ap-ajuste td {
+  white-space: normal;
+}
+/* C1d: traza de una incorporación controlada */
+.dat-c1 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+}

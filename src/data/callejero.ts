@@ -2,17 +2,19 @@ import type { Calle, LngLat, Segmento } from '../domain/types';
 import { longitudLinea } from '../domain/geo';
 import { claveCalle, tipoVia } from '../domain/text';
 import { crearRng } from './rng';
+import { detalleInstantanea, validarInstantanea } from './instantaneaOsm';
 
 /**
  * Callejero de Medina del Campo.
  *
  * Orden de preferencia:
- *  1. Instantánea OSM incluida en el proyecto (public/data/medina-callejero.json),
- *     generada con `npm run callejero` cuando la red lo permite.
- *  2. Consulta puntual a Overpass API desde el navegador (una sola petición, cacheada).
+ *  1. Instantánea OSM incluida en el proyecto (public/data/medina-callejero.json), generada con
+ *     `npm run callejero` y validada (`instantaneaOsm.ts`): reproducible, no depende de la red.
+ *  2. Consulta puntual a Overpass API desde el navegador (una sola petición), solo si falta la instantánea.
  *  3. Callejero SIMULADO, claramente identificado como tal.
  *
- * Datos OSM © OpenStreetMap contributors, licencia ODbL.
+ * Solo la cartografía es real: los establecimientos, números de portal y ubicaciones de la
+ * demostración son ficticios. Datos OSM © colaboradores de OpenStreetMap, licencia ODbL.
  */
 
 export const MEDINA = {
@@ -22,7 +24,7 @@ export const MEDINA = {
   bbox: [41.2965, -4.9385, 41.3255, -4.8955] as const,
 };
 
-const TIPOS_VIA = 'primary|secondary|tertiary|unclassified|residential|living_street|pedestrian|trunk|primary_link|secondary_link|tertiary_link';
+export const TIPOS_VIA = 'primary|secondary|tertiary|unclassified|residential|living_street|pedestrian|trunk|primary_link|secondary_link|tertiary_link';
 
 export function consultaOverpass(bbox: readonly number[] = MEDINA.bbox): string {
   return `[out:json][timeout:25];way["highway"~"^(${TIPOS_VIA})$"]["name"](${bbox.join(',')});out geom;`;
@@ -130,6 +132,21 @@ export function callejeroSimulado(municipioId: string, centro: LngLat): Calle[] 
 
 export type FuenteCallejero = 'instantanea-osm' | 'overpass-navegador' | 'simulado';
 
+/**
+ * Lee y valida la instantánea OSM del proyecto, sin red externa. `motivo` solo se rellena si el archivo
+ * existe pero no es válido (si no existe, no hay nada que avisar).
+ */
+export async function cargarInstantaneaMedina(): Promise<{ ok: true; calles: Calle[]; detalle: string } | { ok: false; motivo?: string }> {
+  try {
+    const r = await fetch('./data/medina-callejero.json', { cache: 'no-cache' });
+    if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) return { ok: false };
+    const v = validarInstantanea(await r.json(), MEDINA.id);
+    return v.ok ? { ok: true, calles: v.calles, detalle: detalleInstantanea(v.fuente, v.calles.length) } : { ok: false, motivo: v.motivo };
+  } catch {
+    return { ok: false };
+  }
+}
+
 export async function cargarCallejeroMedina(
   aviso: (paso: string) => void,
   opciones: { permitirRed?: boolean; timeoutMs?: number } = {},
@@ -137,11 +154,9 @@ export async function cargarCallejeroMedina(
   const { permitirRed = true, timeoutMs = 20000 } = opciones;
   try {
     aviso('Buscando instantánea del callejero OSM incluida en el proyecto…');
-    const r = await fetch('./data/medina-callejero.json', { cache: 'no-cache' });
-    if (r.ok && (r.headers.get('content-type') ?? '').includes('json')) {
-      const calles = callesDesdeOverpass(await r.json(), MEDINA.id);
-      if (calles.length > 20) return { calles, fuente: 'instantanea-osm', detalle: `${calles.length} calles · instantánea OSM del proyecto` };
-    }
+    const inst = await cargarInstantaneaMedina();
+    if (inst.ok) return { calles: inst.calles, fuente: 'instantanea-osm', detalle: inst.detalle };
+    if (inst.motivo) aviso(`Instantánea del callejero no válida: ${inst.motivo}`);
   } catch {
     /* sin instantánea */
   }
@@ -159,7 +174,7 @@ export async function cargarCallejeroMedina(
       clearTimeout(t);
       if (r.ok) {
         const calles = callesDesdeOverpass(await r.json(), MEDINA.id);
-        if (calles.length > 20) return { calles, fuente: 'overpass-navegador', detalle: `${calles.length} calles · OSM vía Overpass (${new Date().toLocaleDateString('es-ES')})` };
+        if (calles.length > 20) return { calles, fuente: 'overpass-navegador', detalle: `${calles.length} calles reales · OSM vía Overpass (${new Date().toLocaleDateString('es-ES')}, no reproducible) · © colaboradores de OpenStreetMap, ODbL 1.0` };
       }
     } catch {
       /* sin red o bloqueado */
