@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import { useStore } from '../../store/store';
 import { useEspacios } from '../../store/espacios';
-import { personaEspacio } from '../../domain/espacios';
+import { confirmarSinCambiosEnsayo, investigadoresDe } from '../../domain/campoEnsayo';
 import type { BaseDatos } from '../../domain/db';
 import type { Id } from '../../domain/types';
 
@@ -27,6 +27,14 @@ export interface CtxCampo {
   salida: string;
   /** En el ensayo, el único itinerario abierto (no se navega a otros). */
   itinerarioFijo?: Id;
+  /**
+   * Ensayo: única escritura habilitada, «Sin cambios» de un local del censo anterior, con guardado
+   * verificado. Solo con una persona investigadora declarada en este dispositivo (no es autenticación).
+   */
+  sinCambiosEnsayo?: (calleId: Id, localId: Id) => Promise<{ ok: boolean; error?: string }>;
+  investigadores?: { id: Id; nombre: string }[];
+  investigadorId?: Id | null;
+  elegirInvestigador?: (id: Id | null) => void;
 }
 
 const Ctx = createContext<CtxCampo | null>(null);
@@ -52,11 +60,20 @@ export function CampoDemo({ children }: { children: ReactNode }) {
 
 export function CampoEnsayo({ campanaId, itinerarioId, children }: { campanaId: Id; itinerarioId: Id; children: ReactNode }) {
   const db = useEspacios((s) => s.db!);
+  const modificar = useEspacios((s) => s.modificar);
   const [modoSol, setModoSol] = useState(false);
+  const investigadores = investigadoresDe(db, itinerarioId).map((p) => ({ id: p.id, nombre: p.nombre }));
+  const [elegido, setElegido] = useState<Id | null>(investigadores.length === 1 ? investigadores[0].id : null);
+  const investigadorId = elegido && investigadores.some((p) => p.id === elegido) ? elegido : null;
   const base = `/espacios/ensayo/campo/${campanaId}/${itinerarioId}`;
   return (
     <Ctx.Provider value={{
-      db, demo: false, soloLectura: true, personaId: personaEspacio(db)?.id ?? '', sinConexion: false, modoSol,
+      db, demo: false, soloLectura: true, personaId: investigadorId ?? '', sinConexion: false, modoSol,
+      investigadores, investigadorId, elegirInvestigador: setElegido,
+      sinCambiosEnsayo: async (calleId, localId) => {
+        if (!investigadorId) return { ok: false, error: 'Indique quién registra (persona investigadora del itinerario).' };
+        return modificar('Guardando…', (actual) => confirmarSinCambiosEnsayo(actual, { campanaId, itinerarioId, calleId, localId, investigadorId, fecha: new Date().toISOString() }));
+      },
       setPrefs: (p) => { if (p.modoSol !== undefined) setModoSol(p.modoSol); },
       ruta: (it, calle) => (it === itinerarioId ? `${base}${calle ? `/calle/${calle}` : ''}` : '/espacios/ensayo'),
       salida: '/espacios/ensayo', itinerarioFijo: itinerarioId,

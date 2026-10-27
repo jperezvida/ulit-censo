@@ -39,6 +39,8 @@ export function CapturaCalle() {
   const ctx = useCtxCampo(it?.campanaId ?? '', it?.id);
   const [hoja, setHoja] = useState<Hoja | null>(null);
   const [pestana, setPestana] = useState<'anteriores' | 'hoy'>('anteriores');
+  const [guardando, setGuardando] = useState<Id | null>(null);
+  const [avisoEnsayo, setAvisoEnsayo] = useState<{ ok: boolean; texto: string } | null>(null);
   const camp = it ? db.campanas[it.campanaId] : undefined;
 
   const previos = useMemo(() => (camp && calle ? localesPrevios(db, camp.campanaReferenciaId, calle.id) : []), [db, camp, calle]);
@@ -69,6 +71,15 @@ export function CapturaCalle() {
     const ns = nuevos.map((o) => o.datos.numero).filter((n): n is number => n !== null);
     return ns.length ? ns[0] : null;
   })();
+
+  // Ensayo: «Sin cambios» con guardado verificado; el aviso solo se da tras comprobar la persistencia.
+  const sinCambiosEnsayo = async (localId: Id, numero: number | null) => {
+    setGuardando(localId);
+    setAvisoEnsayo(null);
+    const r = await cc.sinCambiosEnsayo!(calle.id, localId);
+    setGuardando(null);
+    setAvisoEnsayo(r.ok ? { ok: true, texto: `Nº ${numero ?? 's/n'}: sin cambios. Guardado comprobado.` } : { ok: false, texto: `No se ha guardado: ${r.error ?? 'error desconocido'}` });
+  };
 
   const accion = (fn: Parameters<typeof aplicar>[0], txt: string) => {
     aplicar(fn, txt);
@@ -104,6 +115,8 @@ export function CapturaCalle() {
         </button>
       </div>
 
+      {avisoEnsayo && <div className={`m-aviso-ensayo ${avisoEnsayo.ok ? 'ok' : 'error'}`} role={avisoEnsayo.ok ? 'status' : 'alert'}>{avisoEnsayo.texto}</div>}
+      {cc.sinCambiosEnsayo && !cc.investigadorId && <div className="m-aviso-ensayo" role="note">Para registrar, indique arriba quién registra (persona investigadora del itinerario).</div>}
       <div className="m-lista">
         {pestana === 'anteriores' && previos.length === 0 && (
           <div className="m-vacia">
@@ -136,7 +149,13 @@ export function CapturaCalle() {
                     </span>
                   )}
                 </div>
-                {cc.soloLectura ? null : o ? (
+                {cc.sinCambiosEnsayo ? (!o && (
+                  <div className="m-local-acc">
+                    <button className="m-ok" disabled={!!guardando || !cc.investigadorId} onClick={() => void sinCambiosEnsayo(l.id, d.numero)} aria-label="Sin cambios" title={cc.investigadorId ? 'Sin cambios' : 'Indique quién registra'}>
+                      <Check size={22} />
+                    </button>
+                  </div>
+                )) : cc.soloLectura ? null : o ? (
                   <button className="m-icono" onClick={() => setHoja({ tipo: 'acciones', local: l })} aria-label="Cambiar"><PencilLine size={18} /></button>
                 ) : (
                   <div className="m-local-acc">
@@ -169,7 +188,7 @@ export function CapturaCalle() {
       </div>
 
       {cc.soloLectura ? (
-        <div className="m-pie"><p className="m-nota" role="note" style={{ margin: 0 }}>Solo lectura: el registro desde Campo en el espacio de ensayo todavía no está habilitado.</p></div>
+        <div className="m-pie"><p className="m-nota" role="note" style={{ margin: 0 }}>En el ensayo solo está habilitado «Sin cambios» (botón ✓ de cada local anterior). El resto de registros llegará más adelante.</p></div>
       ) : <div className="m-pie">
         <button className="m-btn secundario" onClick={() => setHoja({ tipo: 'finalizar' })}>
           <Flag size={18} /> Finalizar calle
