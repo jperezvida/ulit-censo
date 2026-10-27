@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, Check, ChevronRight, CloudOff, Download, Monitor, RefreshCw, Sun, Wifi,
 } from 'lucide-react';
-import { useStore } from '../../store/store';
+import { CampoDemo, useCampo } from './contextoCampo';
 import { itinerariosDe, localesPrevios, situacionPrevia } from '../../domain/consultas';
 import { estadoTramo, progresoItinerario } from '../../domain/planificacion';
 import { resumenCalle, type Contexto } from '../../domain/campo';
@@ -15,15 +15,39 @@ import '../../styles/campo.css';
 
 /** Contexto de campo. Con itinerario, las operaciones no pueden salir de su ámbito. */
 export function useCtxCampo(campanaId: Id, itinerarioId?: Id): () => Contexto {
-  const prefs = useStore((s) => s.prefs);
+  const c = useCampo();
   return () => ({
-    campanaId, investigadorId: prefs.campoPersonaId, fecha: new Date().toISOString(), fuente: 'campo-app', sinConexion: prefs.sinConexion,
+    campanaId, investigadorId: c.personaId, fecha: new Date().toISOString(), fuente: 'campo-app', sinConexion: c.sinConexion,
     alcance: itinerarioId ? { itinerarioId } : undefined,
   });
 }
 
 export default function CampoApp() {
-  const prefs = useStore((s) => s.prefs);
+  return <CampoDemo><CampoMarco><Routes>
+    <Route index element={<Inicio />} />
+    <Route path="it/:itId" element={<VistaItinerario />} />
+    <Route path="it/:itId/calle/:calleId" element={<CapturaCalle />} />
+  </Routes></CampoMarco></CampoDemo>;
+}
+
+/** Rutas de Campo para un itinerario del espacio de ensayo (montadas bajo su contexto, solo lectura). */
+export function CampoRutasEnsayo() {
+  return <CampoMarco><Routes>
+    <Route index element={<VistaItinerario />} />
+    <Route path="calle/:calleId" element={<CapturaCalle />} />
+    <Route path="*" element={<NoValida />} />
+  </Routes></CampoMarco>;
+}
+
+function NoValida() {
+  const c = useCampo();
+  return <div className="m-pantalla"><p style={{ padding: 16 }} role="alert">Dirección de Campo no válida. <Link to={c.salida}>Volver</Link></p></div>;
+}
+
+/** Marco común: teléfono en pantallas anchas, pantalla completa en el móvil. */
+function CampoMarco({ children }: { children: ReactNode }) {
+  const c = useCampo();
+  const prefs = { modoSol: c.modoSol };
   const [ancho, setAncho] = useState(window.innerWidth);
   useEffect(() => {
     const r = () => setAncho(window.innerWidth);
@@ -33,25 +57,25 @@ export default function CampoApp() {
   const enMarco = ancho > 640;
   const app = (
     <div className={`movil ${prefs.modoSol ? 'sol' : ''}`}>
-      <Routes>
-        <Route index element={<Inicio />} />
-        <Route path="it/:itId" element={<VistaItinerario />} />
-        <Route path="it/:itId/calle/:calleId" element={<CapturaCalle />} />
-      </Routes>
+      {children}
     </div>
   );
   if (!enMarco) return app;
   return (
     <div className="escaparate">
       <div className="escaparate-nota">
-        <Link to="/territorio" className="btn s oscuro-borde"><Monitor size={14} /> Volver al escritorio</Link>
+        <Link to={c.demo ? '/territorio' : c.salida} className="btn s oscuro-borde"><Monitor size={14} /> {c.demo ? 'Volver al escritorio' : 'Volver al espacio de ensayo'}</Link>
         <h2>App de campo</h2>
         <p>Vista móvil para el investigador: pocas pulsaciones, calle recordada, sin pedir lo que ya existe.</p>
-        <ul>
+        {c.demo ? <ul>
           <li>Abre esta misma dirección en un teléfono para usarla a pantalla completa.</li>
           <li>Los cambios se reflejan al instante en Territorio y Oficina.</li>
           <li>El modo sin conexión es una <b>simulación</b>: no existe todavía motor de sincronización.</li>
-        </ul>
+        </ul> : <ul>
+          <li><b>Espacio de ensayo · solo lectura.</b> Aquí todavía no se registra nada desde Campo.</li>
+          <li>Sin sincronización móvil: no hay motor de sincronización.</li>
+          <li>Una calle planificada no está censada hasta que se recorra y se finalice.</li>
+        </ul>}
       </div>
       <div className="telefono">
         <div className="telefono-muesca" />
@@ -62,10 +86,21 @@ export default function CampoApp() {
 }
 
 export function BarraEstado() {
-  const prefs = useStore((s) => s.prefs);
-  const setPrefs = useStore((s) => s.setPrefs);
-  const db = useStore((s) => s.db!);
-  const aplicar = useStore((s) => s.aplicar);
+  const c = useCampo();
+  const { db, setPrefs } = c;
+  const prefs = { sinConexion: c.sinConexion, modoSol: c.modoSol, campoPersonaId: c.personaId };
+  if (c.soloLectura) {
+    return (
+      <div className="m-estado">
+        <span className="m-red" role="status">Solo lectura · sin sincronización</span>
+        <span className="esp" />
+        <button className={`m-sol ${prefs.modoSol ? 'on' : ''}`} onClick={() => setPrefs({ modoSol: !prefs.modoSol })} title="Modo sol: alto contraste para exterior" aria-pressed={prefs.modoSol}>
+          <Sun size={15} />
+        </button>
+      </div>
+    );
+  }
+  const aplicar = c.aplicar!;
   // Cola del dispositivo de este investigador (cada móvil tiene la suya)
   const mia = db.colaSync.filter((s) => s.estado === 'en-cola' && s.observacionId && db.observaciones[s.observacionId]?.investigadorId === prefs.campoPersonaId);
   const pendientes = mia.length;
@@ -101,9 +136,8 @@ export function BarraEstado() {
 }
 
 function Inicio() {
-  const db = useStore((s) => s.db!);
-  const prefs = useStore((s) => s.prefs);
-  const setPrefs = useStore((s) => s.setPrefs);
+  const { db, setPrefs, personaId } = useCampo();
+  const prefs = { campoPersonaId: personaId };
   const nav = useNavigate();
   const persona = db.personas[prefs.campoPersonaId];
   const [descarga, setDescarga] = useState<number | null>(null);
@@ -175,7 +209,7 @@ function Inicio() {
 }
 
 function TarjetaItinerario({ it, onClick }: { it: Itinerario; onClick: () => void }) {
-  const db = useStore((s) => s.db!);
+  const { db } = useCampo();
   const pr = progresoItinerario(db, it);
   const camp = db.campanas[it.campanaId];
   return (
@@ -195,13 +229,14 @@ function TarjetaItinerario({ it, onClick }: { it: Itinerario; onClick: () => voi
 }
 
 function VistaItinerario() {
-  const { itId } = useParams();
-  const db = useStore((s) => s.db!);
-  const prefs = useStore((s) => s.prefs);
+  const c = useCampo();
+  const itId = useParams().itId ?? c.itinerarioFijo;
+  const { db, ruta } = c;
+  const prefs = { campoPersonaId: c.personaId };
   const nav = useNavigate();
   const it = itId ? db.itinerarios[itId] : undefined;
-  const [soloMias, setSoloMias] = useState(true);
-  if (!it) return <div className="m-pantalla"><p style={{ padding: 16 }}>Itinerario no encontrado. <Link to="/campo">Volver</Link></p></div>;
+  const [soloMias, setSoloMias] = useState(c.demo);
+  if (!it) return <div className="m-pantalla"><p style={{ padding: 16 }} role="alert">Itinerario no encontrado. <Link to={c.salida}>Volver</Link></p></div>;
   const camp = db.campanas[it.campanaId];
   const pr = progresoItinerario(db, it);
   const hayResponsables = it.tramos.some((t) => t.responsableId);
@@ -212,13 +247,14 @@ function VistaItinerario() {
     <div className="m-pantalla">
       <BarraEstado />
       <header className="m-cab" style={{ ['--c' as string]: it.color }}>
-        <button className="m-atras" onClick={() => nav('/campo')} aria-label="Volver"><ArrowLeft size={20} /></button>
+        <button className="m-atras" onClick={() => nav(c.salida)} aria-label={c.demo ? 'Volver' : 'Volver al espacio de ensayo'}><ArrowLeft size={20} /></button>
         <div className="esp">
           <div className="m-sub">{it.codigo} · {camp.nombre}</div>
           <h1>{it.nombre}</h1>
         </div>
       </header>
-      <MiniMapa it={it} onCalle={(id) => nav(`/campo/it/${it.id}/calle/${id}`)} />
+      {!c.demo && <p className="m-nota" style={{ padding: '8px 16px 0', margin: 0 }}>Calles planificadas. «Pendiente» significa que aún no se ha recorrido: planificada no es censada.</p>}
+      <MiniMapa it={it} onCalle={(id) => nav(ruta(it.id, id))} />
       <div className="m-resumen">
         <div><b className="num">{pr.completadas}</b><span>completadas</span></div>
         <div><b className="num">{pr.porEstado['en-curso']}</b><span>en curso</span></div>
@@ -226,7 +262,7 @@ function VistaItinerario() {
         <div><b className="num">{pr.porEstado['parcial-incidencias']}</b><span>parciales</span></div>
       </div>
       {siguiente && (
-        <button className="m-btn primario m-continuar" onClick={() => nav(`/campo/it/${it.id}/calle/${siguiente.calleId}`)}>
+        <button className="m-btn primario m-continuar" onClick={() => nav(ruta(it.id, siguiente.calleId))}>
           Continuar: {siguiente.orden}. {db.calles[siguiente.calleId]?.nombre}
         </button>
       )}
@@ -244,13 +280,14 @@ function VistaItinerario() {
           const sit = situacionPrevia(db, camp, t.calleId);
           return (
             <li key={t.calleId}>
-              <button onClick={() => nav(`/campo/it/${it.id}/calle/${t.calleId}`)}>
+              <button onClick={() => nav(ruta(it.id, t.calleId))}>
                 <span className="m-num" style={{ background: it.color }}>{t.orden}</span>
                 <span className="esp">
                   <b>{c?.nombre}</b>
                   <span className="m-nota">
                     {sit === 'con-registros' ? `${r.previos} locales anteriores` : 'Sin registros anteriores'}
                     {t.acera !== 'ambas' && ` · solo ${t.acera === 'par' ? 'pares' : 'impares'}`}
+                    {t.segmentoIds?.length ? ` · ${t.segmentoIds.length} de ${c?.segmentos.length ?? '?'} tramos` : ''}
                     {t.responsableId && t.responsableId !== prefs.campoPersonaId && ` · ${db.personas[t.responsableId]?.nombre.split(' ')[0]}`}
                   </span>
                 </span>

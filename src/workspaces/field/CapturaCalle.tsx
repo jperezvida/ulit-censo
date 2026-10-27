@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   AlertTriangle, ArrowLeft, Ban, Check, ChevronLeft, ChevronRight, CircleHelp, Flag, LocateFixed, Minus, PencilLine, Plus, Store, Undo2, X,
 } from 'lucide-react';
-import { useStore } from '../../store/store';
+import { useCampo } from './contextoCampo';
 import { direccionVigente, localesPrevios, ocupacionEn, situacionPrevia, SITUACION_TXT } from '../../domain/consultas';
 import {
   TIPO_OBS_TXT, confirmarSinCambios, finalizarCalle, marcarDudoso, marcarPosibleDesaparicion, modificarLocal, registrarLocalNuevo,
@@ -27,10 +27,12 @@ type Hoja =
   | { tipo: 'finalizar' };
 
 export function CapturaCalle() {
-  const { itId, calleId } = useParams();
-  const db = useStore((s) => s.db!);
-  const aplicar = useStore((s) => s.aplicar);
-  const avisar = useStore((s) => s.avisar);
+  const cc = useCampo();
+  const { calleId } = useParams();
+  const itId = useParams().itId ?? cc.itinerarioFijo;
+  const { db } = cc;
+  const aplicar = cc.aplicar ?? (() => false);
+  const avisar = cc.avisar ?? (() => undefined);
   const nav = useNavigate();
   const it = itId ? db.itinerarios[itId] : undefined;
   const calle = calleId ? db.calles[calleId] : undefined;
@@ -50,15 +52,18 @@ export function CapturaCalle() {
     return m;
   }, [obsHoy]);
 
-  if (!it || !calle || !camp) return <div className="m-pantalla"><p style={{ padding: 16 }}>Calle no encontrada.</p></div>;
-  const tramo = it.tramos.find((t) => t.calleId === calle.id);
+  const tramo = it && calle ? it.tramos.find((t) => t.calleId === calle.id) : undefined;
+  // Ensayo: solo calles planificadas en ESTE itinerario y de su municipio.
+  if (!it || !calle || !camp || (!cc.demo && (!tramo || calle.municipioId !== camp.municipioId))) {
+    return <div className="m-pantalla"><p style={{ padding: 16 }} role="alert">Calle no encontrada en este itinerario. <a href={`#${it ? cc.ruta(it.id) : cc.salida}`}>Volver</a></p></div>;
+  }
   const estado = tramo ? estadoTramo(db, it.campanaId, tramo) : 'pendiente';
   const sit = situacionPrevia(db, camp, calle.id);
   const revisados = previos.filter((l) => porLocal.has(l.id)).length;
   const nuevos = obsHoy.filter((o) => o.tipo === 'nuevo-local');
   const ant = pasoCalle(it, calle.id, -1);
   const sig = pasoCalle(it, calle.id, 1);
-  const ir = (id?: Id) => id && nav(`/campo/it/${it.id}/calle/${id}`, { replace: true });
+  const ir = (id?: Id) => id && nav(cc.ruta(it.id, id), { replace: true });
 
   const ultimoNumero = (() => {
     const ns = nuevos.map((o) => o.datos.numero).filter((n): n is number => n !== null);
@@ -74,7 +79,7 @@ export function CapturaCalle() {
     <div className="m-pantalla m-captura">
       <BarraEstado />
       <header className="m-cab m-cab-calle" style={{ ['--c' as string]: it.color }}>
-        <button className="m-atras" onClick={() => nav(`/campo/it/${it.id}`)} aria-label="Volver al itinerario"><ArrowLeft size={20} /></button>
+        <button className="m-atras" onClick={() => nav(cc.ruta(it.id))} aria-label="Volver al itinerario"><ArrowLeft size={20} /></button>
         <div className="esp" style={{ minWidth: 0 }}>
           <div className="m-sub">{it.codigo} · calle {tramo?.orden ?? '–'} de {it.tramos.length}</div>
           <h1 className="m-calle-nom">{calle.nombre}</h1>
@@ -86,6 +91,7 @@ export function CapturaCalle() {
         <EstadoCob e={estado} />
         <span className="esp" />
         {tramo?.acera !== 'ambas' && <span className="chip aviso">Solo acera {tramo?.acera}</span>}
+        {tramo?.segmentoIds?.length ? <span className="chip aviso">{tramo.segmentoIds.length} de {calle.segmentos.length} tramos</span> : null}
         {sit !== 'con-registros' && <span className="chip azul">{tramo?.etiqueta ?? 'Censar desde cero'}</span>}
       </div>
 
@@ -103,7 +109,7 @@ export function CapturaCalle() {
           <div className="m-vacia">
             <Store size={28} />
             <b>Sin locales en el censo anterior</b>
-            <span>{SITUACION_TXT[sit]}. Recorre ambas aceras y registra lo que encuentres con «Local nuevo». Si no hay ninguno, finaliza la calle como «sin locales».</span>
+            <span>{SITUACION_TXT[sit]}.{cc.soloLectura ? '' : ' Recorre ambas aceras y registra lo que encuentres con «Local nuevo». Si no hay ninguno, finaliza la calle como «sin locales».'}</span>
           </div>
         )}
         {pestana === 'anteriores' &&
@@ -130,7 +136,7 @@ export function CapturaCalle() {
                     </span>
                   )}
                 </div>
-                {o ? (
+                {cc.soloLectura ? null : o ? (
                   <button className="m-icono" onClick={() => setHoja({ tipo: 'acciones', local: l })} aria-label="Cambiar"><PencilLine size={18} /></button>
                 ) : (
                   <div className="m-local-acc">
@@ -162,14 +168,16 @@ export function CapturaCalle() {
           ))}
       </div>
 
-      <div className="m-pie">
+      {cc.soloLectura ? (
+        <div className="m-pie"><p className="m-nota" role="note" style={{ margin: 0 }}>Solo lectura: el registro desde Campo en el espacio de ensayo todavía no está habilitado.</p></div>
+      ) : <div className="m-pie">
         <button className="m-btn secundario" onClick={() => setHoja({ tipo: 'finalizar' })}>
           <Flag size={18} /> Finalizar calle
         </button>
         <button className="m-btn primario grande" onClick={() => setHoja({ tipo: 'nuevo' })}>
           <Plus size={20} /> Local nuevo
         </button>
-      </div>
+      </div>}
 
       {hoja?.tipo === 'nuevo' && (
         <HojaNuevo
@@ -239,7 +247,7 @@ export function CapturaCalle() {
             const ok = aplicar((x) => finalizarCalle(x, ctx(), calle.id, { ...o, acera: tramo?.acera ?? 'ambas' }), `${calle.nombre}: calle finalizada`);
             if (ok) {
               setHoja(null);
-              const pendiente = it.tramos.find((t) => t.calleId !== calle.id && estadoTramo(useStore.getState().db!, it.campanaId, t) === 'pendiente');
+              const pendiente = it.tramos.find((t) => t.calleId !== calle.id && estadoTramo(cc.db, it.campanaId, t) === 'pendiente');
               if (pendiente) ir(pendiente.calleId);
               else nav(`/campo/it/${it.id}`);
             }
@@ -373,7 +381,7 @@ function HojaNuevo({ calleNombre, sugerido, onCerrar, onGuardar }: {
 }
 
 function HojaModificar({ local, onCerrar, onGuardar }: { local: LocalFisico; onCerrar: () => void; onGuardar: (c: { nombre?: string; metrosFachada?: number; numero?: number | null; sufijo?: string; nota?: string }) => void }) {
-  const db = useStore((s) => s.db!);
+  const { db } = useCampo();
   const d = direccionVigente(local);
   const oc = Object.values(db.ocupaciones).find((o) => o.localId === local.id && !o.hastaCampanaId);
   const neg = oc?.negocioId ? db.negocios[oc.negocioId] : undefined;
@@ -460,7 +468,7 @@ function HojaFinalizar({ calleId, campanaId, acera, previosPendientes, onCerrar,
   onConfirmar: (o: { par: boolean; impar: boolean; resultado: ResultadoCalle; nota?: string }) => void;
   onRevisar: () => void;
 }) {
-  const db = useStore((s) => s.db!);
+  const { db } = useCampo();
   const r = resumenCalle(db, campanaId, calleId);
   const [par, setPar] = useState(acera === 'impar');
   const [impar, setImpar] = useState(acera === 'par');

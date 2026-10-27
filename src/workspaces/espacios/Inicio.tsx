@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, BarChart3, CalendarPlus, CheckCircle2, FileUp, ListChecks, MapPinned, Plus, Route, Search, Settings2 } from 'lucide-react';
+import { Smartphone, AlertTriangle, BarChart3, CalendarPlus, CheckCircle2, FileUp, ListChecks, MapPinned, Plus, Route, Search, Settings2 } from 'lucide-react';
 import { fmt } from '../../components/ui';
 import { useEspacios } from '../../store/espacios';
 import { municipioDeEspacio, type TipoEspacio } from '../../domain/espacios';
@@ -200,6 +200,7 @@ function PanelItinerarios({ tipo, campana, r, onIncorporar, onIncidencias }: { t
                 {d.pendientes > 0 && <button className="btn s" onClick={() => onIncidencias(it.id)}><ListChecks size={13} /> Ver incidencias</button>}
                 {archivo && <button className="btn s" aria-expanded={abierto === it.id} onClick={() => setAbierto(abierto === it.id ? null : it.id)}>{abierto === it.id ? 'Ocultar' : 'Consultar'}</button>}
                 {tipo === 'ensayo' && Object.values(db.calles).some((c) => c.municipioId === campana.municipioId && c.segmentos.length > 0) && <Link className="btn s" to={`/espacios/ensayo/planificar/${campana.id}/${it.id}`}><MapPinned size={13} /> Planificar en mapa</Link>}
+                {tipo === 'ensayo' && it.tramos.length > 0 && <Link className="btn s" to={`/espacios/ensayo/campo/${campana.id}/${it.id}`}><Smartphone size={13} /> Ver en Campo (lectura)</Link>}
               </div>
               {abierto === it.id && archivo && (
                 <dl className="inc-dl ux-detalle" aria-label={`Detalle de ${it.codigo}`}>
