@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { LngLatBounds, type GeoJSONSource, type Map as MLMap } from 'maplibre-gl';
 import { MapaBase } from '../../components/mapa/MapaBase';
-import { useStore } from '../../store/store';
+import { useCampo } from './contextoCampo';
 import { estadoTramo } from '../../domain/planificacion';
 import type { Id, Itinerario } from '../../domain/types';
 
@@ -11,7 +11,7 @@ const COLOR: Record<string, string> = {
 
 /** Mapa compacto del itinerario en el móvil: calles coloreadas por cobertura. */
 export function MiniMapa({ it, onCalle }: { it: Itinerario; onCalle: (id: Id) => void }) {
-  const db = useStore((s) => s.db!);
+  const { db } = useCampo();
   const mapa = useRef<MLMap | null>(null);
   const [listo, setListo] = useState(false);
   const cb = useRef(onCalle);
@@ -44,7 +44,7 @@ export function MiniMapa({ it, onCalle }: { it: Itinerario; onCalle: (id: Id) =>
   if (!municipio || municipio.fuenteCallejero === 'sin-geometria') return null;
   return (
     <div className="m-minimapa">
-      <MapaBase centro={municipio.centro!} zoom={15} onListo={alListo} />
+      <MapaBase centro={municipio.centro ?? Object.values(db.calles).find((c) => c.municipioId === municipio.id && c.segmentos.length)?.segmentos[0].coords[0] ?? [-4.91, 41.31]} zoom={15} onListo={alListo} />
     </div>
   );
 }

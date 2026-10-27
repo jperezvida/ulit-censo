@@ -11,6 +11,7 @@ import { MunicipiosCampanas } from './MunicipiosCampanas';
 import { descargar, RespaldoTarjeta } from './Respaldo';
 import { Inicio } from './Inicio';
 import { PlanificadorEnsayo } from './PlanificadorEnsayo';
+import { CampoEnsayoRutas } from './CampoEnsayo';
 import { comprobarGarantias, VERSION_EMBEBIDA, type ResultadoGarantias } from './garantiasNavegador';
 import { entornoDe } from '../../domain/garantias';
 import '../../styles/datos.css';
@@ -192,7 +193,7 @@ function EspacioPage() {
       {esp.fase === 'cargando' && <div className="t-info" role="status">Abriendo el espacio…</div>}
       {esp.fase === 'error' && <div className="t-info error" role="alert"><AlertTriangle size={15} /> {esp.error}</div>}
       {esp.fase === 'sin-crear' && <Crear tipo={tipo} />}
-      {esp.fase === 'listo' && esp.db && esp.tipo === tipo && (resto?.startsWith('planificar/') && tipo === 'ensayo' ? (
+      {esp.fase === 'listo' && esp.db && esp.tipo === tipo && (resto?.startsWith('campo/') && tipo === 'ensayo' ? <CampoEnsayoRutas /> : resto?.startsWith('planificar/') && tipo === 'ensayo' ? (
         <PlanificadorEnsayo ruta={resto} />
       ) : avanzado ? (
         <>
