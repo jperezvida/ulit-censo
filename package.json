@@ -1,0 +1,59 @@
+{
+  "name": "ulit-censo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "ULIT Censo — prototipo navegable (fase 1). Datos simulados; sin servicios productivos.",
+  "type": "module",
+  "scripts": {
+    "predev": "node scripts/copiar-maplibre.mjs",
+    "dev": "vite",
+    "prebuild": "node scripts/copiar-maplibre.mjs",
+    "build": "tsc -p tsconfig.json && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "callejero": "tsx scripts/descargar-callejero.ts",
+    "perfilar": "tsx scripts/perfilar-excel.ts",
+    "comprobar-datos": "node scripts/comprobar-datos-reales.mjs",
+    "hooks": "git config core.hooksPath .githooks",
+    "analizar": "tsx scripts/analizar-xlsx.ts",
+    "xlsx-ficticio": "tsx scripts/generar-xlsx-ficticio.ts",
+    "interpretar": "tsx scripts/interpretar-xlsx.ts",
+    "simular-incorporacion": "tsx scripts/simular-incorporacion.ts",
+    "sintetico-c1e": "tsx scripts/generar-sintetico-c1e.ts"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.1.0",
+    "@fontsource/jetbrains-mono": "^5.1.0",
+    "@tanstack/react-virtual": "^3.10.9",
+    "exceljs": "^4.4.0",
+    "fflate": "0.8.3",
+    "idb-keyval": "^6.2.1",
+    "lucide-react": "^0.460.0",
+    "maplibre-gl": "6.11.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "7.18.4",
+    "zustand": "^5.0.1"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "16.3.0",
+    "@types/geojson": "^7946.0.16",
+    "@types/node": "^22.9.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "6.1.1",
+    "fake-indexeddb": "^6.0.0",
+    "jsdom": "26.1.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.6.3",
+    "vite": "8.3.4",
+    "vitest": "5.0.3"
+  },
+  "overrides": {
+    "uuid": "11.1.1"
+  }
+}

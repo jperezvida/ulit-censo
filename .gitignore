@@ -147,3 +147,21 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+public/maplibre/
+
+# ── Datos censales reales: NUNCA en el repositorio ──
+datos-reales/
+*.xlsx
+*.xls
+*.xlsm
+*.xlsb
+*.ods
+*.perfil.json
+*.informe-estructural.json
+*.informe-interpretacion.json
+
+# C1e · archivos sintéticos generados localmente (nunca en el repositorio)
+sinteticos/
+
+# Salida y enlace locales de Vercel
+.vercel/
