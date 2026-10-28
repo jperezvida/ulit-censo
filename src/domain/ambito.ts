@@ -1,5 +1,5 @@
 import type { BaseDatos } from './db';
-import { direccionVigente } from './consultas';
+import { direccionVigente, itinerariosDeOrigen } from './consultas';
 import { distanciaPuntoLinea } from './geo';
 import type { Id, Itinerario, LngLat, LocalFisico, TramoPlan } from './types';
 
@@ -71,13 +71,11 @@ export function indicePertenencia(db: BaseDatos, campanaId: Id, locales: LocalFi
   const out = new Map<Id, Id[]>();
   for (const l of locales) {
     const d = direccionDeLocal(l);
-    const cands = porCalle.get(d.calleId);
-    if (!cands) {
-      out.set(l.id, []);
-      continue;
-    }
+    const cands = porCalle.get(d.calleId) ?? [];
     const ids: Id[] = [];
     for (const { it, t } of cands) if (!ids.includes(it.id) && tramoCubre(db, t, d)) ids.push(it.id);
+    // G4: también pertenece al itinerario de cuyo Excel incorporado procede su fila (aunque no esté planificado).
+    for (const id of itinerariosDeOrigen(db, campanaId, l.id)) if (!ids.includes(id)) ids.push(id);
     out.set(l.id, ids);
   }
   return out;

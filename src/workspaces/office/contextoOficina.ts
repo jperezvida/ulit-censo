@@ -45,6 +45,6 @@ export function useModoOficina(): [ModoOficina, (m: ModoOficina) => void] {
 }
 
 export function useBloqueado(itinerarioId?: Id): boolean {
-  const db = useStore((s) => s.db!);
+  const { db } = useContexto();
   return itinerarioId ? estaBloqueado(db, itinerarioId) : false;
 }
