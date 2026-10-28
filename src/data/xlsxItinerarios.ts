@@ -13,9 +13,9 @@ import { MARCA_FICTICIO } from './xlsxSinteticoC1e';
  *  - una calle que no está en el callejero, un «S/N», una fila sin fecha y una fila que dice ser de otro itinerario.
  */
 
-type Fila = { calle: string; num: number | string; nombre?: string; vacio?: boolean; fecha?: string | null; itinerario?: number; fachada?: number };
+export type FilaSintetica = { calle: string; num: number | string; nombre?: string; vacio?: boolean; fecha?: string | null; itinerario?: number; fachada?: number };
 
-export const FILAS_ITINERARIOS: Record<'IT1' | 'IT2' | 'IT3', Fila[]> = {
+export const FILAS_ITINERARIOS: Record<'IT1' | 'IT2' | 'IT3', FilaSintetica[]> = {
   IT1: [
     { calle: 'Calle del Olmo', num: 1, nombre: 'BAR SINTÉTICO EL OLMO', fecha: '2026-03-02' },
     { calle: 'Calle del Olmo', num: 3, nombre: 'PANADERÍA SINTÉTICA', fecha: '2026-03-02' },
@@ -52,7 +52,7 @@ export async function libroItinerario(it: 'IT1' | 'IT2' | 'IT3', version = 1): P
  * (CAFETERÍA SINTÉTICA en Calle del Olmo 5, también en IT2) y una contradicción SIN FECHA (Calle Peatonal
  * Mayor 2: ocupado y sin fecha en IT2, vacío y sin fecha aquí).
  */
-export const FILAS_IT3_G5: Fila[] = [
+export const FILAS_IT3_G5: FilaSintetica[] = [
   ...FILAS_ITINERARIOS.IT3,
   { calle: 'Calle del Olmo', num: 5, nombre: 'CAFETERÍA SINTÉTICA', fecha: '2026-05-12' },
   { calle: 'Calle Peatonal Mayor', num: 2, vacio: true, fecha: null },
@@ -60,7 +60,7 @@ export const FILAS_IT3_G5: Fila[] = [
 export const archivoIT3G5 = 'itinerario_IT3_villa_sintetica_2026_G5_SINTETICO.xlsx';
 export const libroIT3G5 = () => libroConFilas('IT3', FILAS_IT3_G5);
 
-async function libroConFilas(it: 'IT1' | 'IT2' | 'IT3', filas: Fila[]): Promise<Uint8Array> {
+export async function libroConFilas(it: 'IT1' | 'IT2' | 'IT3', filas: FilaSintetica[]): Promise<Uint8Array> {
   const n = Number(it.slice(2));
   const wb = new ExcelJS.Workbook();
   const fijo = new Date(Date.UTC(2026, 9, 25));

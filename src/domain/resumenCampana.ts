@@ -1,7 +1,8 @@
-import type { BaseDatos } from './db';
+import { kRev, type BaseDatos } from './db';
 import { direccionVigente } from './consultas';
 import { claseCampana, contenidoCampana } from './municipios';
 import { itinerariosDe } from './campanaOperativa';
+import { estadoOficina } from './bloqueo';
 import { estadoLocal, indiceObservaciones, pendientesCampana, type EstadoLocal } from './conciliacionPosterior';
 import type { Id } from './types';
 
@@ -81,4 +82,23 @@ export function localesCampana(db: BaseDatos, estados: EstadoLocal[]): FilaLocal
       estado: e,
     };
   }).sort((a, b) => a.calle.localeCompare(b.calle, 'es') || a.numero.localeCompare(b.numero, 'es', { numeric: true }));
+}
+
+/**
+ * Estados de un itinerario, por separado y sin deducir uno de otro:
+ *  - Campo: si su Excel está incorporado (filas de campo pasadas a Excel). No implica calles recorridas enteras.
+ *  - Oficina: locales con categorización y presencia digital revisadas por una persona (nunca automático).
+ *  - Validación: estado de oficina del itinerario (solo «validado» la da por terminada).
+ */
+export function estadosItinerario(db: BaseDatos, itinerarioId: Id) {
+  const it = db.itinerarios[itinerarioId];
+  const filas = Object.values(db.registros).filter((r) => r.itinerarioId === itinerarioId && db.importaciones[r.importacionId]?.estado === 'confirmada').length;
+  const locales = [...new Set(Object.values(db.observaciones).filter((o) => o.itinerarioId === itinerarioId && o.localId).map((o) => o.localId!))];
+  const revisados = locales.filter((l) => { const r = db.revisiones[kRev(it?.campanaId ?? '', l)]; return r?.categorizacion === 'revisado' && r?.digital === 'revisado'; }).length;
+  const v = estadoOficina(db, itinerarioId);
+  return {
+    campo: filas ? { hecho: true, texto: `Campo: Excel incorporado (${filas} filas)` } : { hecho: false, texto: 'Campo: sin Excel' },
+    oficina: { hecho: locales.length > 0 && revisados === locales.length, texto: `Oficina: ${revisados}/${locales.length} revisados` },
+    validacion: { hecho: v === 'validado', texto: v === 'validado' ? 'Validación: validado' : 'Validación: pendiente' },
+  };
 }

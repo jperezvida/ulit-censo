@@ -150,6 +150,8 @@ export interface DatosCampana {
   tipoOperativa?: TipoOperativa;
   inicio?: string;
   fin?: string;
+  /** Operativa: censo anterior (campaña histórica del mismo municipio y de un año anterior) que sirve de referencia. */
+  campanaReferenciaId?: Id;
 }
 
 /** Problemas de los datos de una campaña nueva. `anioActual` decide qué años pueden ser históricos. */
@@ -166,6 +168,11 @@ export function validarCampana(db: BaseDatos, d: DatosCampana, anioActual = new 
     if (mismas.some((c) => claseCampana(c) === 'operativa')) e.push(`${d.anio} tiene una campaña operativa en ${m.nombre}: no se incorporan históricos sobre una campaña en curso.`);
   }
   if (d.inicio && d.fin && d.fin < d.inicio) e.push('El final del periodo es anterior a su inicio.');
+  if (d.campanaReferenciaId) {
+    const r = db.campanas[d.campanaReferenciaId];
+    if (d.clase !== 'operativa') e.push('Solo una campaña operativa toma un censo anterior de referencia.');
+    else if (!r || r.municipioId !== d.municipioId || claseCampana(r) !== 'historica' || r.anio >= d.anio) e.push('El censo de referencia debe ser una campaña histórica anterior del mismo municipio.');
+  }
   return e;
 }
 
@@ -189,6 +196,7 @@ export function crearCampana(db: BaseDatos, d: DatosCampana, o: OpcionesAlta & {
       ? { planificacion: 'no-aplica', campo: 'pendiente', revision: 'pendiente', validacion: 'pendiente' }
       : { planificacion: 'pendiente', campo: 'pendiente', revision: 'pendiente', validacion: 'pendiente' },
     procedencia: 'manual',
+    ...(d.campanaReferenciaId ? { campanaReferenciaId: d.campanaReferenciaId } : {}),
     creada: { porId: o.porId, fecha: o.ahora ?? new Date().toISOString() },
   };
   return { db: { ...db, campanas: { ...db.campanas, [id]: c } }, campanaId: id };

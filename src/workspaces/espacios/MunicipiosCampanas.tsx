@@ -211,9 +211,11 @@ export function FormCampana({ municipioId, soloHistorica, onCerrar }: { municipi
   const [anio, setAnio] = useState(String(ANIO_ACTUAL - 1));
   const [nombre, setNombre] = useState<string | null>(null);
   const [tipoOp, setTipoOp] = useState<TipoOperativa>('actualizacion');
+  const historicas = Object.values(db.campanas).filter((c) => c.municipioId === municipioId && claseCampana(c) === 'historica').sort(porAnio);
+  const [referencia, setReferencia] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const nombreFinal = nombre ?? `Censo ${anio}${clase === 'historica' ? ' · histórico' : ''}`;
-  const datos = { municipioId, anio: Number(anio), nombre: nombreFinal, clase, ...(clase === 'operativa' ? { tipoOperativa: tipoOp } : {}) };
+  const datos = { municipioId, anio: Number(anio), nombre: nombreFinal, clase, ...(clase === 'operativa' ? { tipoOperativa: tipoOp, ...(referencia ? { campanaReferenciaId: referencia } : {}) } : {}) };
   const problemas = validarCampana(db, datos);
   return (
     <div className="mun-form" role="group" aria-label="Nueva campaña">
@@ -233,6 +235,14 @@ export function FormCampana({ municipioId, soloHistorica, onCerrar }: { municipi
           <label className="campo"><span>Clase de censo</span>
             <select className="input" aria-label="Clase de censo" value={tipoOp} onChange={(e) => setTipoOp(e.target.value as TipoOperativa)}>
               {(Object.entries(TIPO_OPERATIVA_TXT) as [TipoOperativa, string][]).map(([k, t]) => <option key={k} value={k}>{t}</option>)}
+            </select>
+          </label>
+        )}
+        {clase === 'operativa' && (
+          <label className="campo"><span>Censo anterior de referencia</span>
+            <select className="input" aria-label="Censo anterior de referencia" value={referencia} onChange={(e) => setReferencia(e.target.value)}>
+              <option value="">Ninguno</option>
+              {historicas.filter((c) => c.anio < Number(anio)).map((c) => <option key={c.id} value={c.id}>{c.nombre} ({c.anio})</option>)}
             </select>
           </label>
         )}
