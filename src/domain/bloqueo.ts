@@ -1,6 +1,6 @@
 import type { BaseDatos } from './db';
 import { ErrorDominio } from './db';
-import { abarca, indiceOcupaciones, ocupacionEn, type IndiceOcupaciones } from './consultas';
+import { abarca, indiceOcupaciones, itinerariosDeOrigen, ocupacionEn, type IndiceOcupaciones } from './consultas';
 import { direccionDeLocal, itinerariosDeDireccionEfectiva } from './ambito';
 import type { Acera, EstadoOficinaItinerario, Id, Itinerario, LngLat, Ocupacion, TramoPlan } from './types';
 
@@ -75,6 +75,12 @@ const loteValido = (db: BaseDatos) => !!lote && lote.ocupaciones === db.ocupacio
 export function itinerariosDeLocal(db: BaseDatos, campanaId: Id, localId: Id): Itinerario[] {
   const l = db.locales[localId];
   if (!l) return [];
+  // G4: itinerarios de cuyo Excel incorporado procede una fila del local, además del ámbito planificado.
+  const origen = itinerariosDeOrigen(db, campanaId, localId);
+  if (origen.length) {
+    const geo = itinerariosDeDireccionEfectiva(db, campanaId, direccionDeLocal(l));
+    return [...geo, ...origen.filter((id) => !geo.some((x) => x.id === id)).map((id) => db.itinerarios[id]).filter((x): x is Itinerario => !!x)];
+  }
   if (loteValido(db)) {
     const k = `${campanaId}|${localId}`;
     let r = lote!.itLocal.get(k);

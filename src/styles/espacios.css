@@ -181,3 +181,10 @@ tr.aviso td { background: #fff6e0; }
 .conc-cand.sel { outline: 2px solid var(--primario, #0b3a8c); }
 .conc-cab { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; overflow-wrap: anywhere; }
 .conc-cand .tabla { font-size: 13px; }
+/* Oficina de un itinerario en el espacio de ensayo */
+.ofe { gap: 10px; min-width: 0; }
+.ofe-cuerpo { min-height: 520px; height: 70vh; }
+@media (max-width: 760px) {
+  .ofe-cuerpo { grid-template-columns: 1fr; height: auto; min-height: 0; }
+  .ofe-cuerpo .ofi-lista { height: 240px; border-right: 0; border-bottom: 1px solid var(--linea); }
+}

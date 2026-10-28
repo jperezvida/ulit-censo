@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEve
 import { createPortal } from 'react-dom';
 import { Clock, Lightbulb } from 'lucide-react';
 import { useStore } from '../../store/store';
+import { useFuenteOficina } from '../../store/fuenteOficina';
 import { buscarClasificacion, sugerirPorNombre, type OpcionClasificacion, type Resultado } from '../../domain/buscador';
 import '../../styles/clasificacion.css';
 
@@ -41,9 +42,13 @@ export function BuscadorClasificacion({
   autoFocus?: boolean;
   etiqueta?: string;
 }) {
+  // En un espacio de trabajo no se leen ni guardan las preferencias de la demostración (recientes y usos).
+  const fuente = useFuenteOficina();
   const personaId = useStore((s) => s.prefs.personaId);
-  const prefs = useStore((s) => s.prefs.oficina?.[s.prefs.personaId]);
-  const setPrefsOficina = useStore((s) => s.setPrefsOficina);
+  const prefsDemo = useStore((s) => s.prefs.oficina?.[s.prefs.personaId]);
+  const setPrefsDemo = useStore((s) => s.setPrefsOficina);
+  const prefs = fuente ? undefined : prefsDemo;
+  const setPrefsOficina: typeof setPrefsDemo = (id, p) => { if (!fuente) setPrefsDemo(id, p); };
   // Al editar una clasificación con descripción se busca por la clasificación, sin la descripción.
   const [q, setQ] = useState(() => inicial.split(' · ')[0]);
   const [sel, setSel] = useState<number>(-1);

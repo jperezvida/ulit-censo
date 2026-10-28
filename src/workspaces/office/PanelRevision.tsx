@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, CheckCheck, Clock, Copy, ExternalLink, GitMerge, Lock, Maximize2, Minimize2, ShieldCheck, SkipForward, Undo2, X } from 'lucide-react';
 import { useContexto, useFichaLocal } from '../../store/contexto';
-import { useStore } from '../../store/store';
+import { useAplicar } from '../../store/fuenteOficina';
 import { actualizarRevisiones, aprobar, devolver, editarNegocio, esDudosa, motivoNoAprobable, type FilaOficina } from '../../domain/oficina';
 import { useCtxOficina } from './contextoOficina';
 import { parseNumeroDigital } from './tabla/columnas';
@@ -77,7 +77,7 @@ export function PanelRevision({
   onCronologia?: () => void;
 }) {
   const { db, campana, prefs } = useContexto();
-  const aplicar = useStore((s) => s.aplicar);
+  const aplicar = useAplicar();
   const oficina = useCtxOficina();
   const alcance = oficina?.alcance;
   const bloqueado = !!oficina?.bloqueado || fila.bloqueado;
@@ -187,14 +187,21 @@ export function PanelRevision({
                 {antes && antes.id !== neg.id && <p className="muted" style={{ fontSize: 12, margin: 0 }}>En {db.campanas[ref!]?.anio} el local lo ocupaba otro negocio ({antes.nombre}): no se hereda su clasificación.</p>}
               </>
             ) : (
-              <div className="t-info" style={{ margin: 0 }}>
-                Local vacío{fila.metros ? ` · ${fila.metros} m de fachada` : ''}. {ocAntes?.negocioId ? `En ${db.campanas[ref!]?.anio} estaba ocupado por ${db.negocios[ocAntes.negocioId]?.nombre}.` : ''}
-              </div>
+              <>
+                <div className="t-info" style={{ margin: 0 }}>
+                  Local vacío{fila.metros ? ` · ${fila.metros} m de fachada` : ''}. {ocAntes?.negocioId ? `En ${db.campanas[ref!]?.anio} estaba ocupado por ${db.negocios[ocAntes.negocioId]?.nombre}.` : ''} No necesita clasificación de actividad ni presencia digital.
+                </div>
+                {/* La comprobación del vacío se registra expresamente (cuenta como revisión de oficina del local). */}
+                <label className="fila" style={{ fontSize: 13 }}>
+                  <input type="checkbox" checked={r.categorizacion === 'revisado'} onChange={(e) => { const si = e.target.checked; aplicar((d) => actualizarRevisiones(d, campana.id, [fila.localId], { categorizacion: si ? 'revisado' : 'pendiente' }, alcance), si ? 'Vacío comprobado en oficina' : 'Comprobación del vacío retirada'); }} />
+                  Vacío comprobado en oficina
+                </label>
+              </>
             )}
             {fila.errores.length > 0 && <div className="t-info error" style={{ margin: 0 }}>Errores: {fila.errores.join(' · ')}</div>}
             <div className="fila" style={{ flexWrap: 'wrap', gap: 12 }}>
               <label className="fila" style={{ fontSize: 13 }}>
-                <input type="checkbox" checked={!!r.pendienteComprobacion} onChange={(e) => aplicar((d) => actualizarRevisiones(d, campana.id, [fila.localId], { pendienteComprobacion: e.target.checked }, alcance), e.target.checked ? 'Pendiente de comprobación' : 'Comprobado')} />
+                <input type="checkbox" checked={!!r.pendienteComprobacion} onChange={(e) => { const si = e.target.checked; aplicar((d) => actualizarRevisiones(d, campana.id, [fila.localId], { pendienteComprobacion: si }, alcance), si ? 'Pendiente de comprobación' : 'Comprobado'); }} />
                 Pendiente de comprobación
               </label>
               <button className="btn s fantasma" onClick={() => ficha.abrir(fila.localId)}><ExternalLink size={13} /> Abrir ficha completa del local</button>
@@ -332,7 +339,7 @@ function ModalDevolverUno({ onCerrar, onAplicar }: { onCerrar: () => void; onApl
 
 function Digital({ negocioId, localId, nombre, direccion, bloqueado }: { negocioId: string; localId: string; nombre: string; direccion: string; bloqueado: boolean }) {
   const { db, campana, prefs } = useContexto();
-  const aplicar = useStore((s) => s.aplicar);
+  const aplicar = useAplicar();
   const alcance = useCtxOficina()?.alcance;
   const rev = revisionDigitalEn(db, negocioId, campana!.id);
   const ant = revisionDigitalAnterior(db, negocioId, campana!.id);
@@ -445,7 +452,7 @@ const OPC_FRANQUICIA: { r: Respuesta; t: string; a: string }[] = [
 /** Franquicia de la campaña: Sí/No comprobado, estado de revisión (quién y cuándo) y referencia anterior. */
 function Franquicia({ negocioId, localId, nombre, bloqueado }: { negocioId: string; localId: string; nombre: string; bloqueado: boolean }) {
   const { db, campana, prefs } = useContexto();
-  const aplicar = useStore((s) => s.aplicar);
+  const aplicar = useAplicar();
   const alcance = useCtxOficina()?.alcance;
   const fr = franquiciaEn(db, negocioId, campana!.id);
   const ant = franquiciaAnterior(db, negocioId, campana!.id);
@@ -477,7 +484,7 @@ function Franquicia({ negocioId, localId, nombre, bloqueado }: { negocioId: stri
 /** «Partir de la campaña anterior» para este establecimiento: solo si consta que es el mismo negocio. */
 function PartirDeAnterior({ localId, bloqueado }: { localId: string; bloqueado: boolean }) {
   const { db, campana, prefs } = useContexto();
-  const aplicar = useStore((s) => s.aplicar);
+  const aplicar = useAplicar();
   const alcance = useCtxOficina()?.alcance;
   const ref = campana?.campanaReferenciaId;
   if (!campana || !ref) return null;

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { CheckCircle2, Lightbulb } from 'lucide-react';
-import { useStore } from '../../store/store';
+import { useAplicar, useDbOficina } from '../../store/fuenteOficina';
 import { catalogoDeCampana, clasificacionAnterior, clasificacionEn, clasificar } from '../../domain/clasificacion';
 import { rutaTexto, sugerirPorNombre } from '../../domain/buscador';
 import { nivelesDe } from '../../domain/taxonomy';
@@ -17,8 +17,8 @@ const ORIGEN_TXT = { importado: 'Importada', heredado: 'Copiada de una campaña 
  * estado de confirmación, propuestas por el nombre (se aplican solo al pulsarlas) y buscador.
  */
 export function SelectorClasificacion({ fila, campanaId, personaId, alcance, bloqueado }: { fila: FilaOficina; campanaId: Id; personaId: Id; alcance?: Alcance; bloqueado: boolean }) {
-  const db = useStore((s) => s.db!);
-  const aplicar = useStore((s) => s.aplicar);
+  const db = useDbOficina();
+  const aplicar = useAplicar();
   const [k, setK] = useState(0);
   const negocioId = fila.negocioId!;
   const catalogo = catalogoDeCampana(db, campanaId);

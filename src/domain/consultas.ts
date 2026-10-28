@@ -197,10 +197,33 @@ export const SITUACION_TXT: Record<SituacionPrevia, string> = {
 
 // ───────────── Revisión ─────────────
 
+/**
+ * G4 · Origen de las observaciones incorporadas desde el Excel de un itinerario: por campaña y local, los
+ * itinerarios de los que procede alguna fila. Se memoriza sobre `db.observaciones` (inmutable).
+ */
+const cacheOrigen = new WeakMap<BaseDatos['observaciones'], Map<string, Id[]>>();
+function indiceOrigen(db: BaseDatos): Map<string, Id[]> {
+  let m = cacheOrigen.get(db.observaciones);
+  if (!m) {
+    m = new Map();
+    for (const o of Object.values(db.observaciones)) {
+      if (!o.registroId || !o.localId || !o.itinerarioId) continue;
+      const k = `${o.campanaId}|${o.localId}`;
+      const xs = m.get(k) ?? [];
+      if (!xs.includes(o.itinerarioId)) m.set(k, [...xs, o.itinerarioId]);
+    }
+    cacheOrigen.set(db.observaciones, m);
+  }
+  return m;
+}
+/** Itinerarios cuyo Excel incorporado en la campaña tiene una fila de este local (G4). */
+export const itinerariosDeOrigen = (db: BaseDatos, campanaId: Id, localId: Id): Id[] => indiceOrigen(db).get(`${campanaId}|${localId}`) ?? [];
+
 export function revisionDe(db: BaseDatos, campanaId: Id, localId: Id): Revision {
   return (
     db.revisiones[kRev(campanaId, localId)] ?? {
-      campanaId, localId, campo: 'pendiente', categorizacion: 'pendiente', digital: 'pendiente', validacion: 'pendiente',
+      // Un local con una fila incorporada desde el Excel de campo de su itinerario ya tiene el campo hecho.
+      campanaId, localId, campo: itinerariosDeOrigen(db, campanaId, localId).length ? 'terminado' : 'pendiente', categorizacion: 'pendiente', digital: 'pendiente', validacion: 'pendiente',
     }
   );
 }
