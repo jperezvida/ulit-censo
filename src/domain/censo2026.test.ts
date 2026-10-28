@@ -13,7 +13,7 @@ import { censoConsolidado, crearItinerario } from './campanaOperativa';
 import { pendientesCampana } from './conciliacionPosterior';
 import { estadosItinerario } from './resumenCampana';
 import { direccionVigente } from './consultas';
-import type { BaseDatos } from './db';
+import { kRev, type BaseDatos } from './db';
 
 beforeAll(() => { if (!globalThis.crypto?.subtle) Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true }); });
 const P = PREFIJO.ensayo;
@@ -78,7 +78,7 @@ describe('Censo 2026 construido por itinerarios sobre el censo 2025 (SINTÉTICO)
     expect(Object.values(db1.clasificaciones).every((c) => !c.confirmada)).toBe(true);
     const est = estadosItinerario(db1, e.its.IT1);
     expect([est.campo, est.oficina, est.validacion]).toEqual([
-      { hecho: true, texto: 'Campo: Excel incorporado (6 filas)' }, { hecho: false, texto: 'Oficina: 0/1 revisados' }, { hecho: false, texto: 'Validación: pendiente' },
+      { hecho: true, texto: 'Campo: Excel incorporado (6 registros)' }, { hecho: false, texto: 'Oficina: 5 sin conciliar · 0/1 locales revisados' }, { hecho: false, texto: 'Validación: pendiente' },
     ]);
     expect(db1.campanas[e.campanaId].estados).toEqual(e.db.campanas[e.campanaId].estados);
     expect(verificarEspacio(db1, 'ensayo')).toEqual([]);
@@ -110,6 +110,38 @@ describe('Censo 2026 construido por itinerarios sobre el censo 2025 (SINTÉTICO)
     expect(Object.values(db3.importaciones).map((i) => [i.c1?.itinerario?.codigo, i.estado])).toEqual(expect.arrayContaining([['IT1', 'descartada'], ['IT2', 'confirmada'], ['IT1', 'confirmada']]));
     expect(historico(db3, e.historica)).toBe(historico(e.db, e.historica));
     expect(verificarEspacio(db3, 'ensayo')).toEqual([]);
+  }, 60000);
+
+  it('Oficina no termina con filas sin conciliar; los locales vacíos no exigen presencia digital', async () => {
+    const e = await escenario();
+    const revisar = (db: BaseDatos, localIds: string[], digital: 'pendiente' | 'revisado') => ({
+      ...db, revisiones: { ...db.revisiones, ...Object.fromEntries(localIds.map((l) => [kRev(e.campanaId, l), { campanaId: e.campanaId, localId: l, campo: 'terminado', categorizacion: 'revisado', digital, validacion: 'pendiente' } as const])) },
+    });
+    const localesDe = (db: BaseDatos, it: string) => [...new Set(Object.values(db.observaciones).filter((o) => o.itinerarioId === it && o.localId).map((o) => o.localId!))];
+    // IT1: el único local vinculado, revisado del todo; quedan 5 filas sin conciliar → Oficina NO terminada
+    const db1 = (await importar(e.db, e, 'IT1', await libroItinerario('IT1'), archivoItinerario('IT1'))).aplicar().db;
+    const db1r = revisar(db1, localesDe(db1, e.its.IT1), 'revisado');
+    expect(estadosItinerario(db1r, e.its.IT1)).toMatchObject({ registros: 6, sinConciliar: 5, locales: 1, revisados: 1, oficina: { hecho: false, texto: 'Oficina: 5 sin conciliar · 1/1 locales revisados' } });
+    // IT2: dos altas en portales sin censo anterior (una ocupada y una vacía): sin pendientes
+    const libro = await libroConFilas('IT2', [
+      { calle: 'Calle del Olmo', num: 21, nombre: 'BAR SINTÉTICO NUEVO', fecha: '2026-03-06' },
+      { calle: 'Calle Real', num: 31, vacio: true, fecha: '2026-03-06' },
+    ]);
+    const db2 = (await importar(db1, e, 'IT2', libro, 'itinerario_IT2_altas_SINTETICO.xlsx')).aplicar().db;
+    const ls = localesDe(db2, e.its.IT2);
+    const vacio = ls.find((l) => Object.values(db2.observaciones).some((o) => o.localId === l && o.tipo === 'vacio'))!;
+    const ocupado = ls.find((l) => l !== vacio)!;
+    expect(estadosItinerario(db2, e.its.IT2)).toMatchObject({ registros: 2, sinConciliar: 0, locales: 2, revisados: 0, oficina: { hecho: false } });
+    // Vacío con solo la categorización revisada cuenta; el ocupado sin presencia digital revisada, no
+    const parcial = revisar(revisar(db2, [vacio], 'pendiente'), [ocupado], 'pendiente');
+    expect(estadosItinerario(parcial, e.its.IT2)).toMatchObject({ revisados: 1, oficina: { hecho: false } });
+    const completo = revisar(revisar(db2, [vacio], 'pendiente'), [ocupado], 'revisado');
+    const est = estadosItinerario(completo, e.its.IT2);
+    expect(est).toMatchObject({ revisados: 2, oficina: { hecho: true, texto: 'Oficina: 0 sin conciliar · 2/2 locales revisados' } });
+    // Validación sigue independiente; IT1 y el histórico 2025 no cambian
+    expect(est.validacion).toEqual({ hecho: false, texto: 'Validación: pendiente' });
+    expect(estadosItinerario(completo, e.its.IT1)).toEqual(estadosItinerario(db1, e.its.IT1));
+    expect(historico(completo, e.historica)).toBe(historico(e.db, e.historica));
   }, 60000);
 
   it('la referencia de una campaña operativa debe ser un censo histórico anterior del mismo municipio', async () => {

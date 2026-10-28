@@ -105,7 +105,7 @@ describe('Censo 2026 por itinerarios (interfaz)', () => {
     fireEvent.click(within(tarjeta('IT1')).getByRole('button', { name: /Incorporar su Excel/ }));
     await confirmar(await incorporar('IT1', archivoItinerario('IT1')));
     fireEvent.click(acceso('Itinerarios'));
-    expect(within(tarjeta('IT1')).getByLabelText('Estados de IT1')).toHaveTextContent(/Campo: Excel incorporado \(6 filas\).*Oficina: 0\/1 revisados.*Validación: pendiente/);
+    expect(within(tarjeta('IT1')).getByLabelText('Estados de IT1')).toHaveTextContent(/Campo: Excel incorporado \(6 registros\).*Oficina: 5 sin conciliar · 0\/1 locales revisados.*Validación: pendiente/);
     expect(acceso('Incidencias')).toHaveTextContent(/5.*por resolver/);
     // IT2 se suma a la misma campaña
     fireEvent.click(within(tarjeta('IT2')).getByRole('button', { name: /Incorporar su Excel/ }));
@@ -130,7 +130,7 @@ describe('Censo 2026 por itinerarios (interfaz)', () => {
     db = (await idbGet<BaseDatos>('db', tienda()))!;
     expect(Object.values(db.importaciones).filter((i) => i.campanaId === camp26.id).map((i) => [i.c1?.itinerario?.codigo, i.estado, i.filas]).sort()).toEqual([['IT1', 'confirmada', 7], ['IT1', 'descartada', 6], ['IT2', 'confirmada', 5]]);
     fireEvent.click(acceso('Itinerarios'));
-    expect(within(tarjeta('IT1')).getByLabelText('Estados de IT1')).toHaveTextContent(/Excel incorporado \(7 filas\)/);
+    expect(within(tarjeta('IT1')).getByLabelText('Estados de IT1')).toHaveTextContent(/Excel incorporado \(7 registros\)/);
     expect(useStore.getState().db).toBeNull();
     panel = screen.getByRole('region', { name: 'Itinerarios' });
     expect(panel).toBeInTheDocument();
