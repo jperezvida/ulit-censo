@@ -62,8 +62,15 @@ export interface Pendiente {
   numero: number | null;
   sufijo?: string;
   vacio?: boolean;
-  /** Locales del mismo municipio en la misma calle: primero los del mismo portal. */
-  candidatos: { localId: Id; portal: string; mismoPortal: boolean }[];
+  /** Actividad tal como figura en el Excel (sin corregir). */
+  actividad?: string;
+  /**
+   * Locales del mismo municipio en la misma calle, ordenados de más a menos parecidos (portal, nombre y
+   * estado frente al censo de referencia), con los motivos de la propuesta. Son PROPUESTAS: nada se aplica.
+   */
+  candidatos: Candidato[];
+  /** Claridad de la mejor propuesta (para revisar primero los casos claros). */
+  claridad: Claridad;
   /** Se puede crear un local distinto: hay calle reconocida, número y estado conocido. */
   puedeCrearLocal: boolean;
   /** Última decisión «mantener pendiente», si la hay. */
@@ -101,10 +108,12 @@ export function pendientesCampana(db: BaseDatos, campanaId: Id, f: FiltrosPendie
         motivo, incidencias: r.interpretacion?.incidencias ?? [],
         ...(obs ? { observacionId: obs.id, calleId: obs.calleId, vacio: obs.datos.vacio } : {}),
         numero: obs?.datos.numero ?? null, ...(obs?.datos.sufijo ? { sufijo: obs.datos.sufijo } : {}),
-        candidatos: obs ? candidatosEnCalle(db, db.campanas[campanaId].municipioId, obs) : [],
+        ...(actividadDe(r) && !obs?.datos.vacio ? { actividad: actividadDe(r) } : {}),
+        candidatos: [], claridad: 'sin-correspondencia-segura',
         puedeCrearLocal: !!obs && obs.datos.numero !== null,
         ...(ultima?.accion === 'mantener-pendiente' ? { decision: ultima } : {}),
       };
+      if (obs) { p.candidatos = candidatosEnCalle(db, campanaId, obs); p.claridad = claridadDe(p.candidatos); }
       res.push(p);
     }
   }
@@ -113,16 +122,116 @@ export function pendientesCampana(db: BaseDatos, campanaId: Id, f: FiltrosPendie
     .sort((a, b) => (a.itinerario ?? '').localeCompare(b.itinerario ?? '', 'es', { numeric: true }) || a.fila - b.fila);
 }
 
-function candidatosEnCalle(db: BaseDatos, municipioId: Id, o: Observacion): Pendiente['candidatos'] {
-  const calle = db.calles[o.calleId]?.nombre ?? o.calleId;
-  return Object.values(db.locales)
-    .filter((l) => l.municipioId === municipioId && direccionVigente(l).calleId === o.calleId)
-    .map((l) => {
-      const d = direccionVigente(l);
-      return { localId: l.id, portal: `${calle}, ${d.numero ?? 's/n'}${d.sufijo ? ` ${d.sufijo}` : ''}`, mismoPortal: d.numero === o.datos.numero && (d.sufijo ?? '').toUpperCase() === (o.datos.sufijo ?? '').toUpperCase() };
-    })
-    .sort((a, b) => Number(b.mismoPortal) - Number(a.mismoPortal) || a.portal.localeCompare(b.portal, 'es', { numeric: true }));
+// ───────────── Conciliación asistida (propuestas, nunca automáticas) ─────────────
+
+/** Cómo coincide el nombre de la fila con el del censo de referencia. */
+export type CoincidenciaNombre = 'igual' | 'parecido' | 'distinto' | 'sin-dato';
+/** Nivel de una propuesta: primero el portal, después el nombre. */
+export type NivelCandidato = 'portal-y-nombre' | 'portal' | 'calle';
+export type Claridad = 'clara' | 'mismo-portal' | 'sin-correspondencia-segura';
+export const CLARIDAD_TXT: Record<Claridad, string> = {
+  clara: 'Propuesta clara',
+  'mismo-portal': 'Mismo portal, revisar',
+  'sin-correspondencia-segura': 'Sin correspondencia segura',
+};
+
+/** Lo que figuraba en el censo de referencia para un local (tal como se observó; no se recalcula). */
+export interface DatosReferencia {
+  campanaId: Id;
+  campana: string;
+  nombre?: string;
+  vacio: boolean;
+  actividad?: string;
+  fecha?: string;
 }
+
+export interface Candidato {
+  localId: Id;
+  portal: string;
+  mismoPortal: boolean;
+  nivel: NivelCandidato;
+  nombre: CoincidenciaNombre;
+  /** Por qué se propone y qué NO demuestra la coincidencia. */
+  motivos: string[];
+  referencia?: DatosReferencia;
+  /** Otra fila de esta campaña ya está vinculada a este local. */
+  yaVinculado: boolean;
+}
+
+const normalizar = (t?: string) => (t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
+/** Igualdad tras normalizar mayúsculas, tildes y signos; «parecido» si comparten al menos la mitad de las palabras. */
+export function compararNombres(a?: string, b?: string): CoincidenciaNombre {
+  const x = normalizar(a), y = normalizar(b);
+  if (!x || !y) return 'sin-dato';
+  if (x === y) return 'igual';
+  const px = new Set(x.split(' ').filter((w) => w.length >= 3)), py = new Set(y.split(' ').filter((w) => w.length >= 3));
+  const comunes = [...px].filter((w) => py.has(w)).length;
+  const todas = new Set([...px, ...py]).size;
+  return todas && comunes / todas >= 0.5 ? 'parecido' : 'distinto';
+}
+
+const actividadDe = (r?: { original?: Record<string, { t: string; v?: unknown }> }) =>
+  texto(r?.original?.actividad) || texto(r?.original?.subgrupo) || texto(r?.original?.grupoActividad) || undefined;
+
+/** Datos del local en el censo de referencia: su última observación allí y la actividad de su fila de origen. */
+function datosReferencia(db: BaseDatos, refId: Id | undefined, localId: Id): DatosReferencia | undefined {
+  const ref = refId ? db.campanas[refId] : undefined;
+  if (!ref) return undefined;
+  const o = Object.values(db.observaciones).filter((x) => x.campanaId === ref.id && x.localId === localId).sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0)).at(-1);
+  if (!o) return undefined;
+  const reg = o.registroId ? db.registros[o.registroId]
+    : Object.values(db.vinculos).filter((v) => v.localId === localId).map((v) => db.registros[v.origen.id]).find((r) => r && db.importaciones[r.importacionId]?.campanaId === ref.id);
+  const actividad = o.datos.vacio ? undefined : actividadDe(reg);
+  return { campanaId: ref.id, campana: ref.nombre, ...(o.datos.nombre ? { nombre: o.datos.nombre } : {}), vacio: o.datos.vacio, ...(actividad ? { actividad } : {}), ...(o.fecha ? { fecha: o.fecha.slice(0, 10) } : {}) };
+}
+
+/**
+ * Locales candidatos para una fila pendiente: los del mismo municipio y la misma calle (la vinculación
+ * exige la misma calle). Se ordenan por portal (número y sufijo) y, dentro del portal, por el parecido del
+ * nombre con el del censo de referencia. Cada candidato explica por qué se propone y qué no prueba.
+ */
+function candidatosEnCalle(db: BaseDatos, campanaId: Id, o: Observacion): Candidato[] {
+  const camp = db.campanas[campanaId];
+  const calle = db.calles[o.calleId]?.nombre ?? o.calleId;
+  const enPortal = Object.values(db.locales).filter((l) => l.municipioId === camp.municipioId && direccionVigente(l).calleId === o.calleId);
+  const mismo = (l: LocalFisico) => { const d = direccionVigente(l); return o.datos.numero !== null && d.numero === o.datos.numero && (d.sufijo ?? '').toUpperCase() === (o.datos.sufijo ?? '').toUpperCase(); };
+  const nPortal = enPortal.filter(mismo).length;
+  const vinculados = new Set(Object.values(db.observaciones).filter((x) => x.campanaId === campanaId && x.localId && x.id !== o.id).map((x) => x.localId!));
+  const peso = { igual: 3, parecido: 2, 'sin-dato': 1, distinto: 0 } as const;
+  return enPortal.map((l): Candidato => {
+    const d = direccionVigente(l);
+    const mismoPortal = mismo(l);
+    const referencia = datosReferencia(db, camp.campanaReferenciaId, l.id);
+    const nombre = o.datos.vacio || referencia?.vacio ? 'sin-dato' : compararNombres(o.datos.nombre, referencia?.nombre);
+    const yaVinculado = vinculados.has(l.id);
+    const motivos: string[] = [];
+    if (mismoPortal) motivos.push(`Mismo portal (calle, número${o.datos.sufijo ? ' y sufijo' : ''}).`);
+    else motivos.push(o.datos.numero === null ? 'Misma calle; la fila no tiene número de portal.' : 'Misma calle, otro portal.');
+    if (mismoPortal && nPortal > 1) motivos.push(`En este portal hay ${nPortal} locales: puede ser cualquiera de ellos o uno distinto.`);
+    if (!referencia) motivos.push('Sin datos en el censo de referencia para comparar.');
+    else if (referencia.vacio && !o.datos.vacio) motivos.push(`En ${referencia.campana} figuraba vacío; ahora aparece ocupado.`);
+    else if (!referencia.vacio && o.datos.vacio) motivos.push(`En ${referencia.campana} figuraba ocupado; ahora aparece vacío.`);
+    else if (referencia.vacio && o.datos.vacio) motivos.push(`También figuraba vacío en ${referencia.campana}.`);
+    else if (nombre === 'igual') motivos.push(`Mismo nombre que en ${referencia.campana}.`);
+    else if (nombre === 'parecido') motivos.push(`Nombre parecido al de ${referencia.campana}.`);
+    else if (nombre === 'distinto') motivos.push(`Nombre distinto al de ${referencia.campana}: no confirma un cambio de negocio.`);
+    if (yaVinculado) motivos.push('Otra fila de esta campaña ya está vinculada a este local.');
+    const nivel: NivelCandidato = mismoPortal ? (nombre === 'igual' || nombre === 'parecido' || (referencia?.vacio && o.datos.vacio) ? 'portal-y-nombre' : 'portal') : 'calle';
+    return { localId: l.id, portal: `${calle}, ${d.numero ?? 's/n'}${d.sufijo ? ` ${d.sufijo}` : ''}`, mismoPortal, nivel, nombre, motivos, ...(referencia ? { referencia } : {}), yaVinculado };
+  }).sort((a, b) => Number(b.mismoPortal) - Number(a.mismoPortal) || Number(a.yaVinculado) - Number(b.yaVinculado)
+    || peso[b.nombre] - peso[a.nombre] || a.portal.localeCompare(b.portal, 'es', { numeric: true }));
+}
+
+/** Clara: un único candidato del mismo portal con nombre (o vacío) coincidente y sin otra fila vinculada. */
+function claridadDe(cs: Candidato[]): Claridad {
+  const fuertes = cs.filter((c) => c.nivel === 'portal-y-nombre' && !c.yaVinculado);
+  if (fuertes.length === 1) return 'clara';
+  return cs.some((c) => c.mismoPortal) ? 'mismo-portal' : 'sin-correspondencia-segura';
+}
+
+/** Orden de revisión: primero las propuestas claras, después el mismo portal y al final lo dudoso. Estable. */
+export const ORDEN_CLARIDAD: Record<Claridad, number> = { clara: 0, 'mismo-portal': 1, 'sin-correspondencia-segura': 2 };
+export const ordenarPorClaridad = (ps: Pendiente[]) => ps.map((p, i) => [p, i] as const).sort((a, b) => ORDEN_CLARIDAD[a[0].claridad] - ORDEN_CLARIDAD[b[0].claridad] || a[1] - b[1]).map(([p]) => p);
 
 // ───────────── Decisiones (reversibles) ─────────────
 

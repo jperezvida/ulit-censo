@@ -119,7 +119,7 @@ describe('UX1 · Inicio sencillo', () => {
     const inc = screen.getByRole('region', { name: 'Incidencias' });
     expect(within(inc).getAllByRole('listitem', { name: /^Fila \d+ de IT2/ })).toHaveLength(2);
     const ferr = within(inc).getAllByRole('listitem', { name: /^Fila \d+ de IT2/ }).find((li) => /FERRETERÍA/.test(li.textContent ?? ''))!;
-    fireEvent.click(within(ferr).getByRole('button', { name: /Vincular/ }));
+    fireEvent.click(within(ferr).getByRole('button', { name: /mismo local físico/ }));
     await waitFor(() => expect(acceso('Incidencias')).toHaveTextContent(/1.*por resolver/), { timeout: 20000 });
     expect(within(screen.getByRole('region', { name: 'Incidencias' })).getByText(/Decisiones tomadas \(1\)/)).toBeInTheDocument();
 

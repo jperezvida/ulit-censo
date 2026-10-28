@@ -3,7 +3,7 @@ import { Link2, PlusCircle, Clock, Undo2, CheckCircle2, HelpCircle } from 'lucid
 import { useEspacios } from '../../store/espacios';
 import { itinerariosDe } from '../../domain/campanaOperativa';
 import {
-  CLASE_ESTADO_TXT, MOTIVO_PENDIENTE_TXT, crearLocalDistinto, decisionesCampana, deshacerConciliacion, localesPorRevisar, mantenerPendiente,
+  CLARIDAD_TXT, CLASE_ESTADO_TXT, MOTIVO_PENDIENTE_TXT, ordenarPorClaridad, crearLocalDistinto, decisionesCampana, deshacerConciliacion, localesPorRevisar, mantenerPendiente,
   pendientesCampana, resolverEstado, retirarResolucion, vincularALocal, type FiltrosPendientes, type Pendiente,
 } from '../../domain/conciliacionPosterior';
 import type { BaseDatos } from '../../domain/db';
@@ -23,7 +23,8 @@ export function ConciliacionPosterior({ campanaId, simple = false, filtroInicial
   const [f, setF] = useState<FiltrosPendientes>(filtroInicial);
   const [error, setError] = useState<string | null>(null);
   const todos = pendientesCampana(db, campanaId);
-  const lista = pendientesCampana(db, campanaId, f);
+  // Primero las propuestas más claras; los casos ambiguos se revisan después, uno a uno.
+  const lista = ordenarPorClaridad(pendientesCampana(db, campanaId, f));
   const todosRevisar = localesPorRevisar(db, campanaId);
   // UX1 · En la vista sencilla solo lo que necesita intervención: estados contradictorios sin decidir.
   const revisar = simple ? todosRevisar.filter((e) => e.contradictorio && !e.resolucion) : todosRevisar;
@@ -47,7 +48,7 @@ export function ConciliacionPosterior({ campanaId, simple = false, filtroInicial
     <div className="col" style={{ gap: 8 }} role="region" aria-label="Conciliación posterior">
       {simple ? <b>{todos.length ? `${todos.length} fila(s) sin local` : 'Todas las filas tienen local'}</b> : <>
         <b>Conciliación posterior · {todos.length} fila(s) sin local</b>
-        <p className="muted" style={{ margin: 0 }}>Filas de cualquier itinerario que quedaron sin local al importar. Vincule cada una a un local existente, cree un local distinto si es otro establecimiento, o déjela pendiente. Nada se fusiona por compartir portal.</p>
+        <p className="muted" style={{ margin: 0 }}>Filas de cualquier itinerario que quedaron sin local al importar. Primero aparecen las propuestas más claras. Cada propuesta compara la fila con el censo de referencia, pero no se aplica sola: vincule la fila a un local existente, cree un local distinto si es otro establecimiento, o déjela pendiente. Nada se fusiona por compartir portal, y vincular el mismo local físico no confirma que sea el mismo negocio.</p>
       </>}
       {(!simple || todos.length > 3 || Object.values(f).some(Boolean)) && <div className="col-ctrl">
         <label className="campo"><span>Itinerario</span>
@@ -142,13 +143,30 @@ function FilaPendiente({ p, deshacible, ocupado, hacer, campanaId }: { p: Pendie
     <li aria-label={`Fila ${p.fila} de ${p.itinerario ?? p.archivo}`}>
       <b>{p.itinerario ?? '—'} · fila {p.fila}</b> · {p.direccion || 'sin dirección'}{p.nombre ? ` · «${p.nombre}»` : ''}{p.vacio !== undefined ? ` · ${p.vacio ? 'vacío' : 'ocupado'}` : ''}
       <div className="muted">{MOTIVO_PENDIENTE_TXT[p.motivo] ?? p.motivo}{p.decision ? ` · mantenida pendiente por ${personas[p.decision.porId]?.nombre ?? p.decision.porId} el ${p.decision.fecha.slice(0, 10)}${p.decision.motivo ? ` («${p.decision.motivo}»)` : ''}` : ''}</div>
+      <div className={`chip ${p.claridad === 'clara' ? 'ok' : p.claridad === 'mismo-portal' ? '' : 'aviso'}`} style={{ alignSelf: 'flex-start' }}>{CLARIDAD_TXT[p.claridad]}</div>
+      {p.candidatos.length > 0 && (
+        <fieldset className="col" style={{ gap: 6, border: 0, padding: 0, margin: '6px 0' }}>
+          <legend className="muted">Locales propuestos (ordenados; ninguno se aplica sin su decisión)</legend>
+          {p.candidatos.map((c) => (
+            <label key={c.localId} className="tarjeta col" style={{ gap: 4, padding: 8 }} aria-label={`Candidato ${c.portal}`}>
+              <span><input type="radio" name={`cand-${p.registroId}`} checked={localId === c.localId} onChange={() => setLocalId(c.localId)} /> <b>{c.portal}</b>{c.mismoPortal ? ' · mismo portal' : ''}</span>
+              <table className="tabla" aria-label={`Comparación con ${c.portal}`}>
+                <thead><tr><th></th><th>{c.referencia?.campana ?? 'Censo de referencia'}</th><th>Esta fila</th></tr></thead>
+                <tbody>
+                  <tr><th>Nombre</th><td>{c.referencia?.nombre ?? '—'}</td><td>{p.nombre ?? '—'}</td></tr>
+                  <tr><th>Dirección</th><td>{c.portal}</td><td>{p.direccion || '—'}</td></tr>
+                  <tr><th>Estado</th><td>{c.referencia ? (c.referencia.vacio ? 'Vacío' : 'Ocupado') : '—'}</td><td>{p.vacio === undefined ? '—' : p.vacio ? 'Vacío' : 'Ocupado'}</td></tr>
+                  <tr><th>Actividad</th><td>{c.referencia?.actividad ?? '—'}</td><td>{p.actividad ?? '—'}</td></tr>
+                </tbody>
+              </table>
+              <ul className="muted" style={{ margin: 0 }} aria-label={`Motivos de ${c.portal}`}>{c.motivos.map((m) => <li key={m}>{m}</li>)}</ul>
+            </label>
+          ))}
+          <span className="muted">Vincular indica que es el mismo local físico; no confirma que sea el mismo negocio.</span>
+        </fieldset>
+      )}
       <div className="fila cj-fila-acc">
-        {p.candidatos.length > 0 && (<>
-          <select className="input conc-sel" aria-label={`Local para la fila ${p.fila}`} value={localId} onChange={(e) => setLocalId(e.target.value)}>
-            {p.candidatos.map((c) => <option key={c.localId} value={c.localId}>{c.portal}{c.mismoPortal ? ' (mismo portal)' : ''}</option>)}
-          </select>
-          <button className="btn s" disabled={ocupado || !localId} onClick={() => hacer('Vinculando…', (x, porId) => vincularALocal(x, campanaId, p.registroId, localId, { porId }))}><Link2 size={13} /> Vincular</button>
-        </>)}
+        {p.candidatos.length > 0 && <button className="btn s" disabled={ocupado || !localId} onClick={() => hacer('Vinculando…', (x, porId) => vincularALocal(x, campanaId, p.registroId, localId, { porId }))}><Link2 size={13} /> Es el mismo local físico</button>}
         {p.puedeCrearLocal && !distinto && <button className="btn s" disabled={ocupado} onClick={() => setDistinto(true)}><PlusCircle size={13} /> Es un local distinto</button>}
         {!p.decision && <button className="btn s" disabled={ocupado} onClick={() => hacer('Guardando…', (x, porId) => mantenerPendiente(x, campanaId, p.registroId, { porId }))}><Clock size={13} /> Mantener pendiente</button>}
         {deshacible && p.decision && <button className="btn s" disabled={ocupado} onClick={() => hacer('Deshaciendo…', (x, porId) => deshacerConciliacion(x, campanaId, p.registroId, { porId }))}><Undo2 size={13} /> Deshacer</button>}

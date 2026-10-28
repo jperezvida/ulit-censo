@@ -82,7 +82,7 @@ describe('G5 · Conciliación posterior y consolidado fiable', () => {
     expect(pendientesCampana(e.db, e.campanaId, { tipo: 'calle-sin-correspondencia' }).map((p) => p.direccion)).toEqual([expect.stringMatching(/Calle Inexistente/)]);
     // Candidatos: locales de la misma calle, primero los del mismo portal; la calle desconocida no tiene ni permite crear local
     const ferr = pend(e, e.db, 'IT2', /FERRETERÍA/);
-    expect(ferr.candidatos[0]).toEqual({ localId: e.local('Calle del Olmo', 7), portal: 'Calle del Olmo, 7', mismoPortal: true });
+    expect(ferr.candidatos[0]).toMatchObject({ localId: e.local('Calle del Olmo', 7), portal: 'Calle del Olmo, 7', mismoPortal: true });
     expect(ferr.candidatos.filter((c) => c.mismoPortal)).toHaveLength(1);
     const inexistente = pend(e, e.db, 'IT3', /Inexistente/);
     expect([inexistente.candidatos, inexistente.puedeCrearLocal]).toEqual([[], false]);
