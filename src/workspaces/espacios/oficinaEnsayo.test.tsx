@@ -119,4 +119,60 @@ describe('Oficina en el espacio de ensayo (IT1 · 2026)', () => {
     db = await leer();
     expect(db.revisiones).toBeDefined();
   });
+
+  it('si falla una escritura, la cola se detiene sin anunciar éxitos; se puede reintentar o recuperar lo guardado', async () => {
+    const { e } = await preparar();
+    const original = useEspacios.getState().modificar;
+    let fallar = 1;
+    const llamadas: string[] = [];
+    useEspacios.setState({ modificar: async (m, c) => { llamadas.push(m); if (fallar > 0) { fallar--; return { ok: false, error: 'Fallo forzado de escritura (prueba)' }; } return original(m, c); } });
+    try {
+      montar(e.campanaId, e.its.IT1);
+      await waitFor(() => expect(screen.getByRole('region', { name: 'Oficina de IT1' })).toBeInTheDocument(), { timeout: 20000 });
+      abrir(/BAR SINTÉTICO EL OLMO/);
+      fireEvent.click(within(panel()).getByRole('tab', { name: 'Digital' }));
+      const bar = Object.values((await leer()).negocios).find((n) => n.nombre === 'BAR SINTÉTICO EL OLMO')!;
+      // Dos cambios seguidos; el primero falla al escribir
+      fireEvent.click(within(panel()).getByRole('button', { name: 'Página web: No' }));
+      fireEvent.click(within(panel()).getByRole('button', { name: 'Venta por internet: No' }));
+      const alerta = await screen.findByRole('alert', { name: 'Fallo al guardar' }, { timeout: 20000 });
+      expect(alerta).toHaveTextContent(/No se ha podido guardar\. Fallo forzado de escritura \(prueba\)/);
+      expect(alerta).toHaveTextContent(/Quedan 2 cambio\(s\) sin guardar: Página web · BAR SINTÉTICO EL OLMO · Venta por internet · BAR SINTÉTICO EL OLMO/);
+      await new Promise((r) => setTimeout(r, 300));
+      // El segundo no se intentó escribir ni se anunció como guardado; no hay nada en el espacio
+      expect(llamadas).toHaveLength(1);
+      expect(screen.queryAllByRole('status').map((x) => x.textContent).join(' ')).not.toMatch(/Guardado/);
+      expect((await leer()).digital[kNC(bar.id, e.campanaId)]).toBeUndefined();
+      // Mientras tanto no se aceptan cambios nuevos
+      fireEvent.click(within(panel()).getByRole('button', { name: 'Facebook: No' }));
+      expect(llamadas).toHaveLength(1);
+      // Reintentar: se guardan los dos, en orden, sobre lo guardado
+      fireEvent.click(within(alerta).getByRole('button', { name: 'Reintentar guardar' }));
+      await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Guardado: Venta por internet · BAR SINTÉTICO EL OLMO'), { timeout: 20000 });
+      expect(screen.queryByRole('alert', { name: 'Fallo al guardar' })).toBeNull();
+      expect((await leer()).digital[kNC(bar.id, e.campanaId)].datos).toMatchObject({ web: { respuesta: 'no' }, ventaOnline: { respuesta: 'no' } });
+      expect(llamadas.slice(1)).toEqual(['Página web · BAR SINTÉTICO EL OLMO', 'Venta por internet · BAR SINTÉTICO EL OLMO']);
+
+      // Otro fallo: descartar y recuperar lo guardado (lo no guardado desaparece, lo guardado sigue)
+      fallar = 1;
+      fireEvent.click(within(panel()).getByRole('button', { name: 'Instagram: Sí' }));
+      const alerta2 = await screen.findByRole('alert', { name: 'Fallo al guardar' }, { timeout: 20000 });
+      fireEvent.click(within(alerta2).getByRole('button', { name: 'Descartar y recuperar lo guardado' }));
+      // El espacio se vuelve a abrir desde lo guardado (la página se recarga sin el aviso de fallo)
+      await waitFor(() => expect(screen.queryByRole('alert', { name: 'Fallo al guardar' })).toBeNull(), { timeout: 20000 });
+      await waitFor(() => expect(screen.getByRole('region', { name: 'Oficina de IT1' })).toBeInTheDocument(), { timeout: 20000 });
+      const d = (await leer()).digital[kNC(bar.id, e.campanaId)].datos;
+      expect(d.instagram).toBeUndefined();
+      expect(useEspacios.getState().db!.digital[kNC(bar.id, e.campanaId)].datos.instagram).toBeUndefined();
+      // Sin errores, la secuencia vuelve a guardarse con normalidad
+      abrir(/BAR SINTÉTICO EL OLMO/);
+      fireEvent.click(within(panel()).getByRole('tab', { name: 'Digital' }));
+      fireEvent.click(within(panel()).getByRole('button', { name: 'Facebook: No' }));
+      fireEvent.click(within(panel()).getByRole('button', { name: 'Twitter / X: No' }));
+      await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Guardado: Twitter / X · BAR SINTÉTICO EL OLMO'), { timeout: 20000 });
+      expect((await leer()).digital[kNC(bar.id, e.campanaId)].datos).toMatchObject({ web: { respuesta: 'no' }, facebook: { respuesta: 'no' }, twitter: { respuesta: 'no' } });
+    } finally {
+      useEspacios.setState({ modificar: original });
+    }
+  });
 });

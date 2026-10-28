@@ -41,16 +41,50 @@ function Validar() {
  * Adaptación mínima: Oficina escribe con `aplicar` (síncrono) y el espacio guarda con `modificar`
  * (asíncrono, con escritura verificada). La operación se valida primero sobre la base actual para avisar
  * del error al momento; después se guarda en cola, recalculándose sobre la base vigente al escribir.
+ *
+ * Si una escritura falla, la cola se DETIENE: las operaciones siguientes (que pueden depender de ella) no
+ * se guardan ni se anuncian como guardadas, y no se aceptan otras nuevas. La persona ve qué falló y qué
+ * queda sin guardar, y elige: reintentar esas operaciones en orden sobre lo guardado, o descartarlas y
+ * recuperar el estado guardado.
  */
+interface Operacion { fn: (db: BaseDatos) => BaseDatos; etiqueta: string }
 function FuenteEspacio({ campanaId, children }: { campanaId: Id; children: ReactNode }) {
   const db = useEspacios((s) => s.db!);
+  const tipo = useEspacios((s) => s.tipo);
   const modificar = useEspacios((s) => s.modificar);
   const [aviso, setAviso] = useState<{ t: 'ok' | 'error'; m: string } | null>(null);
+  const [fallo, setFallo] = useState<{ error: string; sinGuardar: string[] } | null>(null);
   const cola = useRef<Promise<unknown>>(Promise.resolve());
   // Estado tras las operaciones aún en cola: valida cada nueva operación sobre lo ya pedido, no sobre lo ya escrito.
   const enCola = useRef<{ db: BaseDatos; n: number } | null>(null);
+  // Operaciones pedidas y aún no guardadas (en orden). Tras un fallo quedan aquí para reintentar o descartar.
+  const pendientes = useRef<Operacion[]>([]);
+  const detenida = useRef(false);
   const persona = personaEspacio(db);
+
+  const encolar = (op: Operacion) => {
+    cola.current = cola.current.then(async () => {
+      if (detenida.current) return; // tras un fallo no se guarda nada más
+      const r = await modificar(op.etiqueta, (actual: BaseDatos) => op.fn(actual));
+      if (!r.ok) {
+        detenida.current = true;
+        enCola.current = null;
+        const sinGuardar = pendientes.current.map((x) => x.etiqueta);
+        setFallo({ error: r.error ?? 'No se ha podido guardar.', sinGuardar });
+        setAviso(null);
+        return;
+      }
+      pendientes.current = pendientes.current.filter((x) => x !== op);
+      if (enCola.current && --enCola.current.n === 0) enCola.current = null;
+      setAviso({ t: 'ok', m: `Guardado: ${op.etiqueta}` });
+    });
+  };
+
   const aplicar: Aplicar = (fn, etiqueta, opciones) => {
+    if (detenida.current) {
+      setAviso({ t: 'error', m: 'No se guardan más cambios hasta resolver el fallo anterior (reintentar o recuperar lo guardado).' });
+      return false;
+    }
     const base = enCola.current?.db ?? useEspacios.getState().db!;
     let previsto: BaseDatos;
     try {
@@ -61,18 +95,44 @@ function FuenteEspacio({ campanaId, children }: { campanaId: Id; children: React
       return false;
     }
     enCola.current = { db: previsto, n: (enCola.current?.n ?? 0) + 1 };
-    cola.current = cola.current.then(async () => {
-      const r = await modificar(etiqueta, (actual: BaseDatos) => fn(actual));
-      if (!r.ok) enCola.current = null;
-      else if (enCola.current && --enCola.current.n === 0) enCola.current = null;
-      setAviso(r.ok ? { t: 'ok', m: `Guardado: ${etiqueta}` } : { t: 'error', m: r.error ?? 'No se ha podido guardar.' });
-    });
+    const op = { fn, etiqueta };
+    pendientes.current = [...pendientes.current, op];
+    encolar(op);
     return true;
   };
+
+  /** Vuelve a intentar, en orden, lo que quedó sin guardar (cada operación se recalcula sobre lo guardado). */
+  const reintentar = () => {
+    const ops = pendientes.current;
+    detenida.current = false;
+    setFallo(null);
+    enCola.current = ops.length ? { db: useEspacios.getState().db!, n: ops.length } : null;
+    for (const op of ops) encolar(op);
+  };
+  /** Descarta lo no guardado y vuelve a leer el espacio tal como está guardado. */
+  const recuperar = async () => {
+    await cola.current;
+    pendientes.current = [];
+    enCola.current = null;
+    if (tipo) await useEspacios.getState().abrir(tipo);
+    // Al volver a abrir el espacio, la Oficina se monta de nuevo con lo guardado.
+    detenida.current = false;
+    setFallo(null);
+  };
+
   const fuente: FuenteOficina = { db, campanaId, personaId: persona?.id ?? '', roles: persona?.roles ?? [], aplicar };
   return (
     <FuenteOficinaContext.Provider value={fuente}>
-      {aviso && <div className={`t-info ${aviso.t === 'error' ? 'error' : ''}`} role={aviso.t === 'error' ? 'alert' : 'status'}>{aviso.m}</div>}
+      {fallo ? (
+        <div className="t-info error col" role="alert" aria-label="Fallo al guardar" style={{ gap: 6 }}>
+          <span><b>No se ha podido guardar.</b> {fallo.error}</span>
+          <span>Quedan {fallo.sinGuardar.length} cambio(s) sin guardar: {fallo.sinGuardar.join(' · ')}. No se guardará nada más hasta resolverlo.</span>
+          <div className="fila" style={{ gap: 6, flexWrap: 'wrap' }}>
+            <button className="btn s" onClick={reintentar}>Reintentar guardar</button>
+            <button className="btn s" onClick={() => void recuperar()}>Descartar y recuperar lo guardado</button>
+          </div>
+        </div>
+      ) : aviso && <div className={`t-info ${aviso.t === 'error' ? 'error' : ''}`} role={aviso.t === 'error' ? 'alert' : 'status'}>{aviso.m}</div>}
       {children}
     </FuenteOficinaContext.Provider>
   );
