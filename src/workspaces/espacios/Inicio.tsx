@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Smartphone, AlertTriangle, BarChart3, CalendarPlus, CheckCircle2, FileUp, ListChecks, MapPinned, Plus, Route, Search, Settings2 } from 'lucide-react';
+import { Smartphone, AlertTriangle, BarChart3, CalendarPlus, CheckCircle2, FileUp, ListChecks, MapPinned, Plus, Route, Search, Settings2, Undo2 } from 'lucide-react';
 import { fmt } from '../../components/ui';
 import { useEspacios } from '../../store/espacios';
-import { municipioDeEspacio, type TipoEspacio } from '../../domain/espacios';
+import { municipioDeEspacio, personaEspacio, type TipoEspacio } from '../../domain/espacios';
+import { previsualizarDeshacer } from '../../domain/incorporacionDemo';
 import { callejeroDe, claseCampana, motivoNoDestino } from '../../domain/municipios';
 import { callesConObservaciones, censoConsolidado, crearItinerario, itinerariosDe, validarItinerario } from '../../domain/campanaOperativa';
 import { CLASE_ESTADO_TXT, type FiltrosPendientes } from '../../domain/conciliacionPosterior';
-import { localesCampana, resumenCampana, type ResumenCampana } from '../../domain/resumenCampana';
+import { estadosItinerario, localesCampana, resumenCampana, type ResumenCampana } from '../../domain/resumenCampana';
 import type { BaseDatos } from '../../domain/db';
 import type { Campana, Id } from '../../domain/types';
 import { AsistenteEspacio } from './AsistenteEspacio';
@@ -195,6 +196,10 @@ function PanelItinerarios({ tipo, campana, r, onIncorporar, onIncidencias }: { t
                 <span className={`chip ${archivo ? 'ok' : 'aviso'}`}>{archivo ? `${fmt(d.registros)} filas` : 'Sin Excel'}</span>
                 {d.pendientes > 0 && <span className="chip aviso">{d.pendientes} sin local</span>}
               </div>
+              {archivo && (() => {
+                const e = estadosItinerario(db, it.id);
+                return <div className="ux-item-cab" aria-label={`Estados de ${it.codigo}`}>{[e.campo, e.oficina, e.validacion].map((x) => <span key={x.texto} className={`chip ${x.hecho ? 'ok' : ''}`}>{x.texto}</span>)}</div>;
+              })()}
               <div className="fila cj-fila-acc">
                 {!archivo && <button className="btn s primario" onClick={() => onIncorporar(it.id)}><FileUp size={13} /> Incorporar su Excel</button>}
                 {d.pendientes > 0 && <button className="btn s" onClick={() => onIncidencias(it.id)}><ListChecks size={13} /> Ver incidencias</button>}
@@ -210,6 +215,7 @@ function PanelItinerarios({ tipo, campana, r, onIncorporar, onIncidencias }: { t
                   <dt>Calles</dt><dd>{callesConObservaciones(db, it.id).map((c) => c.nombre).join(', ') || '—'} <span className="muted">(con locales; no indica calle recorrida entera)</span></dd>
                 </dl>
               )}
+              {abierto === it.id && archivo && <DeshacerExcel importacionId={archivo.importacionId} codigo={it.codigo} />}
             </li>
           );
         })}
@@ -223,6 +229,33 @@ function PanelItinerarios({ tipo, campana, r, onIncorporar, onIncidencias }: { t
         }}><Plus size={13} /> Añadir itinerario</button>
       </div>
       {(problema || error) && <div className="t-info error" role="alert">{problema ?? error}</div>}
+    </div>
+  );
+}
+
+/**
+ * Para cargar una versión corregida del Excel de un itinerario hay que retirar antes la anterior: se usa el
+ * deshacer de siempre, que retira exactamente lo que creó y se bloquea si algo posterior depende de ello.
+ */
+function DeshacerExcel({ importacionId, codigo }: { importacionId: Id; codigo: string }) {
+  const db = useEspacios((s) => s.db!);
+  const deshacer = useEspacios((s) => s.deshacer);
+  const ocupado = useEspacios((s) => s.ocupado);
+  const [error, setError] = useState<string | null>(null);
+  const persona = personaEspacio(db);
+  const vista = persona ? previsualizarDeshacer(db, importacionId, persona.id) : null;
+  return (
+    <div className="col" style={{ gap: 6 }}>
+      <div className="fila cj-fila-acc">
+        <button className="btn s peligro" disabled={!vista?.permitido || !!ocupado} onClick={async () => {
+          if (!confirm(`Se retirará exactamente lo que incorporó el Excel de ${codigo}; su traza se conserva como «deshecha». Después podrá incorporar la versión corregida. ¿Continuar?`)) return;
+          const r = await deshacer(importacionId);
+          setError(r.ok ? null : r.error ?? 'No se ha deshecho.');
+        }}><Undo2 size={13} /> Deshacer su Excel</button>
+        <span className="muted">Para incorporar una versión corregida de este itinerario.</span>
+      </div>
+      {vista && !vista.permitido && <div className="t-info aviso" role="note">No se puede deshacer todavía: {vista.conflictos[0]}{vista.conflictos.length > 1 ? ` (y ${vista.conflictos.length - 1} más)` : ''}. Deshaga antes las decisiones que dependen de este Excel.</div>}
+      {error && <div className="t-info error" role="alert">{error}</div>}
     </div>
   );
 }

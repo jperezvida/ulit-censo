@@ -1,7 +1,8 @@
-import type { BaseDatos } from './db';
+import { kRev, type BaseDatos } from './db';
 import { direccionVigente } from './consultas';
 import { claseCampana, contenidoCampana } from './municipios';
 import { itinerariosDe } from './campanaOperativa';
+import { estadoOficina } from './bloqueo';
 import { estadoLocal, indiceObservaciones, pendientesCampana, type EstadoLocal } from './conciliacionPosterior';
 import type { Id } from './types';
 
@@ -81,4 +82,37 @@ export function localesCampana(db: BaseDatos, estados: EstadoLocal[]): FilaLocal
       estado: e,
     };
   }).sort((a, b) => a.calle.localeCompare(b.calle, 'es') || a.numero.localeCompare(b.numero, 'es', { numeric: true }));
+}
+
+/**
+ * Estados de un itinerario, por separado y sin deducir uno de otro:
+ *  - Campo: recepción de su Excel (registros importados). No afirma que se hayan recorrido todas las calles.
+ *  - Oficina: filas sin conciliar y locales con revisión de oficina hecha por una persona (nunca automática).
+ *    Un local ocupado (o sin estado claro) necesita categorización y presencia digital revisadas; uno vacío,
+ *    solo la categorización (confirmar el vacío): no se le exige presencia digital. Oficina no termina
+ *    mientras quede alguna fila del itinerario sin conciliar.
+ *  - Validación: estado de oficina del itinerario (solo «validado» la da por terminada).
+ */
+export function estadosItinerario(db: BaseDatos, itinerarioId: Id) {
+  const it = db.itinerarios[itinerarioId];
+  const campanaId = it?.campanaId ?? '';
+  const registros = Object.values(db.registros).filter((r) => r.itinerarioId === itinerarioId && db.importaciones[r.importacionId]?.estado === 'confirmada').length;
+  const sinConciliar = registros && db.campanas[campanaId] ? pendientesCampana(db, campanaId, { itinerarioId }).length : 0;
+  const locales = [...new Set(Object.values(db.observaciones).filter((o) => o.itinerarioId === itinerarioId && o.campanaId === campanaId && o.localId).map((o) => o.localId!))];
+  const indice = indiceObservaciones(db, campanaId);
+  const revisados = locales.filter((l) => {
+    const r = db.revisiones[kRev(campanaId, l)];
+    const vacio = estadoLocal(db, campanaId, l, indice).valor === 'vacio';
+    return r?.categorizacion === 'revisado' && (vacio || r.digital === 'revisado');
+  }).length;
+  const v = estadoOficina(db, itinerarioId);
+  return {
+    registros, sinConciliar, locales: locales.length, revisados,
+    campo: registros ? { hecho: true, texto: `Campo: Excel incorporado (${registros} registros)` } : { hecho: false, texto: 'Campo: sin Excel' },
+    oficina: {
+      hecho: registros > 0 && sinConciliar === 0 && locales.length > 0 && revisados === locales.length,
+      texto: `Oficina: ${sinConciliar} sin conciliar · ${revisados}/${locales.length} locales revisados`,
+    },
+    validacion: { hecho: v === 'validado', texto: v === 'validado' ? 'Validación: validado' : 'Validación: pendiente' },
+  };
 }
