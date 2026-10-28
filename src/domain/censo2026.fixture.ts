@@ -24,7 +24,7 @@ const P = PREFIJO.ensayo;
 export const AHORA = '2026-10-28T10:00:00.000Z';
 
 /** Espacio de ensayo SINTÉTICO: municipio, callejero, censo 2025 incorporado y campaña operativa 2026 con IT1 e IT2. */
-export async function escenario() {
+export async function escenario(filas2025: FilaSintetica[] = FILAS_2025) {
   let db = crearBaseEspacio('ensayo', { persona: { nombre: 'Coordinación de Prueba', roles: ['coordinador'] }, calles: [], detalleCallejero: '', espacioId: 'c26', ahora: AHORA, incluirMedina: false });
   const o = { prefijo: P, porId: db.meta.espacioCreadoPorId!, ahora: AHORA, anioActual: 2026 };
   const V = { nombre: 'Villa Sintética de Arriba', ine: '99001' };
@@ -33,7 +33,7 @@ export async function escenario() {
   db = aplicarCarga(db, m.municipioId, l, { archivo: 'v.json', contenido: JSON.stringify(j), fuente: 'OpenStreetMap (Overpass API)' }, o).db;
   const h = crearCampana(db, { municipioId: m.municipioId, anio: 2025, nombre: 'Censo 2025', clase: 'historica' }, o); db = h.db;
   const d25 = { municipioId: m.municipioId, anio: 2025, campanaId: h.campanaId };
-  const p25 = await prepararIncorporacion(db, await libroConFilas('IT1', FILAS_2025), 'censo_2025_SINTETICO.xlsx', d25, {});
+  const p25 = await prepararIncorporacion(db, await libroConFilas('IT1', filas2025), 'censo_2025_SINTETICO.xlsx', d25, {});
   db = aplicarIncorporacion(db, p25.resultado, d25, {}, p25.plan, { porId: o.porId, ahora: AHORA }).db;
   const c = crearCampana(db, { municipioId: m.municipioId, anio: 2026, nombre: 'Censo 2026', clase: 'operativa', tipoOperativa: 'actualizacion', campanaReferenciaId: h.campanaId }, o); db = c.db;
   const its: Record<string, string> = {};

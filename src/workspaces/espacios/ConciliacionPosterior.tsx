@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link2, PlusCircle, Clock, Undo2, CheckCircle2, HelpCircle } from 'lucide-react';
 import { useEspacios } from '../../store/espacios';
 import { itinerariosDe } from '../../domain/campanaOperativa';
@@ -8,6 +8,7 @@ import {
 } from '../../domain/conciliacionPosterior';
 import type { BaseDatos } from '../../domain/db';
 import type { Id } from '../../domain/types';
+import type { Candidato } from '../../domain/conciliacionPosterior';
 
 const ACCION_TXT = { vincular: 'Vinculada a un local existente', 'local-nuevo': 'Local distinto creado', 'mantener-pendiente': 'Mantenida pendiente' } as const;
 
@@ -136,37 +137,46 @@ function Plegable({ simple, titulo, children }: { simple: boolean; titulo: strin
 
 function FilaPendiente({ p, deshacible, ocupado, hacer, campanaId }: { p: Pendiente; deshacible: boolean; ocupado: boolean; campanaId: Id; hacer: (msg: string, fn: (x: BaseDatos, porId: Id) => BaseDatos) => Promise<void> }) {
   const personas = useEspacios((s) => s.db!.personas);
-  const [localId, setLocalId] = useState(p.candidatos[0]?.localId ?? '');
+  // Solo una propuesta clara llega preseleccionada; en el resto la persona elige conscientemente.
+  const [localId, setLocalId] = useState(p.claridad === 'clara' ? p.candidatos[0]?.localId ?? '' : '');
   const [distinto, setDistinto] = useState(false);
   const [motivo, setMotivo] = useState('');
+  const [otroPortalOk, setOtroPortalOk] = useState(false);
+  const [motivoPortal, setMotivoPortal] = useState('');
+  // Prioritarios: los del mismo portal. Los demás de la calle quedan plegados, pero todos se pueden elegir.
+  const prioritarios = p.candidatos.filter((c) => c.mismoPortal);
+  const secundarios = p.candidatos.filter((c) => !c.mismoPortal);
+  const elegido = p.candidatos.find((c) => c.localId === localId);
+  const otroPortal = !!elegido && !elegido.mismoPortal;
+  const elegir = (id: Id) => { setLocalId(id); setOtroPortalOk(false); setMotivoPortal(''); };
+  const puedeVincular = !!elegido && (!otroPortal || (otroPortalOk && !!motivoPortal.trim()));
+  const tarjeta = (c: Candidato) => <TarjetaCandidato key={c.localId} c={c} p={p} elegido={localId === c.localId} onElegir={() => elegir(c.localId)} />;
   return (
     <li aria-label={`Fila ${p.fila} de ${p.itinerario ?? p.archivo}`}>
       <b>{p.itinerario ?? '—'} · fila {p.fila}</b> · {p.direccion || 'sin dirección'}{p.nombre ? ` · «${p.nombre}»` : ''}{p.vacio !== undefined ? ` · ${p.vacio ? 'vacío' : 'ocupado'}` : ''}
       <div className="muted">{MOTIVO_PENDIENTE_TXT[p.motivo] ?? p.motivo}{p.decision ? ` · mantenida pendiente por ${personas[p.decision.porId]?.nombre ?? p.decision.porId} el ${p.decision.fecha.slice(0, 10)}${p.decision.motivo ? ` («${p.decision.motivo}»)` : ''}` : ''}</div>
       <div className={`chip ${p.claridad === 'clara' ? 'ok' : p.claridad === 'mismo-portal' ? '' : 'aviso'}`} style={{ alignSelf: 'flex-start' }}>{CLARIDAD_TXT[p.claridad]}</div>
       {p.candidatos.length > 0 && (
-        <fieldset className="col" style={{ gap: 6, border: 0, padding: 0, margin: '6px 0' }}>
-          <legend className="muted">Locales propuestos (ordenados; ninguno se aplica sin su decisión)</legend>
-          {p.candidatos.map((c) => (
-            <label key={c.localId} className="tarjeta col" style={{ gap: 4, padding: 8 }} aria-label={`Candidato ${c.portal}`}>
-              <span><input type="radio" name={`cand-${p.registroId}`} checked={localId === c.localId} onChange={() => setLocalId(c.localId)} /> <b>{c.portal}</b>{c.mismoPortal ? ' · mismo portal' : ''}</span>
-              <table className="tabla" aria-label={`Comparación con ${c.portal}`}>
-                <thead><tr><th></th><th>{c.referencia?.campana ?? 'Censo de referencia'}</th><th>Esta fila</th></tr></thead>
-                <tbody>
-                  <tr><th>Nombre</th><td>{c.referencia?.nombre ?? '—'}</td><td>{p.nombre ?? '—'}</td></tr>
-                  <tr><th>Dirección</th><td>{c.portal}</td><td>{p.direccion || '—'}</td></tr>
-                  <tr><th>Estado</th><td>{c.referencia ? (c.referencia.vacio ? 'Vacío' : 'Ocupado') : '—'}</td><td>{p.vacio === undefined ? '—' : p.vacio ? 'Vacío' : 'Ocupado'}</td></tr>
-                  <tr><th>Actividad</th><td>{c.referencia?.actividad ?? '—'}</td><td>{p.actividad ?? '—'}</td></tr>
-                </tbody>
-              </table>
-              <ul className="muted" style={{ margin: 0 }} aria-label={`Motivos de ${c.portal}`}>{c.motivos.map((m) => <li key={m}>{m}</li>)}</ul>
-            </label>
-          ))}
+        <fieldset className="col conc-cands" role="radiogroup" aria-label={`Locales propuestos para la fila ${p.fila}`}>
+          <legend className="muted">{p.claridad === 'clara' ? 'Propuesta preseleccionada: compruébela antes de vincular.' : 'Elija un local: ninguno está seleccionado.'}</legend>
+          {prioritarios.length ? prioritarios.map(tarjeta) : <span className="muted">Ningún local en este portal.</span>}
+          {secundarios.length > 0 && (
+            <details className="ux-plegable" open={otroPortal}>
+              <summary>Otros locales de la calle, con otro número de portal ({secundarios.length})</summary>
+              <div className="col" style={{ gap: 6 }}>{secundarios.map(tarjeta)}</div>
+            </details>
+          )}
           <span className="muted">Vincular indica que es el mismo local físico; no confirma que sea el mismo negocio.</span>
         </fieldset>
       )}
+      {otroPortal && (
+        <div className="t-info aviso col" role="group" aria-label={`Confirmación de otro portal (fila ${p.fila})`} style={{ gap: 6 }}>
+          <label><input type="checkbox" checked={otroPortalOk} onChange={(e) => setOtroPortalOk(e.target.checked)} /> Confirmo que es el mismo local físico aunque el número de portal ({elegido!.portal}) no coincide con el de la fila.</label>
+          <input className="input" aria-label={`Por qué es el mismo local en otro portal (fila ${p.fila})`} placeholder="p. ej. el portal se renumeró, comprobado en campo" value={motivoPortal} onChange={(e) => setMotivoPortal(e.target.value)} />
+        </div>
+      )}
       <div className="fila cj-fila-acc">
-        {p.candidatos.length > 0 && <button className="btn s" disabled={ocupado || !localId} onClick={() => hacer('Vinculando…', (x, porId) => vincularALocal(x, campanaId, p.registroId, localId, { porId }))}><Link2 size={13} /> Es el mismo local físico</button>}
+        {p.candidatos.length > 0 && <button className="btn s" disabled={ocupado || !puedeVincular} onClick={() => hacer('Vinculando…', (x, porId) => vincularALocal(x, campanaId, p.registroId, localId, { porId, ...(otroPortal ? { motivo: `Otro portal: ${motivoPortal.trim()}` } : {}) }))}><Link2 size={13} /> Es el mismo local físico</button>}
         {p.puedeCrearLocal && !distinto && <button className="btn s" disabled={ocupado} onClick={() => setDistinto(true)}><PlusCircle size={13} /> Es un local distinto</button>}
         {!p.decision && <button className="btn s" disabled={ocupado} onClick={() => hacer('Guardando…', (x, porId) => mantenerPendiente(x, campanaId, p.registroId, { porId }))}><Clock size={13} /> Mantener pendiente</button>}
         {deshacible && p.decision && <button className="btn s" disabled={ocupado} onClick={() => hacer('Deshaciendo…', (x, porId) => deshacerConciliacion(x, campanaId, p.registroId, { porId }))}><Undo2 size={13} /> Deshacer</button>}
@@ -179,5 +189,36 @@ function FilaPendiente({ p, deshacible, ocupado, hacer, campanaId }: { p: Pendie
         </div>
       )}
     </li>
+  );
+}
+
+/** Un candidato: resumen compacto siempre visible y comparación 2025/2026 desplegable. */
+function TarjetaCandidato({ c, p, elegido, onElegir }: { c: Candidato; p: Pendiente; elegido: boolean; onElegir: () => void }) {
+  const fila = (t: string, a: ReactNode, b: ReactNode) => <tr><th>{t}</th><td>{a}</td><td>{b}</td></tr>;
+  return (
+    <div className={`tarjeta col conc-cand${elegido ? ' sel' : ''}`} aria-label={`Candidato ${c.portal}`}>
+      <label className="conc-cab">
+        <input type="radio" name={`cand-${p.registroId}`} checked={elegido} onChange={onElegir} />
+        <b>{c.portal}</b>
+        {c.mismoPortal ? <span className="chip ok">Mismo portal</span> : <span className="chip aviso">Otro número de portal</span>}
+        {c.referencia?.nombre && <span className="muted">· {c.referencia.campana}: «{c.referencia.nombre}»</span>}
+        {c.referencia?.vacio && <span className="muted">· {c.referencia.campana}: vacío</span>}
+      </label>
+      <details open={elegido}>
+        <summary>Comparar y ver motivos</summary>
+        <div className="tabla-scroll">
+          <table className="tabla" aria-label={`Comparación con ${c.portal}`}>
+            <thead><tr><th></th><th>{c.referencia?.campana ?? 'Censo de referencia'}</th><th>Esta fila</th></tr></thead>
+            <tbody>
+              {fila('Nombre', c.referencia?.nombre ?? '—', p.nombre ?? '—')}
+              {fila('Dirección', c.portal, p.direccion || '—')}
+              {fila('Estado', c.referencia ? (c.referencia.vacio ? 'Vacío' : 'Ocupado') : '—', p.vacio === undefined ? '—' : p.vacio ? 'Vacío' : 'Ocupado')}
+              {fila('Actividad', c.referencia?.actividad ?? '—', p.actividad ?? '—')}
+            </tbody>
+          </table>
+        </div>
+        <ul className="muted" style={{ margin: 0 }} aria-label={`Motivos de ${c.portal}`}>{c.motivos.map((m) => <li key={m}>{m}</li>)}</ul>
+      </details>
+    </div>
   );
 }
