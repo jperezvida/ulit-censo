@@ -104,8 +104,12 @@ describe('G4 · Itinerarios de una campaña operativa (interfaz)', () => {
     expect(within(conc).getAllByRole('listitem', { name: /^Fila \d+ de IT2/ })).toHaveLength(2);
     expect(within(panel).getByLabelText('Censo consolidado')).toHaveTextContent(/Locales únicos9.*Pendientes2/);
     const ferr = within(conc).getAllByRole('listitem', { name: /^Fila \d+ de IT2/ }).find((li) => /FERRETERÍA/.test(li.textContent ?? ''))!;
-    expect(within(ferr).getByRole('combobox')).toHaveDisplayValue(/Calle del Olmo, 7 \(mismo portal\)/);
-    fireEvent.click(within(ferr).getByRole('button', { name: /Vincular/ }));
+    // Sin propuesta clara no hay nada preseleccionado: vincular exige elegir
+    expect(within(ferr).getAllByRole('radio').some((r) => (r as HTMLInputElement).checked)).toBe(false);
+    expect(within(ferr).getByRole('button', { name: /mismo local físico/ })).toBeDisabled();
+    fireEvent.click(within(ferr).getAllByRole('radio')[0]);
+    expect(within(ferr).getAllByLabelText(/^Candidato /)[0]).toHaveTextContent(/Calle del Olmo, 7Mismo portal/);
+    fireEvent.click(within(ferr).getByRole('button', { name: /mismo local físico/ }));
     await waitFor(() => expect(within(panel).getByRole('region', { name: 'Conciliación posterior' })).toHaveTextContent(/1 fila\(s\) sin local/), { timeout: 20000 });
     expect(within(panel).getByLabelText('Decisiones tomadas')).toHaveTextContent(/IT2 fila \d+ · Vinculada a un local existente · Coordinación de Prueba/);
     expect(within(panel).getByLabelText('Cruces entre itinerarios')).toHaveTextContent(/FERRETERÍA SINTÉTICA.*conciliado: es el mismo local/);
@@ -117,7 +121,8 @@ describe('G4 · Itinerarios de una campaña operativa (interfaz)', () => {
     await waitFor(() => expect(within(panel).getByRole('region', { name: 'Conciliación posterior' })).toHaveTextContent(/2 fila\(s\) sin local/), { timeout: 20000 });
     // La cafetería: vincularla al local vacío de IT1 crea una contradicción con fecha → estado dudoso
     const caf = within(panel).getAllByRole('listitem', { name: /^Fila \d+ de IT2/ }).find((li) => /CAFETERÍA/.test(li.textContent ?? ''))!;
-    fireEvent.click(within(caf).getByRole('button', { name: /Vincular/ }));
+    fireEvent.click(within(caf).getAllByRole('radio')[0]);
+    fireEvent.click(within(caf).getByRole('button', { name: /mismo local físico/ }));
     expect(within(panel).getByLabelText('Estado de locales por revisar')).toHaveTextContent(/Calle Peatonal Mayor, 2 · Información sin fecha suficiente/);
     await waitFor(() => expect(within(panel).getByLabelText('Estado de locales por revisar')).toHaveTextContent(/Calle del Olmo, 5 · Estado dudoso/), { timeout: 20000 });
     const revisar = within(within(panel).getByLabelText('Estado de locales por revisar')).getAllByRole('listitem').find((li) => /Olmo, 5/.test(li.textContent ?? ''))!;

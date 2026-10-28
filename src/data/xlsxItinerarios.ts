@@ -13,7 +13,7 @@ import { MARCA_FICTICIO } from './xlsxSinteticoC1e';
  *  - una calle que no está en el callejero, un «S/N», una fila sin fecha y una fila que dice ser de otro itinerario.
  */
 
-export type FilaSintetica = { calle: string; num: number | string; nombre?: string; vacio?: boolean; fecha?: string | null; itinerario?: number; fachada?: number };
+export type FilaSintetica = { calle: string; num: number | string; nombre?: string; vacio?: boolean; fecha?: string | null; itinerario?: number; fachada?: number; actividad?: string };
 
 export const FILAS_ITINERARIOS: Record<'IT1' | 'IT2' | 'IT3', FilaSintetica[]> = {
   IT1: [
@@ -71,7 +71,7 @@ export async function libroConFilas(it: 'IT1' | 'IT2' | 'IT3', filas: FilaSintet
   for (const f of filas) {
     const v: Record<string, unknown> = {
       fecha: f.fecha ? new Date(`${f.fecha}T00:00:00Z`) : null, municipio: 'VILLA SINTÉTICA DE ARRIBA', itinerario: f.itinerario ?? n,
-      direccion: f.calle, numero: f.num, vacio: f.vacio ? 1 : 0, fachada: f.fachada ?? null, nombre: f.vacio ? null : f.nombre ?? null,
+      direccion: f.calle, numero: f.num, vacio: f.vacio ? 1 : 0, fachada: f.fachada ?? null, nombre: f.vacio ? null : f.nombre ?? null, actividad: f.vacio ? null : f.actividad ?? null,
     };
     const fila = ws.addRow(cols.map((c) => v[c.clave] ?? null));
     const ci = cols.findIndex((c) => c.clave === 'fecha');

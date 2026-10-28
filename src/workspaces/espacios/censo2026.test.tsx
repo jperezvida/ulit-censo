@@ -107,6 +107,16 @@ describe('Censo 2026 por itinerarios (interfaz)', () => {
     fireEvent.click(acceso('Itinerarios'));
     expect(within(tarjeta('IT1')).getByLabelText('Estados de IT1')).toHaveTextContent(/Campo: Excel incorporado \(6 registros\).*Oficina: 5 sin conciliar · 0\/1 locales revisados.*Validación: pendiente/);
     expect(acceso('Incidencias')).toHaveTextContent(/5.*por resolver/);
+    // Conciliación asistida: primero las propuestas claras; cada candidato compara 2025 con 2026 y explica por qué
+    fireEvent.click(acceso('Incidencias'));
+    const filas = within(screen.getByRole('region', { name: 'Incidencias' })).getAllByRole('listitem', { name: /^Fila \d+ de IT1/ });
+    expect(filas.map((li) => li.textContent!.match(/Propuesta clara|Mismo portal, revisar|Sin correspondencia segura/)![0])).toEqual(['Propuesta clara', 'Propuesta clara', 'Propuesta clara', 'Propuesta clara', 'Mismo portal, revisar']);
+    const ferr = filas[4];
+    expect(ferr).toHaveTextContent(/FERRETERÍA SINTÉTICA/);
+    expect(within(ferr).getAllByLabelText(/^Comparación con /)[0]).toHaveTextContent(/NombreDROGUERÍA SINTÉTICAFERRETERÍA SINTÉTICA.*EstadoOcupadoOcupado/);
+    expect(within(ferr).getAllByLabelText(/^Motivos de /)[0]).toHaveTextContent(/Nombre distinto al de Censo 2025: no confirma un cambio de negocio/);
+    expect(ferr).toHaveTextContent(/no confirma que sea el mismo negocio/);
+    fireEvent.click(acceso('Itinerarios'));
     // IT2 se suma a la misma campaña
     fireEvent.click(within(tarjeta('IT2')).getByRole('button', { name: /Incorporar su Excel/ }));
     await confirmar(await incorporar('IT2', archivoItinerario('IT2')));

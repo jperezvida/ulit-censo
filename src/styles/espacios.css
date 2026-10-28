@@ -175,3 +175,9 @@ tr.aviso td { background: #fff6e0; }
 /* C1e-B · Censo analizado en el mapa (sin guardar) */
 .mapa-censo { position: relative; height: min(60vh, 520px); min-height: 320px; border-radius: var(--radio-s); overflow: hidden; border: 1px solid var(--linea); }
 .mapa-censo > div { position: absolute; inset: 0; }
+/* Conciliación asistida: candidatos compactos, comparación desplegable */
+.conc-cands { gap: 6px; border: 0; padding: 0; margin: 6px 0; min-width: 0; }
+.conc-cand { gap: 4px; padding: 6px 8px; min-width: 0; }
+.conc-cand.sel { outline: 2px solid var(--primario, #0b3a8c); }
+.conc-cab { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; overflow-wrap: anywhere; }
+.conc-cand .tabla { font-size: 13px; }
