@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Route, Routes, useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, CheckCircle2, Download, Eye, FlaskConical, HardDrive, Lock, RotateCcw, ShieldCheck, XCircle } from 'lucide-react';
+import { MapPinned, AlertTriangle, ArrowLeft, CheckCircle2, Download, Eye, FlaskConical, HardDrive, Lock, RotateCcw, ShieldCheck, XCircle } from 'lucide-react';
 import { fmt } from '../../components/ui';
 import { useEspacios } from '../../store/espacios';
 import { BASE_INDEXEDDB, ESPACIO_TXT, personaEspacio, type TipoEspacio } from '../../domain/espacios';
@@ -10,6 +10,7 @@ import { useAsistenteEspacio, useSeleccionEspacio } from './estadoAsistenteEspac
 import { MunicipiosCampanas } from './MunicipiosCampanas';
 import { descargar, RespaldoTarjeta } from './Respaldo';
 import { Inicio } from './Inicio';
+import { MapaCensoTemporal } from './MapaCensoTemporal';
 import { PlanificadorEnsayo } from './PlanificadorEnsayo';
 import { CampoEnsayoRutas } from './CampoEnsayo';
 import { comprobarGarantias, VERSION_EMBEBIDA, type ResultadoGarantias } from './garantiasNavegador';
@@ -115,6 +116,8 @@ function AnalisisSinGuardar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const abierta = esp.soloMemoria && esp.fase === 'listo' && !!esp.db;
+  const preparado = useAsistenteEspacio((s) => s.preparado);
+  const [enMapa, setEnMapa] = useState(false);
   return (
     <div className="col" style={{ gap: 14 }}>
       <div className="esp-banda esp-real" role="banner" aria-label="Espacio activo">
@@ -148,7 +151,11 @@ function AnalisisSinGuardar() {
           }}>Empezar el análisis</button>
         </section>
       )}
-      {g?.ok && abierta && (
+      {g?.ok && abierta && preparado && enMapa && <MapaCensoTemporal onVolver={() => { setEnMapa(false); useAsistenteEspacio.getState().set({ etapa: 3 }); }} />}
+      {g?.ok && abierta && preparado && !enMapa && (
+        <div className="fila"><button className="btn primario" onClick={() => setEnMapa(true)}><MapPinned size={15} /> Ver censo en mapa</button><span className="muted">Con los datos analizados en esta pestaña; no se guarda nada.</span></div>
+      )}
+      {g?.ok && abierta && !enMapa && (
         <section className="tarjeta inc-bloque" aria-label="Analizar el censo histórico 2025">
           <h2 style={{ margin: 0 }}>Vista previa del censo histórico 2025</h2>
           <p className="muted">Mismo procedimiento que la incorporación (C1a, C1b, C1c y decisiones de C1d), detenido en la vista previa.</p>

@@ -171,3 +171,7 @@ tr.aviso td { background: #fff6e0; }
 }
 .campo.ux-buscar { flex-direction: row; display: flex; align-items: center; }
 .campo.ux-buscar .input { flex: 1; min-width: 0; }
+
+/* C1e-B · Censo analizado en el mapa (sin guardar) */
+.mapa-censo { position: relative; height: min(60vh, 520px); min-height: 320px; border-radius: var(--radio-s); overflow: hidden; border: 1px solid var(--linea); }
+.mapa-censo > div { position: absolute; inset: 0; }
