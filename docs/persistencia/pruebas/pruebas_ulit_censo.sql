@@ -121,8 +121,10 @@ select pg_temp.falla($q$select public.ulit_censo_aplicar('ensayo-prueba', 5, 'x'
 select pg_temp.falla($q$select public.ulit_censo_aplicar('ensayo-prueba', 5, 'x', '[{"c":"observaciones","id":"ensayo-obs-nueva","v":{"id":"ensayo-obs-nueva","campanaId":"ensayo-camp-2025"}}]')$q$, '42501');
 select pg_temp.falla($q$select public.ulit_censo_aplicar('ensayo-prueba', 5, 'x', '[{"c":"vinculos","id":"vin-ensayo-reg-1","v":{"id":"vin-ensayo-reg-1","origen":{"tipo":"registro","id":"ensayo-reg-1"},"localId":null}}]')$q$, '42501');
 select pg_temp.falla($q$select public.ulit_censo_aplicar('ensayo-prueba', 5, 'x', '[{"c":"ocupaciones","id":"ensayo-ocu-2025","v":{"id":"ensayo-ocu-2025","localId":"otro","desdeCampanaId":"ensayo-camp-2025","hastaCampanaId":"ensayo-camp-2026"}}]')$q$, '42501');
--- Configuración del espacio (raíz): solo el contador; JSON manipulado: identificador que no coincide
-select pg_temp.falla($q$select public.ulit_censo_aplicar('ensayo-prueba', 5, 'x', '[{"c":"_raiz","id":"raiz","v":{"version":12,"meta":{"espacio":"ensayo","espacioId":"otro"}}}]')$q$, '42501');
+-- Una raíz de otro espacio se rechaza por identidad antes de comprobar los permisos.
+select pg_temp.falla($q$select public.ulit_censo_aplicar('ensayo-prueba', 5, 'x', '[{"c":"_raiz","id":"raiz","v":{"version":12,"meta":{"espacio":"ensayo","espacioId":"ensayo-otro"}}}]')$q$, '22023');
+-- Con identidad correcta, una revisora NO puede cambiar la configuración del espacio.
+select pg_temp.falla($q$select public.ulit_censo_aplicar('ensayo-prueba', 5, 'x', '[{"c":"_raiz","id":"raiz","v":{"version":12,"meta":{"espacio":"ensayo","espacioId":"ensayo-prueba","ajuste":true}}}]')$q$, '42501');
 select pg_temp.falla($q$select public.ulit_censo_aplicar('ensayo-prueba', 5, 'x', '[{"c":"observaciones","id":"ensayo-obs-a","v":{"id":"ensayo-obs-b","campanaId":"ensayo-camp-2026"}}]')$q$, '22023');
 select pg_temp.falla($q$select public.ulit_censo_aplicar('ensayo-prueba', 5, 'x', '[{"c":"observaciones","id":"ensayo-obs-a","v":[1,2]}]')$q$, '22023');
 -- Lo que sí puede la revisión: trabajo de 2026 y el contador de la raíz, en la misma operación
