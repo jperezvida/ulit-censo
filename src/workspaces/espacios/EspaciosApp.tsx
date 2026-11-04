@@ -14,6 +14,7 @@ import { MapaCensoTemporal } from './MapaCensoTemporal';
 import { PlanificadorEnsayo } from './PlanificadorEnsayo';
 import { CampoEnsayoRutas } from './CampoEnsayo';
 import { OficinaEnsayoRutas } from './OficinaEnsayo';
+import { AccesoServidor } from './AccesoServidor';
 import { comprobarGarantias, VERSION_EMBEBIDA, type ResultadoGarantias } from './garantiasNavegador';
 import { entornoDe } from '../../domain/garantias';
 import '../../styles/datos.css';
@@ -89,6 +90,7 @@ function Selector() {
           </div>
         )}
       </div>
+      <AccesoServidor />
     </div>
   );
 }

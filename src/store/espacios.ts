@@ -10,6 +10,7 @@ import { comprobarRespaldo, crearRespaldo, type Respaldo } from '../domain/respa
 import { cargarInstantaneaMedina } from '../data/callejero';
 import type { ResultadoInterpretacion } from '../domain/xlsx/interpretacion';
 import type { Id, Rol } from '../domain/types';
+import { AlmacenSupabase } from './almacenSupabase';
 
 /**
  * C1e · Almacén de los ESPACIOS AISLADOS (ensayo y datos reales). Es independiente del store de la
@@ -75,7 +76,16 @@ interface Estado {
    * Ninguna operación escribe en el navegador; al cerrar la pestaña no queda nada.
    */
   soloMemoria: boolean;
+  /**
+   * Persistencia REMOTA (Supabase, esquema `ulit_censo`). Null = IndexedDB de este navegador (demostración
+   * aparte; ensayo local). Con un almacén remoto, todas las escrituras de este store van al servidor.
+   */
+  remoto: AlmacenSupabase | null;
   abrir: (tipo: TipoEspacio) => Promise<void>;
+  /** Abre un espacio del servidor (la sesión de Supabase Auth ya iniciada en el cliente del almacén). */
+  abrirRemoto: (almacen: AlmacenSupabase) => Promise<void>;
+  /** Vuelve a leer el espacio abierto desde donde se guarda (IndexedDB o servidor). */
+  reabrir: () => Promise<void>;
   abrirEnMemoria: (tipo: TipoEspacio, persona: { nombre: string; roles: Rol[] }) => Promise<{ ok: boolean; error?: string }>;
   cerrar: () => void;
   /** `incluirMedina` (G3): Medina del Campo con su callejero OSM es opcional (por defecto, sí). */
@@ -120,6 +130,23 @@ async function escribirVerificado(tipo: TipoEspacio, db: BaseDatos, huellaEspera
     throw new Error('La comprobación tras guardar ha fallado (lo leído no coincide con lo escrito). Se ha restablecido el estado anterior.');
   }
   return h;
+}
+
+/**
+ * Guarda el nuevo estado donde corresponda: en el servidor (solo las entidades cambiadas, con la versión
+ * esperada; un conflicto no sobrescribe nada) o en IndexedDB con escritura verificada. Devuelve la huella.
+ */
+async function persistir(get: () => Estado, tipo: TipoEspacio, antes: BaseDatos | null, db: BaseDatos, huellaAntes: string | null, etiqueta: string): Promise<string> {
+  const remoto = get().remoto;
+  if (!remoto) return escribirVerificado(tipo, db, huellaAntes);
+  const problemas = verificarEspacio(db, tipo);
+  if (problemas.length) throw new Error(`La base no supera la verificación del espacio: ${problemas[0]}`);
+  // Hasta el trabajo con varias personas (2027), solo la persona responsable del espacio escribe desde aquí.
+  if (remoto.info && personaEspacio(db)?.id !== remoto.info.personaId) {
+    throw new Error(`Esta cuenta representa a «${remoto.info.personaId}», no a la persona responsable del espacio: no se guarda.`);
+  }
+  await remoto.guardar(antes, db, etiqueta);
+  return huellaBase(db);
 }
 
 /** Evalúa los requisitos para incorporar (puros: se muestran en pantalla y se vuelven a comprobar al confirmar). */
@@ -183,10 +210,36 @@ export function requisitosIncorporacion(p: {
 }
 
 export const useEspacios = create<Estado>((set, get) => ({
-  tipo: null, db: null, fase: 'cerrado', huella: null, respaldoVerificado: null, almacenamiento: null, ocupado: null, soloMemoria: false,
+  tipo: null, db: null, fase: 'cerrado', huella: null, respaldoVerificado: null, almacenamiento: null, ocupado: null, soloMemoria: false, remoto: null,
+
+  abrirRemoto: async (almacen) => {
+    set({ tipo: null, db: null, fase: 'cargando', error: undefined, huella: null, respaldoVerificado: null, soloMemoria: false, remoto: almacen });
+    try {
+      const { db: leido, info } = await almacen.leer();
+      set({ tipo: info.tipo });
+      if (!leido) return set({ fase: 'sin-crear' });
+      let db = leido;
+      if (db.version !== VERSION_DATOS) {
+        if (db.version === 9 || db.version === 10) db = migrarALaActual(db).db;
+        else return set({ fase: 'error', error: `Versión de datos no compatible (v${db.version}).` });
+      }
+      const problemas = verificarEspacio(db, info.tipo);
+      if (problemas.length) return set({ fase: 'error', error: `No se abre: ${problemas.slice(0, 3).join(' · ')}` });
+      // La migración del modelo se guarda al primer cambio: la base remota de partida es la leída.
+      set({ db, huella: huellaBase(db), fase: 'listo' });
+    } catch (e) {
+      set({ fase: 'error', error: texto(e) });
+    }
+  },
+
+  reabrir: async () => {
+    const { remoto, tipo } = get();
+    if (remoto) return get().abrirRemoto(remoto);
+    if (tipo) return get().abrir(tipo);
+  },
 
   abrir: async (tipo) => {
-    set({ tipo, db: null, fase: 'cargando', error: undefined, huella: null, respaldoVerificado: null, soloMemoria: false });
+    set({ tipo, db: null, fase: 'cargando', error: undefined, huella: null, respaldoVerificado: null, soloMemoria: false, remoto: null });
     try {
       const st = almacen(tipo);
       let db = await idbGet<BaseDatos>(CLAVE_DB, st);
@@ -206,10 +259,10 @@ export const useEspacios = create<Estado>((set, get) => ({
     }
   },
 
-  cerrar: () => set({ tipo: null, db: null, fase: 'cerrado', huella: null, respaldoVerificado: null, error: undefined, soloMemoria: false }),
+  cerrar: () => set({ tipo: null, db: null, fase: 'cerrado', huella: null, respaldoVerificado: null, error: undefined, soloMemoria: false, remoto: null }),
 
   abrirEnMemoria: async (tipo, persona) => {
-    set({ tipo, db: null, fase: 'cargando', error: undefined, huella: null, respaldoVerificado: null, soloMemoria: true });
+    set({ tipo, db: null, fase: 'cargando', error: undefined, huella: null, respaldoVerificado: null, soloMemoria: true, remoto: null });
     try {
       const inst = await cargarInstantaneaMedina();
       if (!inst.ok) {
@@ -234,14 +287,14 @@ export const useEspacios = create<Estado>((set, get) => ({
     if (!tipo) return { ok: false, error: 'No hay espacio seleccionado.' };
     set({ ocupado: 'Creando el espacio…' });
     try {
-      const st = almacen(tipo);
-      if (await idbGet(CLAVE_DB, st)) return { ok: false, error: 'El espacio ya existe: no se sobrescribe.' };
+      const remoto = get().remoto;
+      if (remoto ? remoto.version > 0 : await idbGet(CLAVE_DB, almacen(tipo))) return { ok: false, error: 'El espacio ya existe: no se sobrescribe.' };
       const conMedina = opciones.incluirMedina !== false;
       const inst = conMedina ? await cargarInstantaneaMedina() : null;
       if (inst && !inst.ok) return { ok: false, error: `Hace falta el callejero real de Medina del Campo (instantánea OSM del proyecto). ${inst.motivo ?? ''}`.trim() };
       const espacioId = globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
       const db = crearBaseEspacio(tipo, { persona, calles: inst?.ok ? inst.calles : [], detalleCallejero: inst?.ok ? inst.detalle : '', espacioId, incluirMedina: conMedina });
-      const huella = await escribirVerificado(tipo, db, null);
+      const huella = await persistir(get, tipo, null, db, null, 'Creación del espacio');
       set({ db, huella, fase: 'listo', respaldoVerificado: null });
       return { ok: true };
     } catch (e) {
@@ -292,7 +345,8 @@ export const useEspacios = create<Estado>((set, get) => ({
     if (coincide) {
       const v: RespaldoVerificado = { huella: huella!, fecha: new Date().toISOString(), archivo };
       try {
-        await idbSet(CLAVE_VERIFICADO, v, almacen(tipo));
+        // En un espacio remoto la comprobación vale para esta sesión: no se escribe en el navegador.
+        if (!get().remoto) await idbSet(CLAVE_VERIFICADO, v, almacen(tipo));
       } catch (e) {
         return { ok: false, error: `El respaldo es correcto, pero no se ha podido registrar la comprobación: ${texto(e)}` };
       }
@@ -312,9 +366,10 @@ export const useEspacios = create<Estado>((set, get) => ({
     }
     set({ ocupado: 'Restaurando el respaldo…' });
     try {
-      const st = almacen(tipo);
-      if (db) await idbSet(CLAVE_RESPALDO_INTERNO, { db, fecha: new Date().toISOString(), motivo: 'Antes de restaurar un respaldo externo' }, st);
-      const h = await escribirVerificado(tipo, c.db, huella);
+      const remoto = get().remoto;
+      if (remoto) await remoto.crearCopia('Automática antes de restaurar un respaldo externo');
+      else if (db) await idbSet(CLAVE_RESPALDO_INTERNO, { db, fecha: new Date().toISOString(), motivo: 'Antes de restaurar un respaldo externo' }, almacen(tipo));
+      const h = await persistir(get, tipo, db, c.db, huella, 'Restauración de un respaldo externo');
       set({ db: c.db, huella: h, fase: 'listo' });
       return { ok: true };
     } catch (e) {
@@ -339,7 +394,7 @@ export const useEspacios = create<Estado>((set, get) => ({
       const persona = personaEspacio(db)!;
       const r = aplicarIncorporacion(db, resultado, destino, decisiones, plan, { porId: persona.id });
       if (r.sinCambios) return { ok: false, error: 'Este archivo ya estaba incorporado: no se ha duplicado nada.' };
-      const h = await escribirVerificado(tipo, r.db, huella);
+      const h = await persistir(get, tipo, db, r.db, huella, `Incorporación de ${plan.archivo.nombre}`);
       set({ db: r.db, huella: h });
       return { ok: true, importacionId: r.importacionId, campanaId: r.campanaId, creadas: r.creadas };
     } catch (e) {
@@ -356,7 +411,7 @@ export const useEspacios = create<Estado>((set, get) => ({
     set({ ocupado: 'Deshaciendo…' });
     try {
       const nueva = deshacerIncorporacion(db, importacionId, personaEspacio(db)!.id);
-      const h = await escribirVerificado(tipo, nueva, huella);
+      const h = await persistir(get, tipo, db, nueva, huella, 'Deshacer una incorporación');
       set({ db: nueva, huella: h });
       return { ok: true };
     } catch (e) {
@@ -405,7 +460,7 @@ async function guardarCambio(
       set({ db: r.db });
       return { ok: true, id: r.id };
     }
-    const h = await escribirVerificado(tipo, r.db, huella);
+    const h = await persistir(get, tipo, db, r.db, huella, mensaje.replace(/…$/, ''));
     set({ db: r.db, huella: h });
     return { ok: true, id: r.id };
   } catch (e) {

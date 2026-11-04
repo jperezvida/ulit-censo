@@ -1,3 +1,4 @@
+import { configServidor } from '../../store/clienteSupabase';
 import { entornoDe, esArchivoVerificable, evaluarCsp, evaluarHuellas, evaluarProteccion, evaluarVersion, type Garantia, type VersionServida } from '../../domain/garantias';
 
 /** Versión incrustada al compilar (vite.config.ts). */
@@ -46,7 +47,7 @@ export async function comprobarGarantias(hostname = location.hostname): Promise<
   } catch {
     csp = null;
   }
-  garantias.push(evaluarCsp(csp));
+  garantias.push(evaluarCsp(csp, configServidor()?.origen));
   // 3. Versión y huellas de lo publicado.
   let servida: VersionServida | null = null;
   try {

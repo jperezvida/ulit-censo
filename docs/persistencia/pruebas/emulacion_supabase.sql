@@ -18,5 +18,6 @@ insert into auth.users values
   ('00000000-0000-0000-0000-00000000000a', 'admin.base@ejemplo.invalid'),
   ('00000000-0000-0000-0000-00000000000c', 'coordinadora@ejemplo.invalid'),
   ('00000000-0000-0000-0000-00000000000d', 'lectora@ejemplo.invalid'),
-  ('00000000-0000-0000-0000-00000000000e', 'revisora@ejemplo.invalid');
+  ('00000000-0000-0000-0000-00000000000e', 'revisora@ejemplo.invalid'),
+  ('00000000-0000-0000-0000-00000000000f', 'investigadora@ejemplo.invalid');
 insert into public.perfiles values ('00000000-0000-0000-0000-00000000000a', 'admin');
