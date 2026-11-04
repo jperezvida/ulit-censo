@@ -15,7 +15,7 @@ import { PlanificadorEnsayo } from './PlanificadorEnsayo';
 import { CampoEnsayoRutas } from './CampoEnsayo';
 import { OficinaEnsayoRutas } from './OficinaEnsayo';
 import { AccesoServidor } from './AccesoServidor';
-import { borrarSeleccionRemota, leerSeleccionRemota } from '../../store/seleccionRemota';
+import { borrarSeleccionRemota, leerSeleccionRemota, seleccionRealRemota } from '../../store/seleccionRemota';
 import { comprobarGarantias, VERSION_EMBEBIDA, type ResultadoGarantias } from './garantiasNavegador';
 import { entornoDe } from '../../domain/garantias';
 import '../../styles/datos.css';
@@ -177,7 +177,10 @@ function EspacioPage() {
   const esp = useEspacios();
   const reiniciarAsistente = useAsistenteEspacio((s) => s.reiniciar);
   const nav = useNavigate();
-  const bloqueado = tipo === 'real' && !REAL_PERSISTENTE_PERMITIDO();
+  // La web pública nunca usa IndexedDB real. Puede abrir un espacio remoto real
+  // exclusivamente tras la comprobación de sesión y membresía en la RPC del servidor.
+  const bloqueado = tipo === 'real' && !REAL_PERSISTENTE_PERMITIDO() &&
+    !seleccionRealRemota(tipo, leerSeleccionRemota());
   useEffect(() => {
     if (!tipo) return void nav('/espacios', { replace: true });
     if (bloqueado) return;
