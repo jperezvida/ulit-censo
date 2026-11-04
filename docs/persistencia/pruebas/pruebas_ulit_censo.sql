@@ -39,7 +39,7 @@ select pg_temp.falla($q$select public.ulit_censo_leer('ensayo-prueba')$q$, '2800
 \echo '3 · Carga inicial y cambios con versión esperada; conflicto si otra pestaña guardó antes'
 set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000c';
 do $$ begin assert public.ulit_censo_aplicar('ensayo-prueba', 0, 'Carga inicial', '[
-  {"c":"_raiz","id":"raiz","v":{"version":12,"meta":{"espacio":"ensayo","espacioId":"prueba"}}},
+  {"c":"_raiz","id":"raiz","v":{"version":12,"meta":{"espacio":"ensayo","espacioId":"ensayo-prueba"}}},
   {"c":"locales","id":"ensayo-loc-1","v":{"id":"ensayo-loc-1","municipioId":"ensayo-mun-1"}},
   {"c":"revisiones","id":"ensayo-camp-2026|ensayo-loc-1","v":{"campanaId":"ensayo-camp-2026","localId":"ensayo-loc-1","campo":"terminado","categorizacion":"pendiente"}}]') = 1; end $$;
 do $$ begin assert public.ulit_censo_aplicar('ensayo-prueba', 1, 'Clasificación', '[
@@ -50,7 +50,8 @@ do $$ begin assert (public.ulit_censo_leer('ensayo-prueba') ->> 'version')::int 
 
 \echo '4 · Todo o nada: un cambio inválido no deja nada aplicado'
 select pg_temp.falla($q$select public.ulit_censo_aplicar('ensayo-prueba', 2, 'Mezcla', '[{"c":"locales","id":"ensayo-loc-2","v":{"id":"ensayo-loc-2"}},{"c":"tabla_inventada","id":"x","v":{}}]')$q$, '22023');
-select pg_temp.falla($q$select public.ulit_censo_aplicar('ensayo-prueba', 2, 'Raíz ajena', '[{"c":"_raiz","id":"raiz","v":{"meta":{"espacio":"real"}}}]')$q$, '22023');
+select pg_temp.falla($q$select public.ulit_censo_aplicar('ensayo-prueba', 2, 'Raíz ajena', '[{"c":"_raiz","id":"raiz","v":{"meta":{"espacio":"real","espacioId":"ensayo-prueba"}}}]')$q$, '22023');
+select pg_temp.falla($q$select public.ulit_censo_aplicar('ensayo-prueba', 2, 'Otro espacio mismo tipo', '[{"c":"_raiz","id":"raiz","v":{"meta":{"espacio":"ensayo","espacioId":"ensayo-otro"}}}]')$q$, '22023');
 select pg_temp.falla($q$select public.ulit_censo_aplicar('ensayo-prueba', 2, 'Repetida', '[{"c":"locales","id":"a","v":{}},{"c":"locales","id":"a","v":{}}]')$q$, '22023');
 do $$ begin assert (public.ulit_censo_leer('ensayo-prueba') -> 'entidades' -> 'locales' -> 'ensayo-loc-2') is null; end $$;
 
@@ -126,7 +127,7 @@ select pg_temp.falla($q$select public.ulit_censo_aplicar('ensayo-prueba', 5, 'x'
 select pg_temp.falla($q$select public.ulit_censo_aplicar('ensayo-prueba', 5, 'x', '[{"c":"observaciones","id":"ensayo-obs-a","v":[1,2]}]')$q$, '22023');
 -- Lo que sí puede la revisión: trabajo de 2026 y el contador de la raíz, en la misma operación
 do $$ begin assert public.ulit_censo_aplicar('ensayo-prueba', 5, 'Oficina 2026', '[
-  {"c":"_raiz","id":"raiz","v":{"version":12,"secuencia":7,"meta":{"espacio":"ensayo","espacioId":"prueba"}}},
+  {"c":"_raiz","id":"raiz","v":{"version":12,"secuencia":7,"meta":{"espacio":"ensayo","espacioId":"ensayo-prueba"}}},
   {"c":"observaciones","id":"ensayo-obs-2026","v":{"id":"ensayo-obs-2026","campanaId":"ensayo-camp-2026","localId":"ensayo-loc-1"}},
   {"c":"digital","id":"ensayo-neg-1|ensayo-camp-2026","v":{"negocioId":"ensayo-neg-1","campanaId":"ensayo-camp-2026","estado":"borrador"}}]') = 6; end $$;
 set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000f';  -- investigadora
