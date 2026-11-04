@@ -1,0 +1,34 @@
+name: PR ULIT Censo - pruebas sin despliegue
+on:
+  push:
+    branches:
+      - claude/persistencia-supabase-diseno
+  pull_request:
+    branches:
+      - claude/oficina-espacios-it1
+permissions:
+  contents: read
+concurrency:
+  group: censo-ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: TypeScript
+        run: npm run typecheck
+      - name: Pruebas unitarias
+        run: npm test
+      - name: Control de datos reales
+        run: npm run comprobar-datos
+      - name: Compilación
+        run: npm run build
+      - name: PostgreSQL local aislado (sin red ni producción)
+        run: docker run --rm --network none -v "$GITHUB_WORKSPACE:/work:ro" -w /work postgres:16 bash docs/persistencia/pruebas/ejecutar.sh /tmp/ulit-censo-ci
