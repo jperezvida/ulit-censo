@@ -161,5 +161,29 @@ select pg_temp.falla($q$select public.ulit_censo_lote_subir('ensayo-prueba', gen
 reset role; set role service_role;
 select pg_temp.falla($q$select public.ulit_censo_aplicar('ensayo-prueba', 9, 'x', '[]')$q$, '42501');
 reset role;
+
+\echo '11 · Protección indirecta: locales y negocios ya vinculados al histórico 2025'
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000c';
+do $$ begin assert public.ulit_censo_aplicar('ensayo-prueba', 9, 'Negocio de 2025', '[
+  {"c":"negocios","id":"ensayo-neg-25","v":{"id":"ensayo-neg-25","nombre":"DROGUERÍA SINTÉTICA"}},
+  {"c":"ocupaciones","id":"ensayo-ocu-n25","v":{"id":"ensayo-ocu-n25","localId":"ensayo-loc-1","negocioId":"ensayo-neg-25","desdeCampanaId":"ensayo-camp-2025","hastaCampanaId":"ensayo-camp-2025"}}]') = 10; end $$;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000e';  -- revisora
+select pg_temp.falla($q$select public.ulit_censo_aplicar('ensayo-prueba', 10, 'x', '[{"c":"locales","id":"ensayo-loc-1","v":{"id":"ensayo-loc-1","municipioId":"ensayo-mun-1","estado":"desaparecido"}}]')$q$, '42501');
+select pg_temp.falla($q$select public.ulit_censo_aplicar('ensayo-prueba', 10, 'x', '[{"c":"locales","id":"ensayo-loc-1","v":null}]')$q$, '42501');
+select pg_temp.falla($q$select public.ulit_censo_aplicar('ensayo-prueba', 10, 'x', '[{"c":"negocios","id":"ensayo-neg-25","v":{"id":"ensayo-neg-25","nombre":"MANIPULADO"}}]')$q$, '42501');
+select pg_temp.falla($q$select public.ulit_censo_aplicar('ensayo-prueba', 10, 'x', '[{"c":"negocios","id":"ensayo-neg-25","v":null}]')$q$, '42501');
+-- Lo nuevo de 2026 sí: alta de local y negocio, y después su corrección
+do $$ begin assert public.ulit_censo_aplicar('ensayo-prueba', 10, 'Alta 2026', '[
+  {"c":"locales","id":"ensayo-loc-26","v":{"id":"ensayo-loc-26","municipioId":"ensayo-mun-1"}},
+  {"c":"negocios","id":"ensayo-neg-26","v":{"id":"ensayo-neg-26","nombre":"FERRETERÍA SINTÉTICA"}},
+  {"c":"ocupaciones","id":"ensayo-ocu-26","v":{"id":"ensayo-ocu-26","localId":"ensayo-loc-26","negocioId":"ensayo-neg-26","desdeCampanaId":"ensayo-camp-2026","hastaCampanaId":"ensayo-camp-2026"}}]') = 11; end $$;
+do $$ begin assert public.ulit_censo_aplicar('ensayo-prueba', 11, 'Corrección 2026', '[
+  {"c":"negocios","id":"ensayo-neg-26","v":{"id":"ensayo-neg-26","nombre":"FERRETERÍA SINTÉTICA S.L."}},
+  {"c":"locales","id":"ensayo-loc-26","v":{"id":"ensayo-loc-26","municipioId":"ensayo-mun-1","nota":"corregido"}}]') = 12; end $$;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000c';  -- coordinación sí puede corregir el histórico
+do $$ begin assert public.ulit_censo_aplicar('ensayo-prueba', 12, 'Corrección de coordinación', '[{"c":"negocios","id":"ensayo-neg-25","v":{"id":"ensayo-neg-25","nombre":"DROGUERÍA SINTÉTICA (corregido)"}}]') = 13; end $$;
+reset role;
 \echo 'TODAS LAS PRUEBAS SUPERADAS'
+
 

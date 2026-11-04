@@ -4,6 +4,7 @@ import { Server } from 'lucide-react';
 import { clienteServidor } from '../../store/clienteSupabase';
 import { AlmacenSupabase, misEspacios } from '../../store/almacenSupabase';
 import { useEspacios } from '../../store/espacios';
+import { borrarSeleccionRemota } from '../../store/seleccionRemota';
 
 type Espacio = Awaited<ReturnType<typeof misEspacios>>[number];
 
@@ -35,7 +36,7 @@ export function AccesoServidor() {
     setClave('');
     setSesion(data.user?.email ?? null);
   };
-  const salir = async () => { await cliente.auth.signOut(); useEspacios.getState().cerrar(); setSesion(null); setEspacios(null); };
+  const salir = async () => { await cliente.auth.signOut(); borrarSeleccionRemota(); useEspacios.getState().cerrar(); setSesion(null); setEspacios(null); };
   const abrir = async (x: Espacio) => {
     await useEspacios.getState().abrirRemoto(new AlmacenSupabase(cliente, x.espacio_id));
     nav(`/espacios/${x.tipo}`);

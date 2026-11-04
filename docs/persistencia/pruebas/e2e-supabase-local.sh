@@ -17,10 +17,10 @@ ESTADO=$(npx -y supabase@2.58.5 status -o env)
 URL=$(echo "$ESTADO" | sed -n 's/^API_URL="\(.*\)"/\1/p'); PUB=$(echo "$ESTADO" | sed -n 's/^PUBLISHABLE_KEY="\(.*\)"/\1/p'); SEC=$(echo "$ESTADO" | sed -n 's/^SECRET_KEY="\(.*\)"/\1/p'); DB=$(echo "$ESTADO" | sed -n 's/^DB_URL="\(.*\)"/\1/p')
 q() { psql "$DB" -v ON_ERROR_STOP=1 -q "$@"; }
 q -f "$P/pruebas/ulit_base_muestra.sql"
-ANTES=$(q -At -f "$P/pruebas/huella_ulit_base.sql")
+ANTES=$(q -At -f "$P/sql/20261104_9101_huella_ulit_base.sql")
 q -c "select 1 from pg_namespace where nspname = 'ulit_censo'" -At | grep -q 1 && q -f "$P/sql/20261104_9000_ulit_censo_retirada.sql" >/dev/null 2>&1
 q -f "$P/sql/20261104_0001_ulit_censo_esquema.sql"; q -f "$P/sql/20261104_0002_ulit_censo_operaciones.sql"
-[ "$(q -At -f "$P/pruebas/huella_ulit_base.sql")" = "$ANTES" ] && echo "✓ ULIT base intacto tras aplicar 0001 y 0002"
+[ "$(q -At -f "$P/sql/20261104_9101_huella_ulit_base.sql")" = "$ANTES" ] && echo "✓ ULIT base intacto tras aplicar 0001 y 0002"
 cd "$R"
 env -u HTTPS_PROXY -u HTTP_PROXY -u https_proxy -u http_proxy NO_PROXY=127.0.0.1,localhost \
   ULIT_CENSO_SUPABASE_LOCAL_URL="$URL" ULIT_CENSO_SUPABASE_LOCAL_PUBLICA="$PUB" ULIT_CENSO_SUPABASE_LOCAL_SECRETA="$SEC" ULIT_CENSO_SUPABASE_LOCAL_PSQL="$DB" \

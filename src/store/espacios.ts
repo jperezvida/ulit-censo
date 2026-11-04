@@ -11,6 +11,8 @@ import { cargarInstantaneaMedina } from '../data/callejero';
 import type { ResultadoInterpretacion } from '../domain/xlsx/interpretacion';
 import type { Id, Rol } from '../domain/types';
 import { AlmacenSupabase } from './almacenSupabase';
+import { clienteServidor } from './clienteSupabase';
+import { guardarSeleccionRemota, type SeleccionRemota } from './seleccionRemota';
 
 /**
  * C1e · Almacén de los ESPACIOS AISLADOS (ensayo y datos reales). Es independiente del store de la
@@ -86,6 +88,11 @@ interface Estado {
   abrirRemoto: (almacen: AlmacenSupabase) => Promise<void>;
   /** Vuelve a leer el espacio abierto desde donde se guarda (IndexedDB o servidor). */
   reabrir: () => Promise<void>;
+  /**
+   * Tras recargar la página: vuelve a abrir el espacio del servidor elegido en esta pestaña con la sesión de
+   * Supabase Auth. Sin sesión o sin conexión configurada, queda en error: nunca abre IndexedDB en su lugar.
+   */
+  restaurarRemoto: (sel: SeleccionRemota) => Promise<void>;
   abrirEnMemoria: (tipo: TipoEspacio, persona: { nombre: string; roles: Rol[] }) => Promise<{ ok: boolean; error?: string }>;
   cerrar: () => void;
   /** `incluirMedina` (G3): Medina del Campo con su callejero OSM es opcional (por defecto, sí). */
@@ -217,6 +224,7 @@ export const useEspacios = create<Estado>((set, get) => ({
     try {
       const { db: leido, info } = await almacen.leer();
       set({ tipo: info.tipo });
+      guardarSeleccionRemota({ espacioId: almacen.espacioId, tipo: info.tipo });
       if (!leido) return set({ fase: 'sin-crear' });
       let db = leido;
       if (db.version !== VERSION_DATOS) {
@@ -229,6 +237,21 @@ export const useEspacios = create<Estado>((set, get) => ({
       set({ db, huella: huellaBase(db), fase: 'listo' });
     } catch (e) {
       set({ fase: 'error', error: texto(e) });
+    }
+  },
+
+  restaurarRemoto: async (sel) => {
+    set({ tipo: sel.tipo, db: null, fase: 'cargando', error: undefined, huella: null, respaldoVerificado: null, soloMemoria: false, remoto: null });
+    const fallo = (m: string) => set({ fase: 'error', error: `${m} No se ha abierto el espacio guardado en este navegador.` });
+    try {
+      const cliente = clienteServidor();
+      if (!cliente) return fallo('Este espacio está en el servidor, pero esta versión no tiene configurada la conexión.');
+      const { data } = await cliente.auth.getSession();
+      if (!data.session) return fallo('La sesión del servidor ha terminado: vuelva al selector de espacios e inicie sesión de nuevo.');
+      await get().abrirRemoto(new AlmacenSupabase(cliente, sel.espacioId));
+      if (get().tipo !== sel.tipo) fallo('El espacio del servidor no es del tipo indicado en la dirección.');
+    } catch (e) {
+      fallo(texto(e));
     }
   },
 

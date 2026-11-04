@@ -15,6 +15,7 @@ import { PlanificadorEnsayo } from './PlanificadorEnsayo';
 import { CampoEnsayoRutas } from './CampoEnsayo';
 import { OficinaEnsayoRutas } from './OficinaEnsayo';
 import { AccesoServidor } from './AccesoServidor';
+import { borrarSeleccionRemota, leerSeleccionRemota } from '../../store/seleccionRemota';
 import { comprobarGarantias, VERSION_EMBEBIDA, type ResultadoGarantias } from './garantiasNavegador';
 import { entornoDe } from '../../domain/garantias';
 import '../../styles/datos.css';
@@ -69,14 +70,14 @@ function Selector() {
           <span className="muted">Seleccione el XLSX auténtico, analícelo en este navegador y consulte la vista previa. No se sube, no se incorpora y no se guarda ningún registro.</span>
           <span className="mono muted">solo en memoria</span>
         </Link>
-        <Link to="/espacios/ensayo" className="tarjeta esp-tarjeta esp-ensayo">
+        <Link to="/espacios/ensayo" className="tarjeta esp-tarjeta esp-ensayo" onClick={borrarSeleccionRemota}>
           <FlaskConical size={22} />
           <b>{ESPACIO_TXT.ensayo.nombre}</b>
           <span className="muted">{ESPACIO_TXT.ensayo.descripcion}</span>
           <span className="mono muted">IndexedDB «{BASE_INDEXEDDB.ensayo}»</span>
         </Link>
         {realPersistente ? (
-          <Link to="/espacios/real" className="tarjeta esp-tarjeta esp-real">
+          <Link to="/espacios/real" className="tarjeta esp-tarjeta esp-real" onClick={borrarSeleccionRemota}>
             <ShieldCheck size={22} />
             <b>{ESPACIO_TXT.real.nombre}</b>
             <span className="muted">{ESPACIO_TXT.real.descripcion}</span>
@@ -180,7 +181,17 @@ function EspacioPage() {
   useEffect(() => {
     if (!tipo) return void nav('/espacios', { replace: true });
     if (bloqueado) return;
-    if (esp.tipo !== tipo || esp.soloMemoria) {
+    // Espacio del servidor elegido en esta pestaña: se restaura desde el servidor (nunca desde IndexedDB).
+    const remota = leerSeleccionRemota();
+    if (remota && remota.tipo === tipo) {
+      if (esp.remoto?.espacioId !== remota.espacioId) {
+        reiniciarAsistente();
+        useSeleccionEspacio.getState().reiniciar();
+        void esp.restaurarRemoto(remota);
+      }
+      return;
+    }
+    if (esp.tipo !== tipo || esp.soloMemoria || esp.remoto) {
       reiniciarAsistente();
       useSeleccionEspacio.getState().reiniciar();
       void esp.abrir(tipo);
@@ -199,6 +210,7 @@ function EspacioPage() {
         {tipo === 'real' ? <ShieldCheck size={18} /> : <FlaskConical size={18} />}
         <b>{ESPACIO_TXT[tipo].nombre.toUpperCase()}</b>
         <span>{tipo === 'real' ? 'Datos auténticos' : 'Solo archivos SINTÉTICOS'}</span>
+        <span className="chip" aria-label="Dónde se guarda">{esp.remoto ? `Servidor · ${esp.remoto.espacioId}` : 'Este navegador (IndexedDB)'}</span>
       </div>
       {esp.fase === 'cargando' && <div className="t-info" role="status">Abriendo el espacio…</div>}
       {esp.fase === 'error' && <div className="t-info error" role="alert"><AlertTriangle size={15} /> {esp.error}</div>}

@@ -73,6 +73,7 @@ create table ulit_censo.entidad (
 create index entidad_campana on ulit_censo.entidad (espacio_id, campana_id) where campana_id is not null;
 create index entidad_itinerario on ulit_censo.entidad (espacio_id, itinerario_id) where itinerario_id is not null;
 create index entidad_local on ulit_censo.entidad (espacio_id, local_id) where local_id is not null;
+create index entidad_negocio on ulit_censo.entidad (espacio_id, (valor ->> 'negocioId')) where coleccion = 'ocupaciones';
 
 -- Registro de operaciones (una por guardado): quién, cuándo, qué etiqueta y qué versión produjo.
 create table ulit_censo.operacion (

@@ -148,6 +148,26 @@ language sql immutable set search_path = '' as $$
     else array[]::text[] end;
 $$;
 
+-- ¿Figura este local o negocio en alguna campaña histórica (según lo guardado)?
+create function ulit_censo.en_historico(p_espacio text, p_c text, p_id text) returns boolean
+language sql stable security definer set search_path = '' as $$
+  with historicas as (
+    select id from ulit_censo.entidad where espacio_id = p_espacio and coleccion = 'campanas' and valor ->> 'tipo' = 'historico-importado'
+  )
+  select case p_c
+    when 'locales' then exists (
+      select 1 from ulit_censo.entidad e
+       where e.espacio_id = p_espacio and e.local_id = p_id
+         and ((e.coleccion = 'observaciones' and e.campana_id in (select id from historicas))
+           or (e.coleccion = 'ocupaciones' and e.valor ->> 'desdeCampanaId' in (select id from historicas))))
+    when 'negocios' then exists (
+      select 1 from ulit_censo.entidad e
+       where e.espacio_id = p_espacio
+         and ((e.coleccion = 'ocupaciones' and e.valor ->> 'negocioId' = p_id and e.valor ->> 'desdeCampanaId' in (select id from historicas))
+           or (e.coleccion = 'observaciones' and e.valor -> 'datos' ->> 'negocioId' = p_id and e.campana_id in (select id from historicas))))
+    else false end;
+$$;
+
 -- Núcleo común de la escritura (lo usan `ulit_censo_aplicar` y `ulit_censo_lote_aplicar`).
 create function ulit_censo.aplicar_interno(m ulit_censo.miembro, p_espacio text, p_version_esperada bigint, p_etiqueta text, p_cambios jsonb)
 returns bigint
@@ -212,6 +232,16 @@ begin
      limit 1;
     if v_mal is not null then
       raise exception 'ULIT Censo: el censo histórico solo lo modifica coordinación (%)', v_mal using errcode = '42501';
+    end if;
+    -- Protección INDIRECTA: locales y negocios no llevan campaña y se comparten entre años. Los que ya
+    -- figuran en una campaña histórica (por una observación u ocupación suya) no los cambia ni los borra
+    -- quien no sea coordinación; sí se pueden dar de alta locales y negocios nuevos de 2026.
+    select format('%s/%s', c, id) into v_mal from pg_temp._c x
+     where x.c in ('locales', 'negocios') and x.anterior is not null and x.anterior is distinct from x.v
+       and ulit_censo.en_historico(p_espacio, x.c, x.id)
+     limit 1;
+    if v_mal is not null then
+      raise exception 'ULIT Censo: el censo histórico solo lo modifica coordinación (%, vinculado al histórico)', v_mal using errcode = '42501';
     end if;
   end if;
 
@@ -296,7 +326,7 @@ declare f text;
 begin
   foreach f in array array[
     'ulit_censo.valor_vigente(text, text, text)', 'ulit_censo.campana_de(text, text, jsonb)', 'ulit_censo.es_historica(text, text)',
-    'ulit_censo.colecciones_de_rol(text)', 'ulit_censo.aplicar_interno(ulit_censo.miembro, text, bigint, text, jsonb)'
+    'ulit_censo.colecciones_de_rol(text)', 'ulit_censo.en_historico(text, text, text)', 'ulit_censo.aplicar_interno(ulit_censo.miembro, text, bigint, text, jsonb)'
   ] loop
     execute format('revoke all on function %s from public, anon, authenticated, service_role', f);
   end loop;

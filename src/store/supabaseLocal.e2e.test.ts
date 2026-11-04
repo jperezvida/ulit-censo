@@ -165,6 +165,13 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
     await expect(revisora.guardar(base, camp, 'manipulado')).rejects.toThrow(/no puede modificar campanas/);
     const persona = { ...base, personas: { ...base.personas, 'ensayo-p-revisora': { id: 'ensayo-p-revisora', nombre: 'X', iniciales: 'X', roles: ['administrador' as const], color: '#000' } } };
     await expect(revisora.guardar(base, persona, 'manipulado')).rejects.toThrow(/no puede modificar personas/);
+    // Protección indirecta: un local o negocio que figura en 2025 no lo cambia ni lo borra la revisión
+    const local25 = base.locales[obs25.localId!];
+    await expect(revisora.guardar(base, { ...base, locales: { ...base.locales, [local25.id]: { ...local25, estado: 'desaparecido' as never } } }, 'manipulado')).rejects.toThrow(/vinculado al histórico/);
+    const { [local25.id]: _borrado, ...sinLocal } = base.locales;
+    await expect(revisora.guardar(base, { ...base, locales: sinLocal }, 'manipulado')).rejects.toThrow(/vinculado al histórico/);
+    const neg25 = Object.values(base.ocupaciones).find((x) => x.desdeCampanaId === h25 && x.negocioId)!.negocioId!;
+    await expect(revisora.guardar(base, { ...base, negocios: { ...base.negocios, [neg25]: { ...base.negocios[neg25], nombre: 'MANIPULADO' } } }, 'manipulado')).rejects.toThrow(/vinculado al histórico/);
     const lectora = new AlmacenSupabase(await sesion(`lectora-${ESPACIO}@ejemplo.invalid`), ESPACIO); await lectora.leer();
     await expect(lectora.guardar(base, registrarDatoDigital(base, bar.id, c26, 'web', { respuesta: 'si' }, porId, { alcance: al }), 'x')).rejects.toThrow(/sin permiso/);
     const adminBase = await sesion(`adminbase-${ESPACIO}@ejemplo.invalid`);
