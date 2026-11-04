@@ -1,0 +1,41 @@
+name: ULIT Censo - E2E Supabase local
+on:
+  pull_request:
+    branches:
+      - claude/oficina-espacios-it1
+    paths:
+      - 'src/**'
+      - 'docs/persistencia/**'
+      - '.github/workflows/ci-supabase-e2e.yml'
+permissions:
+  contents: read
+concurrency:
+  group: censo-e2e-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Dependencias
+        run: npm ci
+      - name: Cliente PostgreSQL
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y postgresql-client
+          fi
+          psql --version
+      - name: Recorrido E2E con Supabase local y datos sintéticos
+        run: bash docs/persistencia/pruebas/e2e-supabase-local.sh /tmp/ulit-censo-e2e
+      - name: Eliminar servicios locales
+        if: always()
+        run: |
+          if [ -f /tmp/ulit-censo-e2e/supabase/config.toml ]; then
+            (cd /tmp/ulit-censo-e2e && npx -y supabase@2.58.5 stop --no-backup) || true
+          fi
