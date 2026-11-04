@@ -16,14 +16,20 @@ S="$(cd "$(dirname "$0")" && pwd)"
 [ -d "$DESTINO" ] || { echo "✗ DESTINO no existe." >&2; exit 91; }
 case "$(cd "$DESTINO" && pwd)/" in "$(cd "$S/../../.." && pwd)/"*) echo "✗ DESTINO no puede estar dentro del repositorio." >&2; exit 91;; esac
 IMAGEN_PG=${IMAGEN_PG:-supabase/postgres:17.6.1.043}   # misma versión mayor que el servidor
-pgd() { docker run --rm -i --network host -e PGPASSWORD "$IMAGEN_PG" "$@"; }
+# Red de Docker: la del anfitrión solo si el origen es local (pruebas en Linux); para el proyecto en la nube, la normal.
+case "$ORIGEN" in *127.0.0.1*|*localhost*) RED="--network host";; *) RED="";; esac
+pgd() { docker run --rm -i $RED -e PGPASSWORD -e PGOPTIONS "$IMAGEN_PG" "$@"; }
+# psql: el del equipo si existe; si no, el de la misma imagen (no hace falta instalar nada más)
+if command -v psql >/dev/null; then psqlx() { psql "$@"; }; else psqlx() { docker run --rm -i $RED -e PGPASSWORD -e PGOPTIONS -v "$S:/sql:ro" "$IMAGEN_PG" psql "$@"; }; fi
 # Sesiones de SOLO LECTURA contra el origen (pg_dump ya lo es; psql, también por configuración).
 export PGOPTIONS="-c default_transaction_read_only=on"
 F="$DESTINO/censo-comercios-$(date -u +%Y%m%dT%H%M%SZ).dump"
 pgd pg_dump --format=custom --no-owner --dbname="$ORIGEN" > "$F"
 pgd pg_restore --list < "$F" > "$F.indice"
-psql "$ORIGEN" -v ON_ERROR_STOP=1 -At -F' ' -f "$S/20261104_9101_huella_ulit_base.sql" > "$F.huella"
-psql "$ORIGEN" -v ON_ERROR_STOP=1 -At -f "$S/20261104_9102_inventario_datos.sql" | grep -E '^(objeto|datos)\|' > "$F.inventario"
-sha256sum "$F" "$F.indice" "$F.huella" "$F.inventario" > "$F.sha256"
+Q="$S"; command -v psql >/dev/null || Q=/sql
+psqlx "$ORIGEN" -v ON_ERROR_STOP=1 -qAt -F' ' -f "$Q/20261104_9101_huella_ulit_base.sql" > "$F.huella"
+psqlx "$ORIGEN" -v ON_ERROR_STOP=1 -At -f "$Q/20261104_9102_inventario_datos.sql" | grep -E '^(objeto|datos)\|' > "$F.inventario"
+SHA() { if command -v sha256sum >/dev/null; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
+SHA "$F" "$F.indice" "$F.huella" "$F.inventario" > "$F.sha256"
 chmod 600 "$F" "$F".*
 echo "Respaldo: $F ($(du -h "$F" | cut -f1)) · $(wc -l < "$F.indice") entradas · $(grep -c '^datos|' "$F.inventario") tablas inventariadas · SHA-256 $(head -c 64 "$F.sha256")"
