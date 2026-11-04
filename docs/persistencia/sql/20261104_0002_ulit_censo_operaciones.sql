@@ -209,7 +209,13 @@ begin
   if (select count(*) from (select distinct c, id from pg_temp._c) d) <> v_n then
     raise exception 'ULIT Censo: entidad repetida en la misma operación' using errcode = '22023';
   end if;
-  if exists (select 1 from pg_temp._c where c = '_raiz' and (id <> 'raiz' or (v is not null and v -> 'meta' ->> 'espacio' is distinct from e.tipo) or v is null)) then
+  -- Invariante: el estado no puede identificarse como otro espacio (ni del mismo tipo).
+  if e.version = 0 and not exists (select 1 from pg_temp._c where c = '_raiz' and id = 'raiz' and v is not null) then
+    raise exception 'ULIT Censo: la carga inicial debe incluir la raíz del espacio' using errcode = '22023';
+  end if;
+  if exists (select 1 from pg_temp._c where c = '_raiz' and (id <> 'raiz' or v is null
+    or v -> 'meta' ->> 'espacio' is distinct from e.tipo
+    or v -> 'meta' ->> 'espacioId' is distinct from p_espacio)) then
     raise exception 'ULIT Censo: la raíz no corresponde a este espacio' using errcode = '22023';
   end if;
 
