@@ -1,8 +1,5 @@
 name: PR ULIT Censo - pruebas sin despliegue
 on:
-  push:
-    branches:
-      - claude/persistencia-supabase-diseno
   pull_request:
     branches:
       - claude/oficina-espacios-it1
@@ -30,5 +27,12 @@ jobs:
         run: npm run comprobar-datos
       - name: Compilación
         run: npm run build
+      - name: Sintaxis del script de restauración PowerShell
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile("docs/persistencia/sql/20261104_9201_prueba_restauracion.ps1", [ref]$tokens, [ref]$errors)
+          if ($errors.Count) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
       - name: PostgreSQL local aislado (sin red ni producción)
         run: docker run --rm --network none -v "$GITHUB_WORKSPACE:/work:ro" -w /work postgres:16 bash docs/persistencia/pruebas/ejecutar.sh /tmp/ulit-censo-ci
