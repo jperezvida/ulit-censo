@@ -148,6 +148,10 @@ async function persistir(get: () => Estado, tipo: TipoEspacio, antes: BaseDatos 
   if (!remoto) return escribirVerificado(tipo, db, huellaAntes);
   const problemas = verificarEspacio(db, tipo);
   if (problemas.length) throw new Error(`La base no supera la verificación del espacio: ${problemas[0]}`);
+  if (db.meta?.espacioId !== remoto.espacioId) {
+    throw new Error('El identificador interno del espacio no coincide con el servidor: no se guarda.');
+  }
+  if (!remoto.info) throw new Error('El espacio remoto no tiene una sesión validada.');
   // Hasta el trabajo con varias personas (2027), solo la persona responsable del espacio escribe desde aquí.
   if (remoto.info && personaEspacio(db)?.id !== remoto.info.personaId) {
     throw new Error(`Esta cuenta representa a «${remoto.info.personaId}», no a la persona responsable del espacio: no se guarda.`);
@@ -226,6 +230,9 @@ export const useEspacios = create<Estado>((set, get) => ({
       set({ tipo: info.tipo });
       guardarSeleccionRemota({ espacioId: almacen.espacioId, tipo: info.tipo });
       if (!leido) return set({ fase: 'sin-crear' });
+      if (leido.meta?.espacioId !== almacen.espacioId) {
+        return set({ fase: 'error', error: 'El identificador interno del espacio no coincide con el servidor. No se abre.' });
+      }
       let db = leido;
       if (db.version !== VERSION_DATOS) {
         if (db.version === 9 || db.version === 10) db = migrarALaActual(db).db;
@@ -315,8 +322,8 @@ export const useEspacios = create<Estado>((set, get) => ({
       const conMedina = opciones.incluirMedina !== false;
       const inst = conMedina ? await cargarInstantaneaMedina() : null;
       if (inst && !inst.ok) return { ok: false, error: `Hace falta el callejero real de Medina del Campo (instantánea OSM del proyecto). ${inst.motivo ?? ''}`.trim() };
-      const espacioId = globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-      const db = crearBaseEspacio(tipo, { persona, calles: inst?.ok ? inst.calles : [], detalleCallejero: inst?.ok ? inst.detalle : '', espacioId, incluirMedina: conMedina });
+      const espacioId = remoto?.espacioId ?? (globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`);
+      const db = crearBaseEspacio(tipo, { persona, calles: inst?.ok ? inst.calles : [], detalleCallejero: inst?.ok ? inst.detalle : '', espacioId, personaId: remoto?.info?.personaId, incluirMedina: conMedina });
       const huella = await persistir(get, tipo, null, db, null, 'Creación del espacio');
       set({ db, huella, fase: 'listo', respaldoVerificado: null });
       return { ok: true };
