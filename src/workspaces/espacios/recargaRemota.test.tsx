@@ -5,7 +5,7 @@ import { webcrypto } from 'node:crypto';
 import { clear as idbClear, createStore, set as idbSet } from 'idb-keyval';
 import { crearBaseEspacio } from '../../domain/espacios';
 import { diferencia } from '../../store/almacenSupabase';
-import { borrarSeleccionRemota, guardarSeleccionRemota, leerSeleccionRemota } from '../../store/seleccionRemota';
+import { borrarSeleccionRemota, guardarSeleccionRemota, leerSeleccionRemota, seleccionRealRemota } from '../../store/seleccionRemota';
 
 /** Recarga (F5) de una dirección de espacio abierta desde el SERVIDOR: nunca debe abrirse IndexedDB en su lugar. */
 const servidor = vi.hoisted(() => ({ sesion: null as unknown, entidades: {} as Record<string, Record<string, unknown>>, llamadas: [] as string[] }));
@@ -32,7 +32,7 @@ beforeEach(async () => {
   await idbClear(createStore('ulit-censo-ensayo', 'datos'));
   // En este navegador hay OTRO espacio de ensayo (IndexedDB) con otra persona responsable.
   await idbSet('db', base('Persona del navegador', 'local'), createStore('ulit-censo-ensayo', 'datos'));
-  const remota = base('Persona del servidor', 'remoto');
+  const remota = base('Persona del servidor', 'ensayo-remoto');
   servidor.entidades = {};
   for (const x of diferencia(null, remota)) (servidor.entidades[x.c] ??= {})[x.id] = x.v;
   servidor.llamadas = [];
@@ -52,6 +52,16 @@ describe('Recarga de un espacio del servidor', () => {
     expect(servidor.llamadas).toContain('ulit_censo_leer');
   });
 
+  it('metadatos con espacioId ajeno: muestra error y NO abre el IndexedDB local', async () => {
+    servidor.sesion = { user: { email: 'coord@ejemplo.invalid' } };
+    guardarSeleccionRemota({ espacioId: 'ensayo-remoto', tipo: 'ensayo' });
+    (servidor.entidades._raiz.raiz as { meta: { espacioId: string } }).meta.espacioId = 'ensayo-otro';
+    montar();
+    await waitFor(() => expect(useEspacios.getState().fase).toBe('error'));
+    expect(useEspacios.getState().db).toBeNull();
+    expect(useEspacios.getState().error).toMatch(/no coincide con el servidor/);
+  });
+
   it('sin sesión: error claro y NO se abre el espacio de IndexedDB', async () => {
     servidor.sesion = null;
     guardarSeleccionRemota({ espacioId: 'ensayo-remoto', tipo: 'ensayo' });
@@ -68,5 +78,14 @@ describe('Recarga de un espacio del servidor', () => {
     expect(Object.values(useEspacios.getState().db!.personas).map((p) => p.nombre)).toEqual(['Persona del navegador']);
     expect(screen.getByLabelText('Dónde se guarda')).toHaveTextContent('Este navegador (IndexedDB)');
     expect(leerSeleccionRemota()).toBeNull();
+  });
+});
+
+describe('Ruta real remota en hosting', () => {
+  it('reconoce una selección remota real sin habilitar almacenamiento local', () => {
+    expect(seleccionRealRemota('real', { tipo: 'real', espacioId: 'real-medina2026' })).toBe(true);
+    expect(seleccionRealRemota('real', { tipo: 'ensayo', espacioId: 'ensayo-medina' })).toBe(false);
+    expect(seleccionRealRemota('real', null)).toBe(false);
+    expect(seleccionRealRemota('real', { tipo: 'real', espacioId: 'ensayo-falsificado' })).toBe(false);
   });
 });
