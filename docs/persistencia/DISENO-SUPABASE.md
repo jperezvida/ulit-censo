@@ -1,8 +1,6 @@
 # ULIT Censo en el Supabase compartido `censo-comercios` · Diseño técnico (propuesta)
 
-**Estado:** propuesta. **No se ha aplicado nada en Supabase.** Las migraciones de `docs/persistencia/sql/` se
-han validado solo en un PostgreSQL 16 local y desechable que emula los roles de Supabase. Están en `docs/`, y
-no en `supabase/migrations/`, para que ninguna herramienta pueda aplicarlas por error.
+**Estado:** propuesta en PR #12; **no se ha aplicado ULIT Censo al Supabase compartido**. Las migraciones de `docs/persistencia/sql/` se han ensayado en PostgreSQL 16 local y en un Supabase local sintético, con pruebas de permisos y concurrencia. Están en `docs/`, no en `supabase/migrations/`, para impedir despliegues accidentales. La recuperación real de datos PostgreSQL/Storage previa a la instalación está documentada en `RECUPERACION-VERIFICADA-20261104.md`, sin afirmar recuperación operativa completa de los servicios.
 
 ## 1. Punto de partida
 
@@ -82,7 +80,7 @@ Todas están en `public`, son `security definer`, tienen `search_path` vacío y 
 | `ulit_censo_mis_espacios()` | cualquier miembro | espacios, rol y persona de la cuenta |
 | `ulit_censo_leer(espacio)` | lector o superior | versión y entidades, en el formato de `BaseDatos` |
 | `ulit_censo_historial(espacio, n)` | lector o superior | últimas operaciones |
-| `ulit_censo_aplicar(espacio, version_esperada, etiqueta, cambios)` | investigador o superior | aplica todos los cambios o ninguno, bloqueando la fila del espacio; si la versión no es la esperada, rechaza con SQLSTATE `40001` |
+| `ulit_censo_aplicar(espacio, version_esperada, etiqueta, cambios)` | investigador o superior | aplica todos los cambios o ninguno, bloqueando la fila del espacio; si la versión no es la esperada, rechaza con SQLSTATE `PT409` |
 | `ulit_censo_crear_copia`, `listar_copias`, `descargar_copia` | coordinación o administración | copias propias y su exportación |
 | `ulit_censo_restaurar_copia(espacio, copia, version_esperada, motivo)` | administración | comprueba el SHA-256, crea una copia automática previa y aplica la restauración como **operación nueva**, con su historial |
 | `ulit_censo_alta_miembro`, `ulit_censo_baja_miembro` | administración del espacio | gestiona miembros; la cuenta debe existir ya en Auth |
@@ -106,7 +104,7 @@ Todas están en `public`, son `security definer`, tienen `search_path` vacío y 
 
 ## 6. Concurrencia
 - **Bloqueo optimista:** equivale a la huella actual de `escribirVerificado`, sustituida por la versión del
-  espacio. Una pestaña con una versión antigua recibe `40001`, y la cola de `FuenteEspacio` (PR #11) se
+  espacio. Una pestaña con una versión antigua recibe `PT409`, y la cola de `FuenteEspacio` (PR #11) se
   detiene y ofrece reintentar o recuperar lo guardado.
 - **Varias personas (2027):** la versión es global y bastará con cambiar la comprobación a
   `entidad.version` de las entidades tocadas, sin tocar el formato de los datos.
@@ -137,7 +135,7 @@ almacén:
    - calcula la **diferencia por referencia** entre la base anterior y la nueva (ya validada en
      `medir-almacenamiento.ts`), lo que da 2–3 entidades por operación;
    - llama a `ulit_censo_aplicar` con la versión esperada;
-   - si recibe `40001`, avisa del conflicto y se detiene (sin reintentos automáticos).
+   - si recibe `PT409`, avisa del conflicto y se detiene (sin reintentos automáticos).
 3. **`leer`:** `ulit_censo_leer` reconstruye la `BaseDatos` (unos 6 MB en el caso de Medina) y después se
    ejecutan `verificarEspacio` y las migraciones del modelo, como ahora.
 4. **IndexedDB pasa a ser caché local, no fuente de verdad.** La demostración (`useStore`) no cambia y el
@@ -185,7 +183,7 @@ almacén:
 ## 11. Riesgos abiertos
 - **Usuarios compartidos:** Auth es común a todo el proyecto. Si en ULIT base el registro está abierto,
   cualquiera puede crear una cuenta, aunque no tendrá acceso a ULIT Censo sin pertenencia.
-- **Funciones en `public`:** las 10 funciones `ulit_censo_*` se añaden al esquema `public`, sin modificar
+- **Funciones en `public`:** las 12 funciones `ulit_censo_*` se añaden al esquema `public`, sin modificar
   nada existente. Es la alternativa a cambiar los esquemas expuestos por la API, que sí alteraría la
   configuración compartida.
 - **Copias exportadas:** contienen el censo completo y deben guardarse en un almacenamiento institucional.
