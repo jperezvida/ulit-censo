@@ -4,6 +4,7 @@
 # Uso: DB=postgresql://postgres:postgres@127.0.0.1:54322/postgres docs/persistencia/pruebas/preflight-local.sh <carpeta-temporal>
 set -euo pipefail
 P="$(cd "$(dirname "$0")/.." && pwd)"; T="${1:?carpeta temporal}"; mkdir -p "$T"; : "${DB:?cadena del Supabase local}"
+. "$P/pruebas/solo-local.sh"; exigir_entorno_local "$DB"
 q() { psql "$DB" -v ON_ERROR_STOP=1 -q "$@"; }
 h() { q -At -F' ' -f "$P/sql/20261104_9101_huella_ulit_base.sql"; }
 q -c "select 1 from pg_namespace where nspname = 'ulit_censo'" -At | grep -q 1 && q -f "$P/sql/20261104_9000_ulit_censo_retirada.sql" >/dev/null 2>&1 || true
@@ -17,7 +18,8 @@ q -c "create function public.zz_cambio_prueba() returns int language sql as 'sel
 [ "$(h)" != "$A" ] && echo "✓ Un cambio real en ULIT base cambia la huella"
 q -c "drop function public.zz_cambio_prueba()"; [ "$(h)" = "$A" ] && echo "✓ Deshecho el cambio, vuelve la huella original"
 # Respaldo externo (9200) y prueba de recuperación en un PostgreSQL desechable de la misma imagen
-ORIGEN="$DB" DESTINO="$T" PG_DUMP="pg_dump_17" PG_RESTORE="pg_restore_17" "$P/sql/20261104_9200_respaldo_externo.sh"
+# 9200 exige la contraseña solo en PGPASSWORD (nunca en la cadena)
+PGPASSWORD=$(printf '%s' "$DB" | sed -E 's#^[a-z]+://[^:]+:([^@]+)@.*#\1#') ORIGEN=$(printf '%s' "$DB" | sed -E 's#^([a-z]+://[^:]+):[^@]+@#\1@#') DESTINO="$T" "$P/sql/20261104_9200_respaldo_externo.sh"
 F=$(ls "$T"/censo-comercios-*.dump | tail -1)
 grep -q "TABLE public perfiles" "$F.indice" && echo "✓ El respaldo contiene los objetos de ULIT base (p. ej. public.perfiles)"
 sha256sum -c "$F.sha256" >/dev/null && echo "✓ SHA-256 del respaldo comprobado"
@@ -26,14 +28,5 @@ q -f "$P/sql/20261104_0001_ulit_censo_esquema.sql"; q -f "$P/sql/20261104_0002_u
 [ "$(h)" = "$A" ] && echo "✓ ULIT base idéntico tras aplicar 0001 y 0002"
 q -f "$P/sql/20261104_9000_ulit_censo_retirada.sql" >/dev/null 2>&1
 [ "$(h)" = "$A" ] && echo "✓ ULIT base idéntico tras la retirada (9000)"
-# Recuperación real del respaldo en un PostgreSQL DESECHABLE (misma imagen) y comparación del esquema public
-if [ -n "${IMAGEN_PG:-}" ]; then
-  docker rm -f ulit-restaura >/dev/null 2>&1 || true
-  docker run -d --name ulit-restaura -e POSTGRES_PASSWORD=postgres -p 55432:5432 "$IMAGEN_PG" >/dev/null
-  R=postgresql://postgres:postgres@127.0.0.1:55432/postgres
-  for i in $(seq 1 30); do psql "$R" -At -c 'select 1' >/dev/null 2>&1 && break; sleep 2; done
-  docker run --rm -i --network host --entrypoint pg_restore "$IMAGEN_PG" --no-owner --schema=public --dbname="$R" < "$F" 2>/dev/null || true
-  C="select (select count(*) from pg_tables where schemaname='public')||' tablas, '||(select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where nspname='public')||' funciones, perfiles '||(select coalesce(md5(string_agg(id::text||rol, ',' order by id)),'-') from public.perfiles)"
-  [ "$(psql "$DB" -At -c "$C")" = "$(psql "$R" -At -c "$C")" ] && echo "✓ Respaldo recuperado en una base desechable: esquema public y datos de perfiles idénticos"
-  docker rm -f ulit-restaura >/dev/null
-fi
+# Recuperación COMPLETA del respaldo en un Supabase desechable, sin silenciar errores (9201)
+"$P/sql/20261104_9201_prueba_restauracion.sh" "$F" "$DB"

@@ -16,6 +16,9 @@ SUPABASE_INTERNAL_IMAGE_REGISTRY=docker.io npx -y supabase@2.58.5 start >/dev/nu
 ESTADO=$(npx -y supabase@2.58.5 status -o env)
 URL=$(echo "$ESTADO" | sed -n 's/^API_URL="\(.*\)"/\1/p'); PUB=$(echo "$ESTADO" | sed -n 's/^PUBLISHABLE_KEY="\(.*\)"/\1/p'); SEC=$(echo "$ESTADO" | sed -n 's/^SECRET_KEY="\(.*\)"/\1/p'); DB=$(echo "$ESTADO" | sed -n 's/^DB_URL="\(.*\)"/\1/p')
 q() { psql "$DB" -v ON_ERROR_STOP=1 -q "$@"; }
+# Marcador del entorno local desechable (lo exigen los scripts que modifican la base). DB viene de `supabase status` local.
+case "$DB" in *127.0.0.1*|*localhost*) q -c "do \$\$ begin if not exists (select 1 from pg_roles where rolname = 'ulit_censo_entorno_local_desechable') then create role ulit_censo_entorno_local_desechable nologin; end if; end \$\$";; *) echo "✗ Supabase no local" >&2; exit 90;; esac
+. "$P/pruebas/solo-local.sh"; exigir_entorno_local "$DB"
 q -f "$P/pruebas/ulit_base_muestra.sql"
 ANTES=$(q -At -f "$P/sql/20261104_9101_huella_ulit_base.sql")
 q -c "select 1 from pg_namespace where nspname = 'ulit_censo'" -At | grep -q 1 && q -f "$P/sql/20261104_9000_ulit_censo_retirada.sql" >/dev/null 2>&1
