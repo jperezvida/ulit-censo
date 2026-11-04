@@ -79,7 +79,11 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
     // 1 · Crear y abrir el espacio en el servidor
     await useEspacios.getState().abrirRemoto(new AlmacenSupabase(coord, ESPACIO));
     expect(useEspacios.getState().fase).toBe('sin-crear');
-    expect((await useEspacios.getState().crear({ nombre: NOMBRE, roles: ['coordinador'] }, { incluirMedina: false })).ok).toBe(true);
+    // La identidad de Auth no depende del nombre libre escrito en la pantalla.
+    expect((await useEspacios.getState().crear({ nombre: 'Nombre mostrado diferente', roles: ['coordinador'] }, { incluirMedina: false })).ok).toBe(true);
+    expect(dbAbierta().meta.espacioId).toBe(ESPACIO);
+    expect(personaEspacio(dbAbierta())!.id).toBe(crearBaseEspacio('ensayo', { persona: { nombre: NOMBRE, roles: ['coordinador'] }, calles: [], detalleCallejero: '', espacioId: ESPACIO, incluirMedina: false }).meta.espacioCreadoPorId);
+    expect(personaEspacio(dbAbierta())!.nombre).toBe('Nombre mostrado diferente');
     const porId = personaEspacio(dbAbierta())!.id;
     const o = { prefijo: PREFIJO.ensayo, porId, anioActual: 2026 };
     let munId = '';
@@ -190,7 +194,7 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
     const v = validarInstantanea(JSON.parse(readFileSync('public/data/medina-callejero.json', 'utf8')));
     if (!v.ok) throw new Error(v.motivo);
     const ESP2 = `${ESPACIO}-grande`;
-    let db = crearBaseEspacio('ensayo', { persona: { nombre: NOMBRE, roles: ['coordinador'] }, calles: v.calles, detalleCallejero: 'OSM', espacioId: 'grande' });
+    let db = crearBaseEspacio('ensayo', { persona: { nombre: NOMBRE, roles: ['coordinador'] }, calles: v.calles, detalleCallejero: 'OSM', espacioId: ESP2 });
     sql(`insert into ulit_censo.espacio (id, tipo, nombre, escritura_habilitada) values ('${ESP2}', 'ensayo', 'Carga grande', true);
          insert into ulit_censo.miembro (espacio_id, usuario_id, rol, persona_id) values ('${ESP2}', '${ids.coord}', 'coordinador', '${db.meta.espacioCreadoPorId}');`);
     const porId = db.meta.espacioCreadoPorId!;
@@ -199,6 +203,7 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
     const p = await prepararIncorporacion(db, await libroSinteticoC1e(v.calles), ARCHIVO_SINTETICO_C1E, d25, {});
     db = aplicarIncorporacion(db, p.resultado, d25, {}, p.plan, { porId }).db;
     const cambios = diferencia(null, db);
+    expect(db.meta.espacioId).toBe(ESP2);
     const partes = partir(cambios);
     const almacen = new AlmacenSupabase(coord, ESP2); await almacen.leer();
     const t = Date.now();
