@@ -22,3 +22,8 @@ export function guardarSeleccionRemota(s: SeleccionRemota) {
 export function borrarSeleccionRemota() {
   try { globalThis.sessionStorage?.removeItem(CLAVE); } catch { /* sin almacenamiento de sesión */ }
 }
+
+/** Solo distingue la ruta remota real de IndexedDB. La autorización siempre la verifica Supabase. */
+export function seleccionRealRemota(tipo: TipoEspacio | null, s: SeleccionRemota | null): boolean {
+  return tipo === 'real' && s?.tipo === 'real' && /^real-[a-z0-9-]{3,80}$/.test(s.espacioId);
+}
