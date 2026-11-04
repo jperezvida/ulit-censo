@@ -61,8 +61,28 @@ Fuentes oficiales: [Supabase — Backup and restore](https://supabase.com/docs/g
 - Probar entrada web con usuario autorizado, cierre y reapertura, guardado y recuperación, copia e historial, conflicto de concurrencia y denegaciones RLS. Registrar versión de despliegue; no desplegar automáticamente desde la PR.
 - No ejecutar `9000` salvo fallo que justifique retirada, copia verificada de cualquier dato de Censo y aprobación explícita.
 
-## Criterio «preparado»
+## Dos niveles distintos de preparación
 
-- **Aprobado actualmente:** código y SQL de ULIT Censo para ensayo sintético local; recuperabilidad PostgreSQL y disponibilidad de archivos Storage; fuente localizable de 39 Edge Functions.
-- **No aprobado todavía:** restauración integral del ecosistema Supabase y migraciones productivas. Faltan evidencia de custodia separada de secretos/copia externa, control de configuración Auth/API/Edge y pruebas funcionales en un destino realmente aislado.
-- **Próxima decisión del responsable:** cuándo autorizar el ensayo sobre el proyecto compartido **después de** cerrar las salvaguardas pertinentes, con alcance de solo ensayo y plan de reversión restringido a Censo.
+**A. Instalación limitada de ULIT Censo para ENSAYO sintético (primer hito).**
+
+La recuperación operativa integral de las 39 funciones de Base/Go no es necesaria como condición previa absoluta para instalar **únicamente objetos nuevos** de Censo, siempre que se documente el riesgo residual y se cumplan estas garantías mínimas:
+
+- [x] SQL de Censo probado en Supabase local y PostgreSQL aislado, sin tocar esquemas existentes.
+- [x] Copia PostgreSQL verificable y 20 archivos Storage conservados; posibilidad demostrada de recuperar las tablas de Base/Go.
+- [x] Código fuente de las 39 Edge Functions localizable y revisión fijada.
+- [ ] **Confirmar segunda copia cifrada** de los respaldos, independiente del ordenador de origen.
+- [ ] **Capturar la configuración mínima de Auth y aplicaciones necesarias para ensayar**, en una ubicación segura y sin publicar valores, o reconocer expresamente el riesgo restante.
+- [ ] Baseline inmediatamente anterior: huella `9101`, estado de Auth, buckets y funciones; plan de retirada limitado a Censo.
+- [ ] **Autorización explícita** para aplicar `0001`/`0002` en el proyecto compartido; no hay autorización implícita por haber validado la PR.
+
+Tras estos puntos, se puede valorar un **ensayo acotado de escritura sintética** en `ensayo-*`. No se debe usar el censo auténtico ni habilitar todavía `real-*`.
+
+**B. Recuperación integral del ecosistema y uso real de ULIT Censo (segundo hito, separado).**
+
+- [ ] Configuración y secretos completos custodiados fuera de GitHub (Auth, API, Edge, Vault, SMTP, TURN, push).
+- [ ] Paridad de versiones verificable de las 39 Edge Functions y dependencias externas.
+- [ ] Recuperación funcional de Auth/Storage/Edge Functions/cron en entorno independiente, con archivos y usuarios sintéticos.
+- [ ] Procedimiento de DNS/URLs y reautenticación, pruebas de Base/Go y reconciliación de permisos.
+- [ ] Autorización específica para datos reales, importación del censo 2025 e itinerarios 2026.
+
+**Estado actual:** el primer nivel está técnicamente avanzado, pero **NO autorizado para cambiar producción**; el segundo nivel conserva tareas pendientes que no deben ocultarse ni convertir el piloto en una restauración completa desproporcionada.
