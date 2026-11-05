@@ -40,7 +40,7 @@ export const PERFIL_MEDINA_2025: PerfilImportacion = {
   ...PERFIL_CENSO_27,
   id: 'medina-2025-referencia',
   nombre: 'Medina del Campo 2025 · censo de referencia',
-  descripcion: 'Formato de 27 columnas con el informe agregado y la huella del censo auténtico de Medina del Campo 2025.',
+  descripcion: 'Formato de 27 columnas con el informe agregado y la huella de referencia anterior de Medina 2025. La copia oficial aprobada tiene otra huella.',
   origen: 'referencia',
   referencia: { descripcion: 'Informe agregado de la Cátedra (889 registros)', sha256: SHA256_ORIGINAL_MEDINA_2025, indicadores: INFORME_AGREGADO_MEDINA_2025 },
 };
