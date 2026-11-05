@@ -82,7 +82,7 @@ describe('C1e · Espacios aislados (interfaz)', () => {
     await elegirYAnalizar(bytes);
     const ident = screen.getByLabelText('Identificación del archivo');
     expect(ident).toHaveTextContent(/Archivo SINTÉTICO/);
-    expect(ident).toHaveTextContent(/No coincide con la huella del archivo auténtico/);
+    expect(ident).toHaveTextContent(/No coincide con la copia 2025 aprobada/);
     fireEvent.click(screen.getByRole('button', { name: /Siguiente: columnas/ }));
     await columnasMedina();
     const diag = await screen.findByRole('region', { name: 'Diagnóstico agregado' }, { timeout: 60000 });
