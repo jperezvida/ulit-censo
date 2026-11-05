@@ -468,6 +468,44 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
     const lectora = new AlmacenSupabase(await sesion('lectora-' + ESPACIO + '@ejemplo.invalid'), realId);
     await expect(lectora.leer()).rejects.toThrow(/sin permiso/);
 
+    // Una autorización caducada nunca permite ejecutar la RPC, ni consumir el permiso.
+    sql("update ulit_censo.autorizacion_historico_2025 set vigente_hasta=now()-interval '1 second' where espacio_id='" + realId + "'");
+    const caducada = await coord.rpc('ulit_censo_importar_historico_2025', {
+      p_espacio: realId, p_lote: globalThis.crypto.randomUUID(), p_partes: 1,
+      p_version_esperada: 1, p_copia: copia.id,
+    });
+    expect(caducada.error?.code).toBe('42501');
+    sql("update ulit_censo.autorizacion_historico_2025 set vigente_hasta=now()+interval '10 minutes' where espacio_id='" + realId + "'");
+
+    // ATAQUE SINTÉTICO: 889 vínculos pero dos dirigidos a la misma fila y otra sin vínculo.
+    // Debe fallar ANTES de escribir, conservando la autorización para el lote válido.
+    const originales = diferencia(inicial, aplicado.db);
+    const enlaces = originales.filter((x) => x.c === 'vinculos');
+    expect(enlaces).toHaveLength(889);
+    const primero = enlaces[0].v as { origen: { tipo: string; id: string } };
+    const defectuosos = originales.map((x) => {
+      if (x.c !== 'vinculos' || x.id !== enlaces[1].id) return x;
+      return { ...x, v: { ...(x.v as Record<string, unknown>),
+        origen: { tipo: 'registro', id: primero.origen.id } } };
+    });
+    const loteInvalido = globalThis.crypto.randomUUID();
+    const partesInvalidas = partir(defectuosos);
+    for (const [numero, parte] of partesInvalidas.entries()) {
+      const subida = await coord.rpc('ulit_censo_lote_subir', {
+        p_espacio: realId, p_lote: loteInvalido, p_parte: numero, p_cambios: parte,
+      });
+      expect(subida.error).toBeNull();
+    }
+    const duplicado = await coord.rpc('ulit_censo_importar_historico_2025', {
+      p_espacio: realId, p_lote: loteInvalido, p_partes: partesInvalidas.length,
+      p_version_esperada: 1, p_copia: copia.id,
+    });
+    expect(duplicado.error?.code).toBe('42501');
+    expect(duplicado.error?.message).toMatch(/vínculos\/exclusiones incoherentes/);
+    expect(sql("select version::text || ':' || escritura_habilitada::text from ulit_censo.espacio where id='" + realId + "'")).toBe('1:false');
+    expect(sql("select utilizada_en is null from ulit_censo.autorizacion_historico_2025 where espacio_id='" + realId + "'")).toBe('t');
+    expect(sql("select count(*) from ulit_censo.entidad where espacio_id='" + realId + "' and coleccion='registros'")).toBe('0');
+
     expect(await real.importarPrimerHistorico2025(inicial, aplicado.db, copia)).toBe(2);
     const despues = await real.leer();
     expect(despues.info).toMatchObject({ version: 2, escrituraHabilitada: false, preparacionHabilitada: false });
