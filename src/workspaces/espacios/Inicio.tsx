@@ -66,6 +66,7 @@ export function Inicio({ tipo }: { tipo: TipoEspacio }) {
   const r = useMemo(() => (campana ? resumenCampana(db, campana.id) : null), [db, campana]);
   const mun = municipioId ? db.municipios[municipioId] : null;
   const cj = mun ? callejeroDe(db, mun.id) : null;
+  const primeraImportacionReal = tipo === 'real' && !!remoto && remoto.info?.version === 1 && campanas.length === 0;
 
   // Cambiar de campaña reinicia el asistente (un archivo a medio analizar no pasa a otra campaña).
   useEffect(() => {
@@ -103,13 +104,13 @@ export function Inicio({ tipo }: { tipo: TipoEspacio }) {
         {campana && <span className={`chip ux-clase ux-${claseCampana(campana)}`}>{claseCampana(campana) === 'operativa' ? 'Operativa · en curso' : 'Histórica · censo anterior'}</span>}
         <span className="esp" />
         <div className="fila ux-acciones">
-          <button className="btn s" onClick={() => setAlta(alta === 'campana' ? null : 'campana')}><CalendarPlus size={14} /> Campaña</button>
-          <button className="btn s" onClick={() => setAlta('municipio')}><Plus size={14} /> Municipio</button>
+          {!primeraImportacionReal && <button className="btn s" onClick={() => setAlta(alta === 'campana' ? null : 'campana')}><CalendarPlus size={14} /> Campaña</button>}
+          {!primeraImportacionReal && <button className="btn s" onClick={() => setAlta('municipio')}><Plus size={14} /> Municipio</button>}
         </div>
       </section>
 
       {tipo === 'real' && remoto && !remoto.info?.escrituraHabilitada && (
-        <div className="t-info aviso" role="status"><AlertTriangle size={15} /> Espacio real en modo consulta. Supabase bloquea altas, cambios e importaciones hasta su activación autorizada.</div>
+        <div className="t-info aviso" role="status"><AlertTriangle size={15} /> Espacio real cerrado para cambios normales. La primera incorporación histórica 2025 tiene un procedimiento de un solo uso, con respaldo comprobado y autorización temporal en Supabase.</div>
       )}
       {alta === 'campana' && <FormCampana municipioId={mun.id} onCerrar={(id) => { setAlta(null); if (id) cambiar({ campanaId: id, vista: 'itinerarios' }); }} />}
       {cj && !cj.disponible && (
@@ -117,7 +118,15 @@ export function Inicio({ tipo }: { tipo: TipoEspacio }) {
       )}
 
       {!campana || !r ? (
-        alta !== 'campana' && (
+        primeraImportacionReal ? (
+          <section className="tarjeta inc-bloque ux-vacio" aria-label="Primera importación histórica 2025">
+            <h2>Incorporar el censo histórico de Medina 2025</h2>
+            <p>El espacio ya tiene sus 254 calles. La campaña histórica 2025 se creará automáticamente al incorporar el Excel aprobado de 889 registros. <b>No cree una campaña manualmente.</b></p>
+            <RespaldoTarjeta tipo="real" compacto />
+            <p className="muted">Primero descargue y compruebe el respaldo de este estado inicial; después seleccione el XLSX original en la vista completa. Supabase seguirá exigiendo un permiso temporal de una sola importación.</p>
+            <Link className="btn primario" to="/espacios/real/avanzado"><FileUp size={15} /> Incorporar el Excel 2025</Link>
+          </section>
+        ) : alta !== 'campana' && (
           <section className="tarjeta inc-bloque ux-vacio" aria-label="Sin campañas">
             <h2>{mun.nombre} todavía no tiene campañas</h2>
             <p className="muted">Una campaña <b>operativa</b> es el censo que se está haciendo, con sus itinerarios. Una <b>histórica</b> guarda un censo ya terminado.</p>
