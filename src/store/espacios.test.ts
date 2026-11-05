@@ -7,6 +7,7 @@ import { useStore } from './store';
 import { validarInstantanea } from '../data/instantaneaOsm';
 import { ARCHIVO_SINTETICO_C1E, libroSinteticoC1e } from '../data/xlsxSinteticoC1e';
 import { prepararIncorporacion } from '../domain/incorporacionXlsx';
+import { SHA256_APROBADO_MEDINA_2025, SHA256_ORIGINAL_MEDINA_2025 } from '../domain/xlsx/referencias';
 import { huellaBase, municipioDeEspacio, type TipoEspacio } from '../domain/espacios';
 import type { DecisionesIncorporacion } from '../domain/incorporacion';
 import type { BaseDatos } from '../domain/db';
@@ -97,17 +98,28 @@ describe('C1e · Almacén de espacios aislados', () => {
     expect(Object.keys((await idbGet<BaseDatos>('db', createStore('ulit-censo-ensayo', 'datos')))!.registros)).toHaveLength(0);
   }, 90000);
 
-  it('espacio REAL: no admite archivos sintéticos y la confirmación está bloqueada (C1e-B)', async () => {
-    expect(CONFIRMACION_REAL_HABILITADA).toBe(false);
+  it('espacio REAL: no admite sintéticos ni escritura sin servidor aunque la confirmación esté visible', async () => {
+    expect(CONFIRMACION_REAL_HABILITADA).toBe(true);
     const db = await abrirYCrear('real');
     const p = await preparar('real', db);
     await respaldarYComprobar();
     const req = requisitos('real', p.plan, true);
     expect(req.find((r) => r.id === 'archivo')).toMatchObject({ ok: false, texto: expect.stringMatching(/SINTÉTICO/) });
-    expect(req.find((r) => r.id === 'confirmacion-real')).toMatchObject({ ok: false, texto: expect.stringMatching(/BLOQUEADA/) });
+    // Aprobación DOCUMENTAL: solo el SHA aprobado pasa la identificación en real.
+    const planAprobado = { ...p.plan, archivo: { ...p.plan.archivo, sha256: SHA256_APROBADO_MEDINA_2025 } };
+    const planAnterior = { ...p.plan, archivo: { ...p.plan.archivo, sha256: SHA256_ORIGINAL_MEDINA_2025 } };
+    expect(requisitos('real', planAprobado, false).find((r) => r.id === 'archivo'))
+      .toMatchObject({ ok: true, texto: expect.stringMatching(/aprobada el 05\/11\/2026/) });
+    expect(requisitos('real', planAnterior, false).find((r) => r.id === 'archivo'))
+      .toMatchObject({ ok: false, texto: expect.stringMatching(/no corresponde a la copia 2025 aprobada/) });
+    expect(requisitos('ensayo', planAprobado, false).find((r) => r.id === 'archivo')?.ok).toBe(false);
+    expect(requisitos('ensayo', planAnterior, false).find((r) => r.id === 'archivo')?.ok).toBe(false);
+    // La aprobación documental por sí sola no concede permisos de servidor.
+    expect(requisitos('real', planAprobado, false).find((r) => r.id === 'confirmacion-real')?.ok).toBe(true);
+    expect(req.find((r) => r.id === 'confirmacion-real')).toMatchObject({ ok: true });
     // Aunque la interfaz pasase requisitos falsos, el almacén se niega
     const todoOk = req.map((r) => ({ ...r, ok: true }));
-    expect(await useEspacios.getState().incorporar({ ...p, decisiones: p.dec, requisitos: todoOk })).toMatchObject({ ok: false, error: expect.stringMatching(/C1e-B/) });
+    expect(await useEspacios.getState().incorporar({ ...p, decisiones: p.dec, requisitos: todoOk })).toMatchObject({ ok: false, error: expect.stringMatching(/remoto cerrado|Supabase/) });
     expect(Object.keys((await idbGet<BaseDatos>('db', createStore('ulit-censo-real', 'datos')))!.registros)).toHaveLength(0);
   }, 90000);
 

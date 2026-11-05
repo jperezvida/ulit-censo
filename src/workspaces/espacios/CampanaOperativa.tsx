@@ -4,6 +4,7 @@ import { fmt } from '../../components/ui';
 import { useEspacios } from '../../store/espacios';
 import { callesConObservaciones, censoConsolidado, crearItinerario, tramosDeducidosSinConfirmar, validarItinerario } from '../../domain/campanaOperativa';
 import { ConciliacionPosterior } from './ConciliacionPosterior';
+import { CargaLoteItinerarios } from './CargaLoteItinerarios';
 import type { Id } from '../../domain/types';
 import { useAsistenteEspacio, useSeleccionEspacio } from './estadoAsistenteEspacio';
 
@@ -66,6 +67,8 @@ export function CampanaOperativa({ campanaId }: { campanaId: Id }) {
           ))}</tbody>
         </table>
       </div>
+
+      <CargaLoteItinerarios campanaId={campanaId} />
 
       <div className="col-ctrl">
         <label className="campo"><span>Nuevo itinerario: código</span><input className="input" aria-label="Código del itinerario" placeholder="p. ej. IT4" value={codigo} onChange={(e) => setCodigo(e.target.value)} /></label>

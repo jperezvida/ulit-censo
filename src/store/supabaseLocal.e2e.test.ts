@@ -11,6 +11,7 @@ import { webcrypto } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { useEspacios } from './espacios';
 import { AlmacenSupabase, ConflictoRemoto, partir, diferencia, jsonCanonico } from './almacenSupabase';
+import { crearRespaldo, comprobarRespaldo } from '../domain/respaldo';
 import { crearBaseEspacio, municipioDeEspacio, PREFIJO, personaEspacio } from '../domain/espacios';
 import { createHash } from 'node:crypto';
 import { altaMunicipio, crearCampana, TERRITORIO_INICIAL } from '../domain/municipios';
@@ -60,6 +61,11 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
   let coord: SupabaseClient;
   const ids: Record<string, string> = {};
   beforeAll(async () => {
+    // Fail closed: nunca crear cuentas ni modificar tablas si las variables apuntan fuera de localhost.
+    const permitido = (direccion: string) => {
+      try { return ['localhost', '127.0.0.1', '::1'].includes(new globalThis.URL(direccion).hostname); } catch { return false; }
+    };
+    if (!permitido(URL) || !permitido(PSQL)) throw new Error('E2E denegado: API y PostgreSQL deben ser servidores locales desechables.');
     if (!globalThis.crypto?.subtle) Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true });
     for (const k of ['coord', 'revisora', 'lectora', 'adminbase']) ids[k] = await cuenta(`${k}-${ESPACIO}@ejemplo.invalid`);
     // ULIT base: una administradora suya (perfiles.rol = admin) que NO es miembro de ULIT Censo.
@@ -313,6 +319,317 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
       ':' || (select count(*) from ulit_censo.entidad where espacio_id='${realId}' and coleccion='importaciones')
       from ulit_censo.espacio where id='${realId}'`);
     expect(huella).toBe('1:false:false:0');
+  }, 180000);
+
+
+  it('recuperación selectiva: copia de real antes de 889 filas sintéticas, restauración atómica y aislamiento de otros espacios', async () => {
+    // SOLO se ejecuta con Supabase local desechable (sin URLs ni claves de producción).
+    const realId = `real-e2e-restauracion-${Date.now().toString(36)}`;
+    const vecinoId = `ensayo-e2e-vecino-${Date.now().toString(36)}`;
+    const personaId = 'real-p-coordinacion-sintetica';
+    const osm = validarInstantanea(JSON.parse(readFileSync('public/data/medina-callejero.json', 'utf8')));
+    if (!osm.ok) throw new Error(osm.motivo);
+
+    const original = crearBaseEspacio('real', {
+      persona: { nombre: NOMBRE, roles: ['coordinador'] }, personaId, espacioId: realId,
+      calles: osm.calles, detalleCallejero: 'Instantánea OSM sintética para test',
+    });
+    const vecinoBase = crearBaseEspacio('ensayo', {
+      persona: { nombre: 'Coordinación vecina de prueba', roles: ['coordinador'] },
+      espacioId: vecinoId, incluirMedina: false, calles: [], detalleCallejero: '',
+    });
+    sql(`insert into ulit_censo.espacio (id,tipo,nombre,escritura_habilitada,preparacion_habilitada)
+           values ('${realId}','real','Restauración E2E, prueba sintética',true,true);
+         insert into ulit_censo.miembro (espacio_id,usuario_id,rol,persona_id)
+           values ('${realId}','${ids.coord}','administrador','${personaId}');
+         insert into ulit_censo.espacio (id,tipo,nombre,escritura_habilitada)
+           values ('${vecinoId}','ensayo','Espacio vecino inalterable',true);
+         insert into ulit_censo.miembro (espacio_id,usuario_id,rol,persona_id)
+           values ('${vecinoId}','${ids.coord}','administrador','${vecinoBase.meta.espacioCreadoPorId}');`);
+
+    const real = new AlmacenSupabase(coord, realId);
+    const vecino = new AlmacenSupabase(coord, vecinoId);
+    await real.leer();
+    await vecino.leer();
+    expect(await real.guardar(null, original, 'Carga inicial permitida: solo Medina y OSM')).toBe(1);
+    expect(await vecino.guardar(null, vecinoBase, 'Alta de espacio vecino')).toBe(1);
+    const vecinoAntes = await vecino.leer();
+    const huellaVecino = huella(vecinoAntes.db!);
+    expect((await real.leer()).info).toMatchObject({ version: 1, escrituraHabilitada: false, preparacionHabilitada: false });
+
+    // La copia interna puede prepararse mientras el espacio real sigue BLOQUEADO.
+    const copia = await real.crearCopia('Punto de recuperación antes del histórico 2025');
+    const exportada = await real.descargarCopia(copia);
+    expect(exportada.sha256).toMatch(/^[a-f0-9]{64}$/);
+    expect((exportada.contenido as { espacioId: string; version: number })).toMatchObject({ espacioId: realId, version: 1 });
+    expect((await real.listarCopias()).length).toBe(1);
+
+    // SIMULACIÓN en BD local: apertura administrativa limitada y una importación de prueba.
+    sql(`update ulit_censo.espacio set escritura_habilitada=true
+         where id='${realId}' and version=1 and preparacion_habilitada=false`);
+    expect((await real.leer()).info.escrituraHabilitada).toBe(true);
+    // El futuro importador debe crear y LEER una copia del estado exacto.
+    const puntoRecuperacion = await real.asegurarRecuperacionAntesDeImportar(original);
+    expect(puntoRecuperacion).toMatchObject({ version: 1, sha256: exportada.sha256 });
+    // Si el cliente pretende modificar un estado diferente, se rechaza antes de importar.
+    await expect(real.asegurarRecuperacionAntesDeImportar({ ...original, secuencia: original.secuencia + 1 }))
+      .rejects.toThrow(/no coincide con el estado/);
+
+    const d = { municipioId: municipioDeEspacio('real'), anio: 2025 };
+    const decisiones = { periodoTrabajo: {
+      porId: personaId, fecha: '2026-11-05', desde: '2024-01-01', hasta: '2025-12-31',
+      motivo: 'Simulación local de recuperación del histórico, sin datos comerciales auténticos.',
+    } };
+    const p = await prepararIncorporacion(original, await libroSinteticoC1e(osm.calles), ARCHIVO_SINTETICO_C1E, d, decisiones);
+    expect(p.plan.aplicable).toBe(true);
+    expect(p.plan.registros.previstos).toBe(889);
+    expect(p.plan.destino.nueva).toBe(true);
+    const aplicado = aplicarIncorporacion(original, p.resultado, d, decisiones, p.plan, { porId: personaId });
+    expect(await real.guardar(original, aplicado.db, '889 filas sintéticas 2025 (PRUEBA LOCAL)')).toBe(2);
+    expect(sql(`select count(*) from ulit_censo.entidad where espacio_id='${realId}' and coleccion='registros'`)).toBe('889');
+
+    // El cliente con la versión antigua no puede restaurar (sin sobrescribir operaciones nuevas).
+    const obsoleto = new AlmacenSupabase(coord, realId);
+    await obsoleto.leer();
+    obsoleto.info!.version = 1;
+    await expect(obsoleto.restaurarCopia(copia, 'Intento obsoleto')).rejects.toBeInstanceOf(ConflictoRemoto);
+    expect(sql(`select version from ulit_censo.espacio where id='${realId}'`)).toBe('2');
+
+    // Restauración SOLO del espacio real. Supabase crea antes otra copia automática.
+    expect(await real.restaurarCopia(copia, 'Reversión selectiva tras importación sintética')).toBe(3);
+    const restaurado = await real.leer();
+    expect(huella(restaurado.db!)).toBe(huella(original));
+    expect(restaurado.info.version).toBe(3);
+    expect(sql(`select count(*) from ulit_censo.entidad where espacio_id='${realId}' and coleccion='registros'`)).toBe('0');
+    expect(sql(`select count(*) from ulit_censo.entidad where espacio_id='${realId}' and coleccion='campanas'`)).toBe('0');
+    // Una copia manual previa + dos preflights (uno rechazado) + copia automática de la restauración.
+    expect((await real.listarCopias()).length).toBe(4);
+
+    const vecinoDespues = await new AlmacenSupabase(coord, vecinoId).leer();
+    expect(huella(vecinoDespues.db!)).toBe(huellaVecino);
+    expect(vecinoDespues.info.version).toBe(vecinoAntes.info.version);
+
+    // Cierre explícito en el entorno desechable: tampoco el cliente Auth puede reabrirlo por su cuenta.
+    sql(`update ulit_censo.espacio set escritura_habilitada=false where id='${realId}' and version=3`);
+    expect((await real.leer()).info.escrituraHabilitada).toBe(false);
+    const intento = await coord.rpc('ulit_censo_aplicar', {
+      p_espacio: realId, p_version_esperada: 3, p_etiqueta: 'Intento tras cierre',
+      p_cambios: [{ c: 'campanas', id: 'real-camp-no', v: { id: 'real-camp-no' } }],
+    });
+    expect(intento.error?.code).toBe('42501');
+    expect(sql(`select version from ulit_censo.espacio where id='${realId}'`)).toBe('3');
+  }, 180000);
+
+
+  it('respaldo externo: recuperar 889 filas ficticias desde JSON en espacio real local limpio', async () => {
+    // Simulación de desastre LÓGICO: otra instalación local, no la base de producción.
+    // El respaldo se genera en memoria y se RESTAURA desde su contenido JSON validado.
+    const realId = `real-e2e-rescate-externo-${Date.now().toString(36)}`;
+    const personaId = 'real-p-coordinacion-sintetica';
+    const osm = validarInstantanea(JSON.parse(readFileSync('public/data/medina-callejero.json', 'utf8')));
+    if (!osm.ok) throw new Error(osm.motivo);
+    const inicial = crearBaseEspacio('real', {
+      persona: { nombre: NOMBRE, roles: ['coordinador'] },
+      personaId, espacioId: realId, calles: osm.calles, detalleCallejero: 'Instantánea OSM E2E, solo datos sintéticos',
+    });
+    const d = { municipioId: municipioDeEspacio('real'), anio: 2025 };
+    const decisiones = { periodoTrabajo: {
+      porId: personaId, fecha: '2026-11-05', desde: '2024-01-01', hasta: '2025-12-31',
+      motivo: 'Prueba E2E de recuperación externa de datos ficticios.',
+    } };
+    const p = await prepararIncorporacion(inicial, await libroSinteticoC1e(osm.calles), ARCHIVO_SINTETICO_C1E, d, decisiones);
+    expect(p.plan.registros.previstos).toBe(889);
+    const aplicado = aplicarIncorporacion(inicial, p.resultado, d, decisiones, p.plan, { porId: personaId });
+    expect(Object.keys(aplicado.db.registros)).toHaveLength(889);
+
+    const respaldo = crearRespaldo(aplicado.db, 'real', '2026-11-05T20:00:00.000Z');
+    expect(respaldo.sha256).toMatch(/^[0-9a-f]{64}$/);
+    const comprobado = comprobarRespaldo(respaldo.texto, 'real');
+    if (!comprobado.ok) throw new Error(comprobado.motivo);
+    expect(comprobado.sobre.espacioId).toBe(realId);
+    expect(huella(comprobado.db)).toBe(huella(aplicado.db));
+    // Corrupción y tipo de espacio incorrecto: rechazo antes de tocar la base.
+    expect(comprobarRespaldo(respaldo.texto.replace(NOMBRE, 'Nombre Corrupto'), 'real').ok).toBe(false);
+    expect(comprobarRespaldo(respaldo.texto, 'ensayo').ok).toBe(false);
+    const otroEspacio = crearBaseEspacio('real', {
+      persona: { nombre: NOMBRE, roles: ['coordinador'] },
+      personaId, espacioId: 'real-e2e-otro-espacio', calles: osm.calles, detalleCallejero: 'Instantánea OSM E2E',
+    });
+    expect(comprobado.db.meta.espacioId).not.toBe(otroEspacio.meta.espacioId);
+
+    // Una instalación nueva debe iniciar con el mismo ID lógico para restaurar
+    // los datos íntegros sin renombrar/mezclar registros de espacios diferentes.
+    sql(`insert into ulit_censo.espacio(id,tipo,nombre,escritura_habilitada,preparacion_habilitada)
+      values ('${realId}','real','Recuperación externa sintética',true,true);
+      insert into ulit_censo.miembro(espacio_id,usuario_id,rol,persona_id)
+      values ('${realId}','${ids.coord}','administrador','${personaId}');`);
+    const recuperado = new AlmacenSupabase(coord, realId);
+    expect((await recuperado.leer()).db).toBeNull();
+    expect(await recuperado.guardar(null, inicial, 'Recuperar infraestructura inicial de Medina E2E')).toBe(1);
+    expect((await recuperado.leer()).info).toMatchObject({ version: 1, escrituraHabilitada: false });
+
+    // Solo en este servidor local desechable, la administración autoriza
+    // temporalmente la restauración lógica de una copia EXTERNA comprobada.
+    sql(`update ulit_censo.espacio set escritura_habilitada=true
+       where id='${realId}' and version=1 and preparacion_habilitada=false`);
+    expect((await recuperado.leer()).info.escrituraHabilitada).toBe(true);
+    expect(await recuperado.guardar(inicial, comprobado.db, 'Restauración de JSON externo E2E')).toBe(2);
+    sql(`update ulit_censo.espacio set escritura_habilitada=false
+       where id='${realId}' and version=2`);
+    const final = await new AlmacenSupabase(coord, realId).leer();
+    expect(final.info).toMatchObject({ version: 2, escrituraHabilitada: false, preparacionHabilitada: false });
+    expect(huella(final.db!)).toBe(huella(aplicado.db));
+    expect(Object.keys(final.db!.registros)).toHaveLength(889);
+    expect(Object.keys(final.db!.campanas)).toHaveLength(1);
+    expect(Object.keys(final.db!.importaciones)).toHaveLength(1);
+    expect(sql(`select count(*) from ulit_censo.entidad where espacio_id='${realId}' and coleccion='registros'`)).toBe('889');
+  }, 180000);
+
+  it('permiso específico: histórico 2025 autorizado una sola vez y cierre automático en SQL', async () => {
+    const realId = 'real-medina-del-campo-2026'; // SOLO entorno desechable local
+    const personaId = 'real-p-coordinacion-sintetica';
+    const osm = validarInstantanea(JSON.parse(readFileSync('public/data/medina-callejero.json', 'utf8')));
+    if (!osm.ok) throw new Error(osm.motivo);
+    const inicial = crearBaseEspacio('real', {
+      persona: { nombre: NOMBRE, roles: ['coordinador'] },
+      personaId, espacioId: realId, calles: osm.calles, detalleCallejero: 'Instantánea OSM sintética E2E',
+    });
+    sql("insert into ulit_censo.espacio(id,tipo,nombre,escritura_habilitada,preparacion_habilitada) values ('"
+      + realId + "','real','Medina 2025 E2E',true,true);"
+      + "insert into ulit_censo.miembro(espacio_id,usuario_id,rol,persona_id) values ('"
+      + realId + "','" + ids.coord + "','administrador','" + personaId + "');");
+
+    const real = new AlmacenSupabase(coord, realId);
+    await real.leer();
+    expect(await real.guardar(null, inicial, 'Inicialización local solo Medina y calles OSM')).toBe(1);
+    expect((await real.leer()).info).toMatchObject({ version: 1, escrituraHabilitada: false, preparacionHabilitada: false });
+    const antes = huella(inicial);
+    const copia = await real.asegurarRecuperacionAntesDeImportar(inicial);
+    expect(copia.version).toBe(1);
+
+    const d = { municipioId: municipioDeEspacio('real'), anio: 2025 };
+    const decisiones = { periodoTrabajo: {
+      porId: personaId, fecha: '2026-11-05', desde: '2024-01-01', hasta: '2025-12-31',
+      motivo: 'Revisión humana del periodo de trabajo de campo (E2E ficticia).',
+    } };
+    const plan = await prepararIncorporacion(inicial, await libroSinteticoC1e(osm.calles), ARCHIVO_SINTETICO_C1E, d, decisiones);
+    expect(plan.plan.registros.previstos).toBe(889);
+    expect(plan.plan.nuevas.registros).toBe(889);
+    expect(plan.plan.nuevas.campanas).toBe(1);
+    const aplicado = aplicarIncorporacion(inicial, plan.resultado, d, decisiones, plan.plan, { porId: personaId });
+
+    // Ni siquiera se permite depositar una parte del Excel en la tabla temporal
+    // cuando la administración todavía no ha concedido la autorización.
+    const depositoSinPermiso = await coord.rpc('ulit_censo_lote_subir', {
+      p_espacio: realId, p_lote: globalThis.crypto.randomUUID(), p_parte: 0,
+      p_cambios: [{ c: 'registros', id: 'fila-no-autorizada', v: { fila: 2 } }],
+    });
+    expect(depositoSinPermiso.error?.code).toBe('42501');
+    expect(sql("select count(*) from ulit_censo.lote_parte where espacio_id='" + realId + "'")).toBe('0');
+
+    // El servidor rechaza sin autorización SQL específica.
+    await expect(real.importarPrimerHistorico2025(inicial, aplicado.db, copia)).rejects.toThrow(/autorización específica/);
+    expect((await real.leer()).info).toMatchObject({ version: 1, escrituraHabilitada: false });
+    expect(huella((await real.leer()).db!)).toBe(antes);
+
+    // Inserción por administración SQL en base desechable: nunca por Auth/API pública.
+    const sha = plan.plan.archivo.sha256;
+    expect(sha).toMatch(/^[0-9a-f]{64}$/);
+    sql("insert into ulit_censo.autorizacion_historico_2025" +
+      "(espacio_id,usuario_id,version_esperada,sha256_archivo,vigente_hasta,motivo)" +
+      " values ('" + realId + "','" + ids.coord + "',1,'" + sha + "',now()+interval '10 minutes'," +
+      "'Prueba E2E aislada, permiso de uso único para una importación ficticia');");
+
+    const lectora = new AlmacenSupabase(await sesion('lectora-' + ESPACIO + '@ejemplo.invalid'), realId);
+    await expect(lectora.leer()).rejects.toThrow(/sin permiso/);
+
+    // Una autorización caducada nunca permite ejecutar la RPC, ni consumir el permiso.
+    sql("update ulit_censo.autorizacion_historico_2025 set vigente_hasta=now()-interval '1 second' where espacio_id='" + realId + "'");
+    const caducada = await coord.rpc('ulit_censo_importar_historico_2025', {
+      p_espacio: realId, p_lote: globalThis.crypto.randomUUID(), p_partes: 1,
+      p_version_esperada: 1, p_copia: copia.id,
+    });
+    expect(caducada.error?.code).toBe('42501');
+    const depositoCaducado = await coord.rpc('ulit_censo_lote_subir', {
+      p_espacio: realId, p_lote: globalThis.crypto.randomUUID(), p_parte: 0,
+      p_cambios: [{ c: 'registros', id: 'fila-caducada', v: { fila: 2 } }],
+    });
+    expect(depositoCaducado.error?.code).toBe('42501');
+    sql("update ulit_censo.autorizacion_historico_2025 set vigente_hasta=now()+interval '10 minutes' where espacio_id='" + realId + "'");
+
+    // ATAQUE SINTÉTICO: 889 vínculos pero dos dirigidos a la misma fila y otra sin vínculo.
+    // Debe fallar ANTES de escribir, conservando la autorización para el lote válido.
+    const originales = diferencia(inicial, aplicado.db);
+    const enlaces = originales.filter((x) => x.c === 'vinculos');
+    expect(enlaces).toHaveLength(889);
+    const primero = enlaces[0].v as { origen: { tipo: string; id: string } };
+    const defectuosos = originales.map((x) => {
+      if (x.c !== 'vinculos' || x.id !== enlaces[1].id) return x;
+      return { ...x, v: { ...(x.v as Record<string, unknown>),
+        origen: { tipo: 'registro', id: primero.origen.id } } };
+    });
+    const loteInvalido = globalThis.crypto.randomUUID();
+    const partesInvalidas = partir(defectuosos);
+    for (const [numero, parte] of partesInvalidas.entries()) {
+      const subida = await coord.rpc('ulit_censo_lote_subir', {
+        p_espacio: realId, p_lote: loteInvalido, p_parte: numero, p_cambios: parte,
+      });
+      expect(subida.error).toBeNull();
+    }
+    const duplicado = await coord.rpc('ulit_censo_importar_historico_2025', {
+      p_espacio: realId, p_lote: loteInvalido, p_partes: partesInvalidas.length,
+      p_version_esperada: 1, p_copia: copia.id,
+    });
+    expect(duplicado.error?.code).toBe('42501');
+    expect(duplicado.error?.message).toMatch(/vínculos\/exclusiones incoherentes/);
+    expect(sql("select version::text || ':' || escritura_habilitada::text from ulit_censo.espacio where id='" + realId + "'")).toBe('1:false');
+    expect(sql("select utilizada_en is null from ulit_censo.autorizacion_historico_2025 where espacio_id='" + realId + "'")).toBe('t');
+    expect(sql("select count(*) from ulit_censo.entidad where espacio_id='" + realId + "' and coleccion='registros'")).toBe('0');
+
+    // Un segundo coordinador miembro del espacio NO puede borrar el lote ajeno.
+    sql("insert into ulit_censo.miembro(espacio_id,usuario_id,rol,persona_id) values ('"
+      + realId + "','" + ids.revisora + "','coordinador','real-p-otra-coordinacion')");
+    const otraSesion = await sesion('revisora-' + ESPACIO + '@ejemplo.invalid');
+    const otroDescarte = await otraSesion.rpc('ulit_censo_descartar_lote_2025', {
+      p_espacio: realId, p_lote: loteInvalido,
+    });
+    expect(otroDescarte.error).toBeNull();
+    expect(otroDescarte.data).toBe(0);
+    const otroDeposito = await otraSesion.rpc('ulit_censo_lote_subir', {
+      p_espacio: realId, p_lote: globalThis.crypto.randomUUID(), p_parte: 0,
+      p_cambios: [{ c: 'registros', id: 'lote-otra-cuenta', v: { fila: 2 } }],
+    });
+    expect(otroDeposito.error?.code).toBe('42501');
+
+    const descartar = await coord.rpc('ulit_censo_descartar_lote_2025', {
+      p_espacio: realId, p_lote: loteInvalido,
+    });
+    expect(descartar.error).toBeNull();
+    expect(descartar.data).toBe(partesInvalidas.length);
+    expect(sql("select count(*) from ulit_censo.lote_parte where espacio_id='" + realId + "'")).toBe('0');
+
+    expect(await real.importarPrimerHistorico2025(inicial, aplicado.db, copia)).toBe(2);
+    const despues = await real.leer();
+    expect(despues.info).toMatchObject({ version: 2, escrituraHabilitada: false, preparacionHabilitada: false });
+    expect(huella(despues.db!)).toBe(huella(aplicado.db));
+    expect(Object.keys(despues.db!.registros).length).toBe(889);
+    expect(Object.keys(despues.db!.campanas).length).toBe(1);
+    expect(Object.keys(despues.db!.importaciones).length).toBe(1);
+    expect(sql("select count(*) from ulit_censo.operacion where espacio_id='" + realId + "' and version=2")).toBe('1');
+    expect(sql("select version_resultante from ulit_censo.autorizacion_historico_2025 where espacio_id='" + realId + "'")).toBe('2');
+    expect(sql("select count(*) from ulit_censo.copia where espacio_id='" + realId + "'")).toBe('1');
+
+    const intento = await coord.rpc('ulit_censo_aplicar', {
+      p_espacio: realId, p_version_esperada: 2, p_etiqueta: 'Fuera del permiso',
+      p_cambios: [{ c: 'campanas', id: 'real-camp-falsa', v: { id: 'real-camp-falsa' } }],
+    });
+    expect(intento.error?.code).toBe('42501');
+    const depositoDespues = await coord.rpc('ulit_censo_lote_subir', {
+      p_espacio: realId, p_lote: globalThis.crypto.randomUUID(), p_parte: 0,
+      p_cambios: [{ c: 'registros', id: 'fila-post-cierre', v: { fila: 2 } }],
+    });
+    expect(depositoDespues.error?.code).toBe('42501');
+    await expect(real.importarPrimerHistorico2025(inicial, aplicado.db, copia)).rejects.toThrow(/versión 1/);
   }, 180000);
 
 });

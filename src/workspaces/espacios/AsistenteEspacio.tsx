@@ -7,6 +7,7 @@ import { periodoDe, planificarIncorporacion, type DecisionesIncorporacion, type 
 import { itemsRevision, MOTIVO_TXT, previsualizarDeshacer } from '../../domain/incorporacionDemo';
 import { conciliacionCalles, diagnosticoAgregado, ESTADO_CALLE_TXT, recuentoRegistros, senales, type EstadoCalle } from '../../domain/c1e';
 import { municipioDeEspacio, personaEspacio, SHA256_ORIGINAL_MEDINA_2025, type TipoEspacio } from '../../domain/espacios';
+import { SHA256_APROBADO_MEDINA_2025 } from '../../domain/xlsx/referencias';
 import { esArchivoSintetico } from '../../data/xlsxSinteticoC1e';
 import { RevisionGrupos } from '../imports/incorporacion/RevisionGrupos';
 import { Decisiones } from '../imports/incorporacion/Decisiones';
@@ -67,7 +68,14 @@ function useDestino(tipo: TipoEspacio): DestinoIncorporacion | null {
   return useMemo(() => {
     const { municipioId, campana, itinerario } = destinoElegido(db, tipo, sel);
     if (sel.modo === 'operativo') return municipioId && campana && itinerario ? { municipioId, anio: campana.anio, nombre: campana.nombre, campanaId: campana.id, itinerarioId: itinerario.id } : null;
-    return municipioId && campana ? { municipioId, anio: campana.anio, nombre: campana.nombre, campanaId: campana.id } : null;
+    if (municipioId && campana) return { municipioId, anio: campana.anio, nombre: campana.nombre, campanaId: campana.id };
+    // Primera incorporación real en v1: la campaña NO existe todavía y la RPC
+    // de la migración 0005 exige crearla DENTRO de la importación transaccional.
+    // No obligar a hacer una escritura previa que el servidor bloquea.
+    if (tipo === 'real' && municipioId === municipioDeEspacio('real') && Object.keys(db.campanas).length === 0) {
+      return { municipioId, anio: 2025, nombre: 'Censo histórico Medina del Campo 2025' };
+    }
+    return null;
   }, [db, tipo, sel]);
 }
 
@@ -81,12 +89,12 @@ export function AsistenteEspacio({ tipo, simple = false }: { tipo: TipoEspacio; 
   const db = useEspacios((s) => s.db!);
   const persona = personaEspacio(db);
   const elegido = useDestino(tipo);
-  const destino = useMemo<DestinoIncorporacion>(() => elegido ?? { municipioId: '', anio: 0 }, [elegido]);
+  const destino = useMemo<DestinoIncorporacion>(() => ({ ...(elegido ?? { municipioId: '', anio: 0 }), ...(elegido?.itinerarioId && st.continuacionItinerario ? { continuacionItinerario: true } : {}) }), [elegido, st.continuacionItinerario]);
   const autorizado = !!persona && (persona.roles.includes('coordinador') || persona.roles.includes('administrador'));
   const puedeIr = (n: EtapaEspacio) => n === 1 || (n === 2 && !!st.archivo && !!elegido && !st.aplicado) || (n <= 5 && !!st.preparado && !st.aplicado) || (n === 6 && !!st.aplicado);
 
   const recalcular = async (decisiones: DecisionesIncorporacion = st.decisiones, forzar = false, lectura = st.lectura) => {
-    const firma = `${destino.campanaId}|${destino.itinerarioId ?? ''}|${firmaInterpretacion(decisiones)}|${lectura ? JSON.stringify([lectura.perfil.id, lectura.perfil.version, lectura.perfil.columnas, lectura.hoja, lectura.filaCabecera]) : ''}`;
+    const firma = `${destino.campanaId}|${destino.itinerarioId ?? ''}|${destino.continuacionItinerario ? 'parte-adicional' : 'primera-parte'}|${firmaInterpretacion(decisiones)}|${lectura ? JSON.stringify([lectura.perfil.id, lectura.perfil.version, lectura.perfil.columnas, lectura.hoja, lectura.filaCabecera]) : ''}`;
     if (!forzar && st.preparado && firma === st.interpretadoCon) {
       try {
         st.set({ decisiones, preparado: { ...st.preparado, plan: planificarIncorporacion(useEspacios.getState().db!, st.preparado.resultado, destino, decisiones) }, error: null, revisada: false });
@@ -166,6 +174,18 @@ function EtapaArchivo({ tipo, destino, simple, onAnalizar }: { tipo: TipoEspacio
   const db = useEspacios((s) => s.db!);
   const a = st.archivo;
   const p = st.decisiones.periodoTrabajo;
+  const otrasPartes = destino?.itinerarioId
+    ? Object.values(db.importaciones).filter((i) => i.estado === 'confirmada' && i.c1?.itinerario?.id === destino.itinerarioId)
+    : [];
+  const confirmacionParte = destino?.itinerarioId && otrasPartes.length > 0 && (
+    <label className="fila" style={{ alignItems: 'flex-start', gap: 8 }}>
+      <input type="checkbox" aria-label="Añadir otra parte del mismo itinerario" checked={st.continuacionItinerario}
+        onChange={(ev) => st.set({ continuacionItinerario: ev.target.checked, preparado: null, revisada: false })} />
+      <span><b>Es otra parte del mismo itinerario</b> (p. ej., IT5, parte 2).
+        <span className="muted"> No sustituye los {otrasPartes.length} Excel ya incorporados. Rechaza archivos idénticos y conserva las filas de cada parte por separado.</span>
+      </span>
+    </label>
+  );
   const elegir = async (f?: File) => {
     st.reiniciar();
     if (!f) return;
@@ -179,15 +199,19 @@ function EtapaArchivo({ tipo, destino, simple, onAnalizar }: { tipo: TipoEspacio
   };
   const bloqueo = !a ? null
     : tipo === 'real' && a.sintetico ? 'Este archivo lo ha generado la aplicación (sintético o ficticio): no se admite en el espacio de datos reales. Úselo en el espacio de ensayo.'
-    : tipo === 'ensayo' && a.sha256 === SHA256_ORIGINAL_MEDINA_2025 ? 'Este es el archivo AUTÉNTICO del censo (su SHA-256 coincide con el del diagnóstico agregado): no se usa en el ensayo. Use el espacio de datos reales.'
+    : tipo === 'ensayo' && (a.sha256 === SHA256_APROBADO_MEDINA_2025 || a.sha256 === SHA256_ORIGINAL_MEDINA_2025) ? 'Este Excel corresponde al censo histórico real de Medina 2025 (aprobado o de referencia anterior): está prohibido cargarlo en el espacio de ensayo.'
     : null;
   const detallesArchivo = a && (
           <dl className="inc-dl" aria-label="Identificación del archivo">
             <dt>Archivo</dt><dd>{a.nombre}</dd>
             <dt>Tamaño</dt><dd>{mb(a.tamano)}</dd>
             <dt>SHA-256</dt><dd className="mono" style={{ wordBreak: 'break-all' }}>{a.sha256}</dd>
-            <dt>Diagnóstico agregado</dt>
-            <dd>{a.sha256 === SHA256_ORIGINAL_MEDINA_2025 ? <span className="chip ok">Coincide con la huella del archivo auténtico</span> : <span className="chip aviso">No coincide con la huella del archivo auténtico</span>}</dd>
+            <dt>Fuente oficial 2025</dt>
+            <dd>{a.sha256 === SHA256_APROBADO_MEDINA_2025
+              ? <span className="chip ok">Copia aprobada por la Cátedra (05/11/2026)</span>
+              : a.sha256 === SHA256_ORIGINAL_MEDINA_2025
+                ? <span className="chip aviso">Referencia anterior: huella distinta de la copia aprobada</span>
+                : <span className="chip aviso">No coincide con la copia 2025 aprobada</span>}</dd>
             <dt>Marca de sintético</dt><dd>{a.sintetico ? <span className="chip sim">Archivo SINTÉTICO</span> : 'No'}</dd>
           </dl>
         );
@@ -228,6 +252,7 @@ function EtapaArchivo({ tipo, destino, simple, onAnalizar }: { tipo: TipoEspacio
         {destino && (
           <details className="ux-plegable">
             <summary>Detalles y opciones</summary>
+            {confirmacionParte}
             {detallesArchivo}
             {queSeHara}
           </details>
@@ -250,6 +275,7 @@ function EtapaArchivo({ tipo, destino, simple, onAnalizar }: { tipo: TipoEspacio
         </label>
         <p className="muted">El archivo se lee y se procesa <b>en este navegador</b>: no se sube a ningún servidor. Sus bytes solo se mantienen en memoria mientras dure esta sesión y nunca se guardan.</p>
         {detallesArchivo}
+        {confirmacionParte}
         {bloqueo && <div className="t-info error" role="alert"><XCircle size={15} /> {bloqueo}</div>}
       </section>
 
@@ -304,7 +330,7 @@ function DestinoSencillo({ destino }: { destino: DestinoIncorporacion | null }) 
       {destino.itinerarioId && (
         <label className="campo">
           <span className="sr-only">Itinerario</span>
-          <select className="input" aria-label="Itinerario de destino" value={destino.itinerarioId} onChange={(e) => { sel.elegir({ itinerarioId: e.target.value }); st.set({ preparado: null }); }}>
+          <select className="input" aria-label="Itinerario de destino" value={destino.itinerarioId} onChange={(e) => { sel.elegir({ itinerarioId: e.target.value }); st.set({ preparado: null, continuacionItinerario: false }); }}>
             {its.map((i) => <option key={i.id} value={i.id}>{i.codigo}{conExcel.has(i.id) ? ' (ya tiene Excel)' : ''}</option>)}
           </select>
         </label>
@@ -333,7 +359,7 @@ function Destino({ tipo, destino }: { tipo: TipoEspacio; destino: DestinoIncorpo
     // Otro destino: hay que volver a analizar; el periodo propuesto depende del destino.
     const d = destinoElegido(db, tipo, { ...useSeleccionEspacio.getState() });
     const nuevo = d.municipioId && d.campana && useSeleccionEspacio.getState().modo === 'historico' ? { municipioId: d.municipioId, anio: d.campana.anio, campanaId: d.campana.id } : null;
-    st.set({ preparado: null, decisiones: { ...st.decisiones, periodoTrabajo: nuevo && esCasoC1e(tipo, nuevo) ? periodoPropuesto(db, tipo, nuevo) : undefined } });
+    st.set({ preparado: null, continuacionItinerario: false, decisiones: { ...st.decisiones, periodoTrabajo: nuevo && esCasoC1e(tipo, nuevo) ? periodoPropuesto(db, tipo, nuevo) : undefined } });
   };
   return (
     <section className="tarjeta inc-bloque" aria-label="Destino">
@@ -373,6 +399,7 @@ function Destino({ tipo, destino }: { tipo: TipoEspacio; destino: DestinoIncorpo
             <span>Campaña histórica</span>
             <select className="input" aria-label="Campaña de destino" value={destino?.campanaId ?? ''} disabled={!opciones.length} onChange={(e) => cambiar({ campanaId: e.target.value })}>
               {!destino && <option value="">— No hay ninguna campaña histórica vacía —</option>}
+              {tipo === 'real' && destino && !destino.campanaId && <option value="">Se creará al incorporar el histórico 2025</option>}
               {opciones.map(({ c, motivo }) => <option key={c.id} value={c.id} disabled={!!motivo}>{c.nombre} ({c.anio}){motivo ? ' · ya tiene datos' : ''}</option>)}
             </select>
           </label>
@@ -394,9 +421,10 @@ function Destino({ tipo, destino }: { tipo: TipoEspacio; destino: DestinoIncorpo
       {cj && (cj.disponible
         ? <p className="muted" style={{ margin: 0 }}>Callejero: {cj.texto}.</p>
         : <div className="t-info aviso" role="note"><AlertTriangle size={15} /> <div><b>Este municipio no tiene callejero todavía.</b> Los registros se incorporan y se conservan, pero sin vínculo con calles ni locales: la conciliación territorial queda pendiente.</div></div>)}
-      {municipioId && !soloMemoria && sel.modo === 'historico' && (nueva
+      {municipioId && !soloMemoria && sel.modo === 'historico' && !(tipo === 'real' && destino && !destino.campanaId) && (nueva
         ? <FormCampana municipioId={municipioId} soloHistorica onCerrar={(id) => { setNueva(false); if (id) cambiar({ municipioId, campanaId: id }); }} />
         : <button className="btn s" style={{ alignSelf: 'flex-start' }} onClick={() => setNueva(true)}>Crear una campaña histórica</button>)}
+      {tipo === 'real' && destino && !destino.campanaId && sel.modo === 'historico' && <div className="t-info ok" role="note"><CheckCircle2 size={15} /> La campaña histórica 2025 se creará automáticamente en la misma incorporación única de los 889 registros. No tiene que crearla previamente.</div>}
       {!destino && !nueva && sel.modo === 'historico' && <p className="muted" style={{ margin: 0 }}>Cree primero la campaña histórica en la que se incorporará el Excel (por ejemplo, «Censo 2023 · histórico»).</p>}
     </section>
   );
@@ -564,7 +592,8 @@ function EtapaVistaPrevia({ tipo, destino, simple }: { tipo: TipoEspacio; destin
           {plan.pendientes.map((x) => <li key={x}>{x}</li>)}
           {(plan.cruces ?? []).map((x) => <li key={`${x.fila}-${x.tipo}`} className="aviso">Fila {x.fila}: {x.tipo === 'posible-duplicado' ? 'posible duplicado' : 'contradicción'} con {x.itinerario} ({x.detalle}).</li>)}
           {diag.diferencias.map((d) => <li key={d.clave} className="aviso">No coincide con el informe: {d.etiqueta} ({String(d.valor)} frente a {String(d.esperado)}).</li>)}
-          {a.sha256 !== SHA256_ORIGINAL_MEDINA_2025 && tipo === 'real' && <li className="aviso">El SHA-256 del archivo no es el del diagnóstico agregado.</li>}
+          {tipo === 'real' && a.sha256 === SHA256_APROBADO_MEDINA_2025 && <li>Fuente del histórico 2025 aprobada el 05/11/2026. Su SHA-256 difiere de la referencia anterior; la aprobación del archivo no autoriza todavía la incorporación.</li>}
+          {tipo === 'real' && a.sha256 !== SHA256_APROBADO_MEDINA_2025 && <li className="aviso">El SHA-256 no corresponde al Excel 2025 aprobado por la Cátedra: no utilice este archivo para la primera incorporación real.</li>}
           <li>No se toca ninguna campaña operativa (en Medina del Campo, 2026 sigue intacta).</li>
         </ul>
       </section>

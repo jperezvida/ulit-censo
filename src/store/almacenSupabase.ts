@@ -132,6 +132,86 @@ export class AlmacenSupabase {
     return Number(v);
   }
 
+  /**
+   * Punto de recuperación obligatorio para la PRIMERA importación REAL.
+   * Crea una copia privada en el servidor y comprueba que representa EXACTAMENTE
+   * el estado que la aplicación acaba de leer, antes de enviar cambios.
+   *
+   * No habilita la escritura, no restaura y no afecta a otros espacios.
+   * Si otro actor cambió la versión o los datos no coinciden, falla cerrado.
+   */
+  async asegurarRecuperacionAntesDeImportar(db: BaseDatos): Promise<{ id: string; version: number; sha256: string }> {
+    const info = this.info;
+    if (!info || info.espacioId !== this.espacioId || info.tipo !== 'real' || info.version !== 1 || info.preparacionHabilitada) {
+      throw new ErrorRemoto('La copia previa requiere el espacio real en versión 1, sin preparación inicial activa.');
+    }
+    const version = info.version;
+    const id = await this.crearCopia('Automática PREVIA a la primera incorporación real de Medina 2025');
+    const meta = (await this.listarCopias()).find((c) => c.id === id);
+    if (!meta || Number(meta.version) !== version || !/^[a-f0-9]{64}$/.test(meta.sha256)) {
+      throw new ErrorRemoto('La copia del servidor no corresponde a la versión esperada; no se importa.');
+    }
+    const exportada = await this.descargarCopia(id);
+    const contenido = exportada.contenido as { espacioId?: string; tipo?: TipoEspacio; version?: number; entidades?: Record<string, Record<string, unknown>> } | null;
+    if (exportada.sha256 !== meta.sha256 || contenido?.espacioId !== this.espacioId || contenido?.tipo !== 'real' || Number(contenido?.version) !== version || !contenido?.entidades) {
+      throw new ErrorRemoto('La copia del servidor carece de identidad, versión o integridad verificables; no se importa.');
+    }
+    const restaurada = reconstruir(contenido.entidades);
+    if (!restaurada || jsonCanonico(restaurada) !== jsonCanonico(db)) {
+      throw new ErrorRemoto('La copia recuperable no coincide con el estado que se pretende importar; no se modifica nada.');
+    }
+    return { id, version, sha256: meta.sha256 };
+  }
+
+  /**
+   * ÚNICA operación autorizable en el espacio real v1.
+   * El servidor exige una autorización administrativa temporal para ESTA cuenta,
+   * SHA aprobado, 889 registros y copia recuperable intacta; escribe y vuelve a
+   * cerrar dentro de UNA única transacción de PostgreSQL.
+   *
+   * NO utilizar guardar() (genérico) con datos reales, aunque alguien manipule
+   * el estado del navegador: siempre debe intervenir el control servidor.
+   */
+  async importarPrimerHistorico2025(
+    antes: BaseDatos, despues: BaseDatos, copia: { id: string; version: number; sha256: string },
+  ): Promise<number> {
+    const info = this.info;
+    if (!info || info.espacioId !== this.espacioId || info.tipo !== 'real' || info.version !== 1 || info.preparacionHabilitada || info.escrituraHabilitada) {
+      throw new ErrorRemoto('La importación histórica exige el espacio real cerrado en versión 1.');
+    }
+    if (copia.version !== 1 || !/^[a-f0-9]{64}$/.test(copia.sha256)) {
+      throw new ErrorRemoto('Falta el punto de recuperación verificable de la versión inicial.');
+    }
+    const cambios = diferencia(antes, despues);
+    const partes = partir(cambios);
+    if (!partes.length || partes.length > 999) throw new ErrorRemoto('El lote histórico no tiene un tamaño admitido.');
+    const lote = globalThis.crypto.randomUUID();
+    try {
+      for (const [i, parte] of partes.entries()) {
+        await this.rpc('ulit_censo_lote_subir', { p_espacio: this.espacioId, p_lote: lote, p_parte: i, p_cambios: parte });
+      }
+      const version = await this.rpc<number>('ulit_censo_importar_historico_2025', {
+        p_espacio: this.espacioId, p_lote: lote, p_partes: partes.length, p_version_esperada: 1, p_copia: copia.id,
+      });
+      if (Number(version) !== 2) throw new ErrorRemoto('La versión devuelta por el servidor no es la esperada tras incorporar.');
+      // Comprobación posterior: se ha guardado exactamente lo planeado Y permanece cerrado.
+      const verificado = await this.leer();
+      if (verificado.info.version !== 2 || verificado.info.escrituraHabilitada || !verificado.db ||
+          jsonCanonico(verificado.db) !== jsonCanonico(despues)) {
+        throw new ErrorRemoto('La operación del servidor se ejecutó, pero la verificación posterior no coincide. No repetir; comprobar el estado antes de restaurar.');
+      }
+      return 2;
+    } catch (error) {
+      // El servidor mantiene una carga rechazada como partes privadas. Borrarlas
+      // únicamente para ESTE lote y ESTA cuenta; nunca restaurar automáticamente.
+      // Si hubo un commit pero falló la red, el lote ya no existe: descartar es inocuo.
+      await this.rpc<number>('ulit_censo_descartar_lote_2025', {
+        p_espacio: this.espacioId, p_lote: lote,
+      }).catch(() => undefined);
+      throw error;
+    }
+  }
+
   crearCopia(motivo: string) { return this.rpc<string>('ulit_censo_crear_copia', { p_espacio: this.espacioId, p_motivo: motivo }); }
   listarCopias() { return this.rpc<{ id: string; version: number; motivo: string; sha256: string; bytes: number; creada_en: string }[]>('ulit_censo_listar_copias', { p_espacio: this.espacioId }); }
   /** Exportación: el contenido de una copia con su SHA-256, para archivarla fuera de Supabase. */

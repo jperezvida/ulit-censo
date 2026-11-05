@@ -82,7 +82,7 @@ describe('C1e · Espacios aislados (interfaz)', () => {
     await elegirYAnalizar(bytes);
     const ident = screen.getByLabelText('Identificación del archivo');
     expect(ident).toHaveTextContent(/Archivo SINTÉTICO/);
-    expect(ident).toHaveTextContent(/No coincide con la huella del archivo auténtico/);
+    expect(ident).toHaveTextContent(/No coincide con la copia 2025 aprobada/);
     fireEvent.click(screen.getByRole('button', { name: /Siguiente: columnas/ }));
     await columnasMedina();
     const diag = await screen.findByRole('region', { name: 'Diagnóstico agregado' }, { timeout: 60000 });
@@ -114,11 +114,15 @@ describe('C1e · Espacios aislados (interfaz)', () => {
     expect(await idbGet<BaseDatos>('db', createStore('ulit-censo-real', 'datos'))).toBeUndefined();
   }, 180000);
 
-  it('real: rechaza el archivo sintético y, con otro archivo, la confirmación queda bloqueada (C1e-B)', async () => {
+  it('real: rechaza el sintético y un archivo no aprobado sin habilitar escritura', async () => {
     montar('/espacios/real/avanzado');
     expect(screen.getByRole('banner', { name: 'Espacio activo' })).toHaveTextContent(/ESPACIO DE DATOS REALES/);
     await crearEspacio();
-    await crearCampanaHistorica();
+    const destino = await screen.findByRole('region', { name: 'Destino' }, { timeout: 20000 });
+    expect(destino).toHaveTextContent(/Se creará al incorporar el histórico 2025/);
+    expect(destino).toHaveTextContent(/No tiene que crearla previamente/);
+    expect(within(destino).queryByRole('button', { name: /Crear una campaña histórica/ })).toBeNull();
+    expect(Object.keys(useEspacios.getState().db!.campanas)).toHaveLength(0);
     await elegirYAnalizar(bytes);
     expect(screen.getByRole('alert')).toHaveTextContent(/no se admite en el espacio de datos reales/);
     expect(screen.getByRole('button', { name: /Siguiente: columnas/ })).toBeDisabled();
@@ -129,8 +133,8 @@ describe('C1e · Espacios aislados (interfaz)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Siguiente: Decisiones/ }));
     fireEvent.click(screen.getByRole('button', { name: /Siguiente: Vista previa/ }));
     const conf = screen.getByRole('region', { name: 'Confirmación' });
-    expect(conf).toHaveTextContent(/C1e-B · Detenido aquí/);
-    expect(conf).toHaveTextContent(/el SHA-256 no coincide con el del diagnóstico agregado/);
+    // El archivo distinto del SHA aprobado sigue bloqueado aunque el botón histórico exista.
+    expect(conf).toHaveTextContent(/El SHA-256 no corresponde a la copia 2025 aprobada/);
     fireEvent.click(within(conf).getByLabelText('He revisado la vista previa'));
     expect(within(conf).getByRole('button', { name: /Incorporar al espacio/ })).toBeDisabled();
     expect(Object.keys((await idbGet<BaseDatos>('db', createStore('ulit-censo-real', 'datos')))!.registros)).toHaveLength(0);

@@ -3,6 +3,7 @@ import { createStore, get as idbGet, set as idbSet, type UseStore } from 'idb-ke
 import { VERSION_DATOS, type BaseDatos } from '../domain/db';
 import { migrarALaActual } from '../domain/migraciones';
 import { PERFIL_ITINERARIO_28 } from '../domain/xlsx/perfilesImportacion';
+import { SHA256_APROBADO_MEDINA_2025 } from '../domain/xlsx/referencias';
 import { BASE_INDEXEDDB, crearBaseEspacio, huellaBase, municipioDeEspacio, personaEspacio, PREFIJO, SHA256_ORIGINAL_MEDINA_2025, verificarEspacio, type TipoEspacio } from '../domain/espacios';
 import { altaMunicipio, crearCampana, type DatosCampana, type DatosMunicipio } from '../domain/municipios';
 import { aplicarIncorporacion, deshacerIncorporacion, type DecisionesIncorporacion, type DestinoIncorporacion, type PlanIncorporacion } from '../domain/incorporacion';
@@ -10,6 +11,7 @@ import { comprobarRespaldo, crearRespaldo, type Respaldo } from '../domain/respa
 import { cargarInstantaneaMedina } from '../data/callejero';
 import type { ResultadoInterpretacion } from '../domain/xlsx/interpretacion';
 import type { Id, Rol } from '../domain/types';
+import { comprobarCandidatoMedina2025 } from '../domain/comprobarCandidatoMedina2025';
 import { AlmacenSupabase } from './almacenSupabase';
 import { clienteServidor } from './clienteSupabase';
 import { guardarSeleccionRemota, type SeleccionRemota } from './seleccionRemota';
@@ -29,10 +31,16 @@ import { guardarSeleccionRemota, type SeleccionRemota } from './seleccionRemota'
  */
 
 /**
- * C1e-B: la incorporación del censo AUTÉNTICO queda deshabilitada hasta que la Cátedra revise la vista
- * previa. Habilitarla exige un cambio de código autorizado (no hay ninguna forma de hacerlo desde la interfaz).
+ * La Cátedra ha autorizado (06/11/2026) UNA incorporación del histórico 2025,
+ * CONDICIONADA a comprobar antes el respaldo externo. Esta constante habilita
+ * solamente el botón del asistente de la RAMA PRIVADA en revisión. Nunca concede
+ * privilegios en Supabase: el servidor exige autorización SQL temporal, cuenta
+ * exacta, SHA aprobado, copia interna verificable y estado cerrado v1.
+ *
+ * La PR permanece en borrador; NO publicar esta constante en producción sin
+ * revisión separada y sin volver a valorar el alcance del permiso.
  */
-export const CONFIRMACION_REAL_HABILITADA = false;
+export const CONFIRMACION_REAL_HABILITADA = true;
 
 const CLAVE_DB = 'db';
 const CLAVE_RESPALDO_INTERNO = 'respaldo-interno';
@@ -56,7 +64,7 @@ export interface RespaldoVerificado {
 }
 
 export interface Requisito {
-  id: 'persona' | 'vista-previa' | 'plan' | 'perfil' | 'respaldo' | 'espacio-disco' | 'archivo' | 'espacio' | 'confirmacion-real' | 'sin-guardar';
+  id: 'persona' | 'vista-previa' | 'plan' | 'perfil' | 'respaldo' | 'espacio-disco' | 'archivo' | 'espacio' | 'confirmacion-real' | 'sin-guardar' | 'preflight-medina-2025' | 'operativo-real';
   ok: boolean;
   /** Cumplido, pero con algo que revisar (no bloquea). */
   aviso?: boolean;
@@ -196,11 +204,26 @@ export function requisitosIncorporacion(p: {
     },
     {
       id: 'archivo',
-      ok: p.tipo === 'real' ? !p.sintetico : sha !== SHA256_ORIGINAL_MEDINA_2025,
-      aviso: p.tipo === 'real' && !p.sintetico && !!sha && sha !== SHA256_ORIGINAL_MEDINA_2025,
+      // La huella APROBADA solo se exige en la incorporación excepcional del
+      // HISTÓRICO 2025. Para 2026 cada itinerario es un XLSX distinto, con su
+      // propia huella y revisión; nunca aplicar a todos el SHA del censo 2025.
+      ok: p.tipo === 'real'
+        ? !p.sintetico && (p.plan?.modo === 'operativo'
+          ? !!sha && sha !== SHA256_APROBADO_MEDINA_2025 && sha !== SHA256_ORIGINAL_MEDINA_2025
+          : sha === SHA256_APROBADO_MEDINA_2025)
+        : sha !== SHA256_ORIGINAL_MEDINA_2025 && sha !== SHA256_APROBADO_MEDINA_2025,
+      aviso: p.tipo === 'real' && !p.sintetico && !!sha && p.plan?.modo !== 'operativo' && sha !== SHA256_APROBADO_MEDINA_2025,
       texto: p.tipo === 'real'
-        ? (p.sintetico ? 'Es un archivo SINTÉTICO: no se incorpora al espacio de datos reales.' : sha === SHA256_ORIGINAL_MEDINA_2025 ? 'Archivo auténtico: su SHA-256 coincide con el del diagnóstico agregado.' : 'Atención: el SHA-256 no coincide con el del diagnóstico agregado (¿otra versión del archivo?). Revíselo antes de continuar.')
-        : (sha === SHA256_ORIGINAL_MEDINA_2025 ? 'Es el archivo AUTÉNTICO: no se usa en el ensayo (use el espacio de datos reales).' : 'Archivo de ensayo (no es el auténtico).'),
+        ? p.sintetico
+          ? 'Es un archivo SINTÉTICO: no se incorpora al espacio de datos reales.'
+          : p.plan?.modo === 'operativo'
+            ? 'Excel del itinerario 2026 identificado por su propia huella SHA-256. Su confirmación requiere autorización operativa separada.'
+            : sha === SHA256_APROBADO_MEDINA_2025
+              ? 'Copia del censo histórico 2025 aprobada el 05/11/2026: SHA-256 correcto. La aprobación de la fuente NO autoriza todavía la importación.'
+              : 'El SHA-256 no corresponde a la copia 2025 aprobada por la Cátedra: no se puede importar ese archivo.'
+        : sha === SHA256_ORIGINAL_MEDINA_2025 || sha === SHA256_APROBADO_MEDINA_2025
+          ? 'Este Excel corresponde al censo histórico real: no se usa en el espacio de ensayo.'
+          : 'Archivo de ensayo (no es ninguno de los censos auténticos identificados).',
     },
     { id: 'vista-previa', ok: p.vistaPreviaRevisada, texto: p.vistaPreviaRevisada ? 'Vista previa revisada.' : 'Revise la vista previa completa y márquela como revisada.' },
     {
@@ -220,7 +243,19 @@ export function requisitosIncorporacion(p: {
     return r.filter((x) => x.id !== 'respaldo' && x.id !== 'espacio-disco');
   }
   if (p.tipo === 'real') {
-    r.push({ id: 'confirmacion-real', ok: CONFIRMACION_REAL_HABILITADA, texto: CONFIRMACION_REAL_HABILITADA ? 'Confirmación real habilitada.' : 'C1e-B: la confirmación de la incorporación real está BLOQUEADA hasta revisar juntos la vista previa. No se incorporará nada.' });
+    if (p.plan?.modo === 'operativo') {
+      // No heredar la autorización excepcional de 2025: 2026 necesitará un
+      // permiso recurrente específico que mantenga íntegro el histórico.
+      r.push({ id: 'operativo-real', ok: false, texto: 'El Excel operativo 2026 se puede analizar, pero el guardado real exige un permiso operativo separado. No se ha incorporado nada.' });
+    } else {
+      if (p.plan) {
+        const errores = comprobarCandidatoMedina2025(p.db.meta.espacioId, p.plan);
+        r.push({ id: 'preflight-medina-2025', ok: errores.length === 0,
+          texto: errores.length ? `Preflight de Medina 2025 no superado: ${errores.join(' ')}` : 'Preflight de Medina 2025: espacio, SHA-256, periodo y 889 registros sin exclusiones comprobados (no autoriza escritura).',
+        });
+      }
+      r.push({ id: 'confirmacion-real', ok: CONFIRMACION_REAL_HABILITADA, texto: CONFIRMACION_REAL_HABILITADA ? 'Confirmación real habilitada.' : 'C1e-B: la confirmación de la incorporación real está BLOQUEADA hasta revisar juntos la vista previa. No se incorporará nada.' });
+    }
   }
   return r;
 }
@@ -436,18 +471,46 @@ export const useEspacios = create<Estado>((set, get) => ({
     if (ocupado) return { ok: false, error: 'Ya hay una operación en curso.' };
     const pendientes = requisitos.filter((r) => !r.ok);
     if (pendientes.length) return { ok: false, error: `No se incorpora nada: ${pendientes.map((r) => r.texto).join(' ')}` };
+    // La autorización 2025 NO se usa para itinerarios 2026.
+    if (tipo === 'real' && plan.modo === 'operativo') return { ok: false, error: 'La incorporación real de itinerarios 2026 requiere una autorización operativa específica; no se ejecutará mediante la RPC excepcional de 2025.' };
     // Doble seguro en el espacio real (C1e-B), independiente de lo que muestre la interfaz.
     if (tipo === 'real' && !CONFIRMACION_REAL_HABILITADA) return { ok: false, error: 'C1e-B: la incorporación real está bloqueada hasta revisar la vista previa.' };
+    if (tipo === 'real') {
+      if (!get().remoto || get().remoto?.info?.escrituraHabilitada || get().remoto?.info?.version !== 1) return { ok: false, error: 'La importación histórica exige el espacio real remoto cerrado en versión 1.' };
+      const errores = comprobarCandidatoMedina2025(db.meta.espacioId, plan, { filas: resultado.original.filas.length, columnas: resultado.original.columnas.length });
+      if (errores.length) return { ok: false, error: `Preflight de importación real fallido: ${errores.join(' ')}` };
+    }
     if (!db.municipios[destino.municipioId]) return { ok: false, error: 'El destino no es un municipio de este espacio.' };
     set({ ocupado: 'Incorporando…' });
+    // Un fallo de red después de enviar la RPC podría ocultar una confirmación
+    // del servidor. Nunca declarar "no se ha incorporado nada" sin comprobarlo.
+    let intentoRealEnviado = false;
     try {
       const persona = personaEspacio(db)!;
       const r = aplicarIncorporacion(db, resultado, destino, decisiones, plan, { porId: persona.id });
       if (r.sinCambios) return { ok: false, error: 'Este archivo ya estaba incorporado: no se ha duplicado nada.' };
-      const h = await persistir(get, tipo, db, r.db, huella, `Incorporación de ${plan.archivo.nombre}`);
+      // Antes de cualquier modificación REAL, crear y verificar una copia recuperable
+      // contra los datos y versión EXACTOS que se van a modificar.
+      let h: string;
+      if (tipo === 'real') {
+        const remoto = get().remoto;
+        if (!remoto) throw new Error('La importación real exige persistencia remota verificada en Supabase.');
+        const copia = await remoto.asegurarRecuperacionAntesDeImportar(db);
+        // Nunca utilizar persistir()/ulit_censo_aplicar para la importación real:
+        // la RPC específica valida autorización de una sola operación, 889 filas,
+        // copia previa y devuelve el espacio con escritura BLOQUEADA.
+        intentoRealEnviado = true;
+        await remoto.importarPrimerHistorico2025(db, r.db, copia);
+        h = huellaBase(r.db);
+      } else {
+        h = await persistir(get, tipo, db, r.db, huella, `Incorporación de ${plan.archivo.nombre}`);
+      }
       set({ db: r.db, huella: h });
       return { ok: true, importacionId: r.importacionId, campanaId: r.campanaId, creadas: r.creadas };
     } catch (e) {
+      if (intentoRealEnviado) {
+        return { ok: false, error: `IMPORTANTE: el resultado de la escritura real debe comprobarse en el servidor. No repita la importación ni intente restaurar hasta comprobar la versión y los registros. Detalle: ${texto(e)}` };
+      }
       return { ok: false, error: `No se ha incorporado nada. ${texto(e)}` };
     } finally {
       set({ ocupado: null });

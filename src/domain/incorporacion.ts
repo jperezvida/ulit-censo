@@ -110,6 +110,8 @@ export interface DestinoIncorporacion {
    * los demás itinerarios. La campaña no se modifica.
    */
   itinerarioId?: Id;
+  /** Operativo 2026: indica que el Excel es otra PARTE del mismo itinerario, no una sustitución. */
+  continuacionItinerario?: boolean;
 }
 
 export type Correspondencia = 'inequivoca' | 'decidida' | 'ambigua' | 'sin-vinculo' | 'excluida';
@@ -322,8 +324,15 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   const previas = Object.values(db.importaciones).filter((i) => i.c1 && i.estado === 'confirmada' && i.municipioId === destino.municipioId);
   // G4: en una campaña operativa el ámbito es el ITINERARIO (cada uno aporta su archivo); y el mismo
   // archivo ya incorporado en CUALQUIER itinerario de la campaña es un archivo repetido.
+  const previasDelItinerario = operativo ? previas.filter((i) => i.campanaId === campanaId && i.c1!.itinerario?.id === destino.itinerarioId) : [];
+  if (operativo && destino.continuacionItinerario && !previasDelItinerario.length) {
+    bloqueos.push({ codigo: 'destino-invalido', mensaje: 'Para añadir una segunda parte debe estar incorporada primero la primera parte del itinerario.', detalles: [] });
+  }
+  // Misma huella = reimportación bloqueada SIEMPRE; un segundo archivo distinto del
+  // mismo IT solo se admite si la persona señala explícitamente «parte adicional».
   const enAmbito = operativo
-    ? previas.filter((i) => i.campanaId === campanaId && (i.c1!.sha256 === sha || (i.c1!.itinerario?.id === destino.itinerarioId && i.c1!.perfil.id === capa.perfil.id)))
+    ? previas.filter((i) => i.campanaId === campanaId &&
+      (i.c1!.sha256 === sha || (!destino.continuacionItinerario && i.c1!.itinerario?.id === destino.itinerarioId && i.c1!.perfil.id === capa.perfil.id)))
     : previas.filter((i) => i.c1!.anio === destino.anio && i.c1!.perfil.id === capa.perfil.id && (!destino.campanaId || i.campanaId === destino.campanaId));
   const identica = enAmbito.find((i) => i.c1!.sha256 === sha && (operativo || i.c1!.perfil.version === capa.perfil.version));
   const mismoAmbito = enAmbito.find((i) => i !== identica);

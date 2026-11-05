@@ -48,9 +48,9 @@ export const municipioDeEspacio = (tipo: TipoEspacio): Id => `${PREFIJO[tipo]}-m
 export const BASE_INDEXEDDB: Record<TipoEspacio, string> = { ensayo: 'ulit-censo-ensayo', real: 'ulit-censo-real' };
 
 /**
- * SHA-256 del archivo auténtico según el diagnóstico agregado facilitado por la Cátedra
- * (`CENSO COMPLETO MEDINA 2025(1).xlsx`). Una huella no revela el contenido. Se usa para:
- * avisar si el archivo elegido en el espacio real NO es ese; e impedir que se use en el ensayo.
+ * SHA-256 de la referencia anterior del diagnóstico agregado de Medina 2025
+ * (`CENSO COMPLETO MEDINA 2025(1).xlsx`). Se conserva por trazabilidad;
+ * la copia aprobada el 05/11/2026 tiene otra huella y se identifica por separado.
  */
 export { SHA256_ORIGINAL_MEDINA_2025 } from './xlsx/referencias';
 

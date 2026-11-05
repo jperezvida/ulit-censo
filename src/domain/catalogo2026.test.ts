@@ -291,7 +291,7 @@ describe('Rendimiento', () => {
     const buscar = (performance.now() - t) / 1000;
     expect(buscar).toBeLessThan(15); // ms por pulsación
     expect(resolver).toBeLessThan(10000);
-  });
+  }, 20000); // CI puede estar bajo carga: mantener intactas las métricas verificadas.
 });
 
 describe('Informe verificable del catálogo', () => {

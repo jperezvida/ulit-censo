@@ -7,8 +7,15 @@ import { PERFIL_CENSO_27, PERFIL_ITINERARIO_28, PERFILES_IMPORTACION, type Perfi
  * con ese censo concreto (o si la persona lo pide), nunca con cualquier archivo.
  */
 
-/** Huella SHA-256 del archivo auténtico de Medina 2025 (no revela su contenido). */
+/** Huella SHA-256 de la antigua referencia del diagnóstico agregado de 2025. */
 export const SHA256_ORIGINAL_MEDINA_2025 = '645179a850474ab92bc54c9ed4e6e2f300790f62081fb0ea02d3999e3c4cb67a';
+/**
+ * Fuente oficial APROBADA por la Cátedra el 05/11/2026, tras vista previa C1e-B:
+ * `CENSO COMPLETO MEDINA 2025 - copia.xlsx`.
+ * Aprobar el ARCHIVO no concede autorización para incorporar ni escribir en Supabase.
+ * La antigua referencia mantiene su SHA anterior, sin afirmar igualdad celda a celda.
+ */
+export const SHA256_APROBADO_MEDINA_2025 = '9e367ca51cfecf56d93f124d166f708e374f6555a4cc36d3166afde2f1f7ba82';
 
 /** Indicadores del informe agregado de la Cátedra (Medina 2025, sin datos comerciales). */
 export const INFORME_AGREGADO_MEDINA_2025 = {
@@ -33,7 +40,7 @@ export const PERFIL_MEDINA_2025: PerfilImportacion = {
   ...PERFIL_CENSO_27,
   id: 'medina-2025-referencia',
   nombre: 'Medina del Campo 2025 · censo de referencia',
-  descripcion: 'Formato de 27 columnas con el informe agregado y la huella del censo auténtico de Medina del Campo 2025.',
+  descripcion: 'Formato de 27 columnas con el informe agregado y la huella de referencia anterior de Medina 2025. La copia oficial aprobada tiene otra huella.',
   origen: 'referencia',
   referencia: { descripcion: 'Informe agregado de la Cátedra (889 registros)', sha256: SHA256_ORIGINAL_MEDINA_2025, indicadores: INFORME_AGREGADO_MEDINA_2025 },
 };
@@ -50,6 +57,6 @@ export function referenciaAplicable(perfil: PerfilImportacion | undefined, sha25
   const ref = perfil?.referencia;
   if (!ref?.indicadores) return undefined;
   if (pedido === false) return undefined;
-  if (pedido || (ref.sha256 && ref.sha256 === sha256)) return ref.indicadores as InformeAgregado;
+  if (pedido || (ref.sha256 && (ref.sha256 === sha256 || (ref.sha256 === SHA256_ORIGINAL_MEDINA_2025 && sha256 === SHA256_APROBADO_MEDINA_2025)))) return ref.indicadores as InformeAgregado;
   return undefined;
 }
