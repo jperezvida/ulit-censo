@@ -217,6 +217,8 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
     expect(partes.length).toBeGreaterThan(1);
     expect(Math.max(...tamanos)).toBeLessThan(1_600_000);
     expect(ms).toBeLessThan(8000 * partes.length);
+  }, 180000);
+
   it('espacio real dado de alta sin escritura: no permite inicializar ni forzar una RPC', async () => {
     const ESPACIO_REAL = ESPACIO.replace(/^ensayo-/, 'real-');
     sql(`insert into ulit_censo.espacio (id, tipo, nombre, escritura_habilitada) values ('${ESPACIO_REAL}', 'real', 'Medina real (solo lectura)', false);
@@ -237,6 +239,4 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
     const estado = sql(`select version || ':' || (select count(*) from ulit_censo.entidad where espacio_id = '${ESPACIO_REAL}') from ulit_censo.espacio where id = '${ESPACIO_REAL}'`);
     expect(estado).toBe('0:0');
   }, 60000);
-
-  }, 180000);
 });
