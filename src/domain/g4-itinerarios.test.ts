@@ -122,7 +122,8 @@ describe('Lote de varios itinerarios 2026', () => {
     expect(r.find((x) => x.id === 'archivo')?.ok).toBe(true);
     expect(r.find((x) => x.id === 'operativo-real')?.ok).toBe(false);
     expect(r.some((x) => x.id === 'preflight-medina-2025')).toBe(false);
-    expect(CONFIRMACION_REAL_HABILITADA).toBe(false);
+    // La confirmación histórica puede estar visible, pero NO autoriza los itinerarios 2026.
+    expect(CONFIRMACION_REAL_HABILITADA).toBe(true);
     const rs = requisitosIncorporacion({
       tipo: 'real', db: e.db, huella: '', respaldoVerificado: null, almacenamiento: null,
       plan: p.plan, vistaPreviaRevisada: true, sintetico: true,
