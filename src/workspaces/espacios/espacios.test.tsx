@@ -118,7 +118,11 @@ describe('C1e · Espacios aislados (interfaz)', () => {
     montar('/espacios/real/avanzado');
     expect(screen.getByRole('banner', { name: 'Espacio activo' })).toHaveTextContent(/ESPACIO DE DATOS REALES/);
     await crearEspacio();
-    await crearCampanaHistorica();
+    const destino = await screen.findByRole('region', { name: 'Destino' }, { timeout: 20000 });
+    expect(destino).toHaveTextContent(/Se creará al incorporar el histórico 2025/);
+    expect(destino).toHaveTextContent(/No tiene que crearla previamente/);
+    expect(within(destino).queryByRole('button', { name: /Crear una campaña histórica/ })).toBeNull();
+    expect(Object.keys(useEspacios.getState().db!.campanas)).toHaveLength(0);
     await elegirYAnalizar(bytes);
     expect(screen.getByRole('alert')).toHaveTextContent(/no se admite en el espacio de datos reales/);
     expect(screen.getByRole('button', { name: /Siguiente: columnas/ })).toBeDisabled();
