@@ -82,12 +82,12 @@ export function AsistenteEspacio({ tipo, simple = false }: { tipo: TipoEspacio; 
   const db = useEspacios((s) => s.db!);
   const persona = personaEspacio(db);
   const elegido = useDestino(tipo);
-  const destino = useMemo<DestinoIncorporacion>(() => elegido ?? { municipioId: '', anio: 0 }, [elegido]);
+  const destino = useMemo<DestinoIncorporacion>(() => ({ ...(elegido ?? { municipioId: '', anio: 0 }), ...(elegido?.itinerarioId && st.continuacionItinerario ? { continuacionItinerario: true } : {}) }), [elegido, st.continuacionItinerario]);
   const autorizado = !!persona && (persona.roles.includes('coordinador') || persona.roles.includes('administrador'));
   const puedeIr = (n: EtapaEspacio) => n === 1 || (n === 2 && !!st.archivo && !!elegido && !st.aplicado) || (n <= 5 && !!st.preparado && !st.aplicado) || (n === 6 && !!st.aplicado);
 
   const recalcular = async (decisiones: DecisionesIncorporacion = st.decisiones, forzar = false, lectura = st.lectura) => {
-    const firma = `${destino.campanaId}|${destino.itinerarioId ?? ''}|${firmaInterpretacion(decisiones)}|${lectura ? JSON.stringify([lectura.perfil.id, lectura.perfil.version, lectura.perfil.columnas, lectura.hoja, lectura.filaCabecera]) : ''}`;
+    const firma = `${destino.campanaId}|${destino.itinerarioId ?? ''}|${destino.continuacionItinerario ? 'parte-adicional' : 'primera-parte'}|${firmaInterpretacion(decisiones)}|${lectura ? JSON.stringify([lectura.perfil.id, lectura.perfil.version, lectura.perfil.columnas, lectura.hoja, lectura.filaCabecera]) : ''}`;
     if (!forzar && st.preparado && firma === st.interpretadoCon) {
       try {
         st.set({ decisiones, preparado: { ...st.preparado, plan: planificarIncorporacion(useEspacios.getState().db!, st.preparado.resultado, destino, decisiones) }, error: null, revisada: false });
@@ -167,6 +167,18 @@ function EtapaArchivo({ tipo, destino, simple, onAnalizar }: { tipo: TipoEspacio
   const db = useEspacios((s) => s.db!);
   const a = st.archivo;
   const p = st.decisiones.periodoTrabajo;
+  const otrasPartes = destino?.itinerarioId
+    ? Object.values(db.importaciones).filter((i) => i.estado === 'confirmada' && i.c1?.itinerario?.id === destino.itinerarioId)
+    : [];
+  const confirmacionParte = destino?.itinerarioId && otrasPartes.length > 0 && (
+    <label className="fila" style={{ alignItems: 'flex-start', gap: 8 }}>
+      <input type="checkbox" aria-label="Añadir otra parte del mismo itinerario" checked={st.continuacionItinerario}
+        onChange={(ev) => st.set({ continuacionItinerario: ev.target.checked, preparado: null, revisada: false })} />
+      <span><b>Es otra parte del mismo itinerario</b> (p. ej., IT5, parte 2).
+        <span className="muted"> No sustituye los {otrasPartes.length} Excel ya incorporados. Rechaza archivos idénticos y conserva las filas de cada parte por separado.</span>
+      </span>
+    </label>
+  );
   const elegir = async (f?: File) => {
     st.reiniciar();
     if (!f) return;
@@ -233,6 +245,7 @@ function EtapaArchivo({ tipo, destino, simple, onAnalizar }: { tipo: TipoEspacio
         {destino && (
           <details className="ux-plegable">
             <summary>Detalles y opciones</summary>
+            {confirmacionParte}
             {detallesArchivo}
             {queSeHara}
           </details>
@@ -255,6 +268,7 @@ function EtapaArchivo({ tipo, destino, simple, onAnalizar }: { tipo: TipoEspacio
         </label>
         <p className="muted">El archivo se lee y se procesa <b>en este navegador</b>: no se sube a ningún servidor. Sus bytes solo se mantienen en memoria mientras dure esta sesión y nunca se guardan.</p>
         {detallesArchivo}
+        {confirmacionParte}
         {bloqueo && <div className="t-info error" role="alert"><XCircle size={15} /> {bloqueo}</div>}
       </section>
 
@@ -309,7 +323,7 @@ function DestinoSencillo({ destino }: { destino: DestinoIncorporacion | null }) 
       {destino.itinerarioId && (
         <label className="campo">
           <span className="sr-only">Itinerario</span>
-          <select className="input" aria-label="Itinerario de destino" value={destino.itinerarioId} onChange={(e) => { sel.elegir({ itinerarioId: e.target.value }); st.set({ preparado: null }); }}>
+          <select className="input" aria-label="Itinerario de destino" value={destino.itinerarioId} onChange={(e) => { sel.elegir({ itinerarioId: e.target.value }); st.set({ preparado: null, continuacionItinerario: false }); }}>
             {its.map((i) => <option key={i.id} value={i.id}>{i.codigo}{conExcel.has(i.id) ? ' (ya tiene Excel)' : ''}</option>)}
           </select>
         </label>
@@ -338,7 +352,7 @@ function Destino({ tipo, destino }: { tipo: TipoEspacio; destino: DestinoIncorpo
     // Otro destino: hay que volver a analizar; el periodo propuesto depende del destino.
     const d = destinoElegido(db, tipo, { ...useSeleccionEspacio.getState() });
     const nuevo = d.municipioId && d.campana && useSeleccionEspacio.getState().modo === 'historico' ? { municipioId: d.municipioId, anio: d.campana.anio, campanaId: d.campana.id } : null;
-    st.set({ preparado: null, decisiones: { ...st.decisiones, periodoTrabajo: nuevo && esCasoC1e(tipo, nuevo) ? periodoPropuesto(db, tipo, nuevo) : undefined } });
+    st.set({ preparado: null, continuacionItinerario: false, decisiones: { ...st.decisiones, periodoTrabajo: nuevo && esCasoC1e(tipo, nuevo) ? periodoPropuesto(db, tipo, nuevo) : undefined } });
   };
   return (
     <section className="tarjeta inc-bloque" aria-label="Destino">
