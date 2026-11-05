@@ -60,6 +60,11 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
   let coord: SupabaseClient;
   const ids: Record<string, string> = {};
   beforeAll(async () => {
+    // Fail closed: nunca crear cuentas ni modificar tablas si las variables apuntan fuera de localhost.
+    const permitido = (direccion: string) => {
+      try { return ['localhost', '127.0.0.1', '::1'].includes(new URL(direccion).hostname); } catch { return false; }
+    };
+    if (!permitido(URL) || !permitido(PSQL)) throw new Error('E2E denegado: API y PostgreSQL deben ser servidores locales desechables.');
     if (!globalThis.crypto?.subtle) Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true });
     for (const k of ['coord', 'revisora', 'lectora', 'adminbase']) ids[k] = await cuenta(`${k}-${ESPACIO}@ejemplo.invalid`);
     // ULIT base: una administradora suya (perfiles.rol = admin) que NO es miembro de ULIT Censo.
