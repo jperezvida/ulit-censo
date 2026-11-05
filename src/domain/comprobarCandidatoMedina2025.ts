@@ -10,7 +10,7 @@ import { SHA256_APROBADO_MEDINA_2025 } from './xlsx/referencias';
  *
  * Esta comprobación del cliente es defensa adicional. La autorización efectiva
  * sigue dependiendo de Supabase (escritura_habilitada), la sesión, el respaldo
- * verificado y CONFIRMACION_REAL_HABILITADA=false hasta aprobación expresa.
+ * verificado y el permiso temporal de una única operación en Supabase.
  */
 export const CANDIDATO_MEDINA_2025 = {
   espacioId: 'real-medina-del-campo-2026',
