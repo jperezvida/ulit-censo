@@ -152,11 +152,11 @@ begin
                  or coalesce(v ->> 'fila','') !~ '^[0-9]{1,4}$'
                  or (v ->> 'fila')::integer not between 2 and 890
                  or v ? 'exclusion'))
-     or exists (select 1 from pg_temp._h25_cambios
-                where c='vinculos' and (
-                  v -> 'origen' ->> 'tipo' is distinct from 'registro'
+     or exists (select 1 from pg_temp._h25_cambios h
+                where h.c='vinculos' and (
+                  h.v -> 'origen' ->> 'tipo' is distinct from 'registro'
                   or not exists (select 1 from pg_temp._h25_cambios r
-                                 where r.c='registros' and r.id=v -> 'origen' ->> 'id'))) then
+                                 where r.c='registros' and r.id=h.v -> 'origen' ->> 'id'))) then
     raise exception 'ULIT Censo: faltan filas originales o hay vínculos/exclusiones incoherentes' using errcode='42501';
   end if;
 
