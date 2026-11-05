@@ -102,7 +102,8 @@ describe('C1e-B · Análisis del Excel real SIN GUARDAR', () => {
     const conf = screen.getByRole('region', { name: 'Confirmación' });
     expect(conf).toHaveTextContent(/Análisis sin guardar\. Esta vista previa vive solo en la memoria/);
     expect(conf).toHaveTextContent(/Análisis SIN GUARDAR \(C1e-B\): solo vista previa/);
-    expect(conf).toHaveTextContent(/C1e-B · Detenido aquí/);
+    // Incluso con la confirmación habilitada, el análisis sin guardar NO puede incorporar.
+    expect(conf).toHaveTextContent(/Análisis sin guardar\. Esta vista previa vive solo en la memoria/);
     fireEvent.click(within(conf).getByLabelText('He revisado la vista previa'));
     expect(within(conf).getByRole('button', { name: /Incorporar al espacio/ })).toBeDisabled();
     expect(await idbKeys(createStore('ulit-censo-real', 'datos'))).toEqual([]);
