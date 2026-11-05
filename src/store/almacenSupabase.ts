@@ -132,6 +132,37 @@ export class AlmacenSupabase {
     return Number(v);
   }
 
+  /**
+   * Punto de recuperación obligatorio para la PRIMERA importación REAL.
+   * Crea una copia privada en el servidor y comprueba que representa EXACTAMENTE
+   * el estado que la aplicación acaba de leer, antes de enviar cambios.
+   *
+   * No habilita la escritura, no restaura y no afecta a otros espacios.
+   * Si otro actor cambió la versión o los datos no coinciden, falla cerrado.
+   */
+  async asegurarRecuperacionAntesDeImportar(db: BaseDatos): Promise<{ id: string; version: number; sha256: string }> {
+    const info = this.info;
+    if (!info || info.espacioId !== this.espacioId || info.tipo !== 'real' || !info.escrituraHabilitada || info.preparacionHabilitada) {
+      throw new ErrorRemoto('La copia previa requiere el espacio real abierto y la autorización administrativa de escritura.');
+    }
+    const version = info.version;
+    const id = await this.crearCopia('Automática PREVIA a la primera incorporación real de Medina 2025');
+    const meta = (await this.listarCopias()).find((c) => c.id === id);
+    if (!meta || Number(meta.version) !== version || !/^[a-f0-9]{64}$/.test(meta.sha256)) {
+      throw new ErrorRemoto('La copia del servidor no corresponde a la versión esperada; no se importa.');
+    }
+    const exportada = await this.descargarCopia(id);
+    const contenido = exportada.contenido as { espacioId?: string; tipo?: TipoEspacio; version?: number; entidades?: Record<string, Record<string, unknown>> } | null;
+    if (exportada.sha256 !== meta.sha256 || contenido?.espacioId !== this.espacioId || contenido?.tipo !== 'real' || Number(contenido?.version) !== version || !contenido?.entidades) {
+      throw new ErrorRemoto('La copia del servidor carece de identidad, versión o integridad verificables; no se importa.');
+    }
+    const restaurada = reconstruir(contenido.entidades);
+    if (!restaurada || jsonCanonico(restaurada) !== jsonCanonico(db)) {
+      throw new ErrorRemoto('La copia recuperable no coincide con el estado que se pretende importar; no se modifica nada.');
+    }
+    return { id, version, sha256: meta.sha256 };
+  }
+
   crearCopia(motivo: string) { return this.rpc<string>('ulit_censo_crear_copia', { p_espacio: this.espacioId, p_motivo: motivo }); }
   listarCopias() { return this.rpc<{ id: string; version: number; motivo: string; sha256: string; bytes: number; creada_en: string }[]>('ulit_censo_listar_copias', { p_espacio: this.espacioId }); }
   /** Exportación: el contenido de una copia con su SHA-256, para archivarla fuera de Supabase. */
