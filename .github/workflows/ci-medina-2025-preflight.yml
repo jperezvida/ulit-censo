@@ -32,6 +32,17 @@ jobs:
       - run: npm run comprobar-datos
       - run: npm run build
 
+  pg-aislado:
+    name: Migraciones y retirada en PostgreSQL desechable
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Esquema y permisos aislados, sin servicios externos
+        run: docker run --rm --network none -v "$GITHUB_WORKSPACE:/work:ro" -w /work postgres:16 bash docs/persistencia/pruebas/ejecutar.sh /tmp/ulit-censo-pg-aislado
+
   e2e-local:
     name: Recuperación selectiva en Supabase local sintético
     runs-on: ubuntu-latest
