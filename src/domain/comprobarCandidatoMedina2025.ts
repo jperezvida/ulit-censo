@@ -39,7 +39,7 @@ export function comprobarCandidatoMedina2025(
   const errores: string[] = [];
   if (espacioId !== c.espacioId) errores.push('El espacio no es el real de Medina autorizado para preparar 2025.');
   if (plan.municipio.id !== c.municipioId) errores.push('El municipio de destino no es Medina del Campo.');
-  if (plan.destino.anio !== c.anio || plan.modo !== 'historico' || plan.destino.itinerario) {
+  if (plan.destino.anio !== c.anio || plan.modo === 'operativo' || plan.destino.itinerario) {
     errores.push('El destino debe ser exclusivamente la campaña histórica 2025, nunca un itinerario.');
   }
   if (plan.archivo.sha256.toLowerCase() !== c.sha256) {
