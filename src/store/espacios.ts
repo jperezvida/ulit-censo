@@ -31,10 +31,16 @@ import { guardarSeleccionRemota, type SeleccionRemota } from './seleccionRemota'
  */
 
 /**
- * C1e-B: la incorporación del censo AUTÉNTICO queda deshabilitada hasta que la Cátedra revise la vista
- * previa. Habilitarla exige un cambio de código autorizado (no hay ninguna forma de hacerlo desde la interfaz).
+ * La Cátedra ha autorizado (06/11/2026) UNA incorporación del histórico 2025,
+ * CONDICIONADA a comprobar antes el respaldo externo. Esta constante habilita
+ * solamente el botón del asistente de la RAMA PRIVADA en revisión. Nunca concede
+ * privilegios en Supabase: el servidor exige autorización SQL temporal, cuenta
+ * exacta, SHA aprobado, copia interna verificable y estado cerrado v1.
+ *
+ * La PR permanece en borrador; NO publicar esta constante en producción sin
+ * revisión separada y sin volver a valorar el alcance del permiso.
  */
-export const CONFIRMACION_REAL_HABILITADA = false;
+export const CONFIRMACION_REAL_HABILITADA = true;
 
 const CLAVE_DB = 'db';
 const CLAVE_RESPALDO_INTERNO = 'respaldo-interno';
