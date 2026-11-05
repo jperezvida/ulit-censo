@@ -88,6 +88,7 @@ export interface InfoEspacioRemoto {
   tipo: TipoEspacio;
   version: number;
   escrituraHabilitada: boolean;
+  preparacionHabilitada?: boolean;
   rol: string;
   personaId: string;
 }
@@ -109,8 +110,8 @@ export class AlmacenSupabase {
 
   /** Lee el espacio entero. `db` es null si aún no tiene contenido (espacio recién dado de alta). */
   async leer(): Promise<{ db: BaseDatos | null; info: InfoEspacioRemoto }> {
-    const r = await this.rpc<{ espacioId: string; tipo: TipoEspacio; version: number; escrituraHabilitada: boolean; rol: string; personaId: string; entidades: Record<string, Record<string, unknown>> }>('ulit_censo_leer', { p_espacio: this.espacioId });
-    this.info = { espacioId: r.espacioId, tipo: r.tipo, version: Number(r.version), escrituraHabilitada: r.escrituraHabilitada, rol: r.rol, personaId: r.personaId };
+    const r = await this.rpc<{ espacioId: string; tipo: TipoEspacio; version: number; escrituraHabilitada: boolean; preparacionHabilitada?: boolean; rol: string; personaId: string; entidades: Record<string, Record<string, unknown>> }>('ulit_censo_leer', { p_espacio: this.espacioId });
+    this.info = { espacioId: r.espacioId, tipo: r.tipo, version: Number(r.version), escrituraHabilitada: r.escrituraHabilitada, preparacionHabilitada: r.preparacionHabilitada ?? false, rol: r.rol, personaId: r.personaId };
     return { db: reconstruir(r.entidades), info: this.info };
   }
 
