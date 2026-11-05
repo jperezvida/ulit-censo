@@ -63,4 +63,18 @@ where espacio_id = 'real-medina-del-campo-2026'
 order by creada_en desc;
 ```
 
-**Pendiente antes de la activación:** diseñar/probar **un permiso de servidor de alcance limitado y cierre automático**, en lugar de dejar abierta la capacidad general de modificar el espacio con `escritura_habilitada=true`. La nueva copia automática de la aplicación es una defensa importante, **no** sustituye ese control del servidor ni la aprobación del responsable.
+## Autorización de una sola importación (migración PROPUESTA 0005)
+
+La migración `20261105_0005_importacion_unica_medina_2025.sql` introduce una tabla privada de autorización de una sola operación y la RPC `ulit_censo_importar_historico_2025`.
+
+- **No activa por sí misma ninguna autorización.** La tabla empieza vacía: ningún usuario de la aplicación puede crear permisos. Solo una actuación administrativa posterior, por SQL y con autorización expresa, podría registrar la cuenta Auth exacta, la huella aprobada del Excel, la versión 1, un motivo y una caducidad próxima.
+- La RPC comprueba en PostgreSQL que el espacio exacto está cerrado, en v1, sin campañas/importaciones/registros, con 254 calles y el municipio correspondiente; requiere una copia verificable de v1 del mismo espacio y usuario.
+- El lote debe proceder del usuario Auth autorizado, contener 889 registros de origen, 889 vínculos, una única campaña histórica 2025, una importación confirmada y ninguna exclusión o clasificación forzada. Comprueba el SHA de la fuente que consta **en los metadatos de la importación**, no calcula el SHA del archivo Excel (cuyos bytes nunca se envían al servidor).
+- La escritura genérica solo se activa **dentro de la misma transacción** de PostgreSQL: la RPC utiliza el núcleo de aplicación, cierra de nuevo la escritura, consume la autorización y confirma todo junto. Si falla cualquier paso, se revierte toda la transacción. Las demás sesiones no ven un espacio abierto, gracias a la visibilidad transaccional de PostgreSQL.
+- La app invoca esta RPC por separado; nunca utiliza la escritura general para este caso. `CONFIRMACION_REAL_HABILITADA=false` sigue vigente. La autorización administrativa NO se ejecuta al instalar el esquema.
+- Las pruebas con Supabase local verifican rechazo sin permiso, uso autorizado y cierre del permiso tras finalizar. El control no sustituye la custodia del Excel, la aprobación del SHA diferente ni un respaldo externo recuperable.
+
+**Pendiente antes de producción:** validar el SQL propuesto y los flujos con revisión independiente; comprobar huellas de Base/Go; instalar 0005 solamente con aprobación expresa para una migración; conservar la tabla sin autorizaciones mientras no haya aprobación separada de la carga; y probar la recuperación del respaldo en un entorno independiente.
+
+**No incluir un INSERT de autorización con un usuario real en este repositorio ni en la documentación pública.**
+
