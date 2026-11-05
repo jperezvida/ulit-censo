@@ -1,7 +1,7 @@
 import type { BaseDatos } from './db';
 import { claseCampana } from './municipios';
 import { prepararIncorporacion } from './incorporacionXlsx';
-import { aplicarIncorporacion, type PlanIncorporacion } from './incorporacion';
+import { aplicarIncorporacion } from './incorporacion';
 import { itinerariosDe } from './campanaOperativa';
 import type { Id } from './types';
 
