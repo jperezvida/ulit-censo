@@ -306,7 +306,7 @@ function Espacio({ tipo }: { tipo: TipoEspacio }) {
       </div>
       <section className="tarjeta inc-bloque" aria-label="Incorporar un censo">
         <h2 style={{ margin: 0 }}>Incorporar un censo histórico (Excel)</h2>
-        <p className="muted">Primero el destino (municipio y campaña histórica), después el archivo. Un único importador: lectura segura (C1a), columnas (G1), interpretación (C1b), plan atómico y reversible (C1c) y decisiones trazadas (C1d). {tipo === 'real' ? 'En esta fase (C1e-B) se llega hasta la vista previa: la confirmación está bloqueada.' : 'Use archivos SINTÉTICOS.'}</p>
+        <p className="muted">Primero el destino (municipio y campaña histórica), después el archivo. Un único importador: lectura segura (C1a), columnas (G1), interpretación (C1b), plan atómico y reversible (C1c) y decisiones trazadas (C1d). {tipo === 'real' ? 'El histórico 2025 se incorpora una única vez, con el Excel aprobado, respaldo comprobado y autorización temporal del servidor. La campaña se crea en la misma operación.' : 'Use archivos SINTÉTICOS.'}</p>
         <AsistenteEspacio tipo={tipo} />
       </section>
     </div>
