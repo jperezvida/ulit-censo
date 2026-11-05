@@ -11,6 +11,7 @@ import { prepararIncorporacion } from './incorporacionXlsx';
 import { aplicarIncorporacion, deshacerIncorporacion, type DecisionesIncorporacion } from './incorporacion';
 import { callesConObservaciones, censoConsolidado, crearItinerario, validarItinerario } from './campanaOperativa';
 import { itinerarioDesdeNombre, prepararLoteItinerarios } from './loteItinerarios';
+import { requisitosIncorporacion, CONFIRMACION_REAL_HABILITADA } from '../store/espacios';
 import type { BaseDatos } from './db';
 
 /**
@@ -108,6 +109,25 @@ describe('Lote de varios itinerarios 2026', () => {
     expect(lote.dbResultado).toBeNull();
     expect(lote.archivos[1].aplicable).toBe(false);
     expect(Object.keys(e.db.registros)).toHaveLength(0);
+  });
+
+  it('el Excel operativo real usa su propia huella, nunca el SHA aprobado del histórico 2025', async () => {
+    const e = escenario();
+    const p = await preparar(e.db, e, e.its.IT1, await libroItinerario('IT1'), archivoItinerario('IT1'));
+    const r = requisitosIncorporacion({
+      tipo: 'real', db: e.db, huella: '', respaldoVerificado: null, almacenamiento: null,
+      plan: p.plan, vistaPreviaRevisada: true, sintetico: false,
+    });
+    expect(p.plan.modo).toBe('operativo');
+    expect(r.find((x) => x.id === 'archivo')?.ok).toBe(true);
+    expect(r.find((x) => x.id === 'operativo-real')?.ok).toBe(false);
+    expect(r.some((x) => x.id === 'preflight-medina-2025')).toBe(false);
+    expect(CONFIRMACION_REAL_HABILITADA).toBe(false);
+    const rs = requisitosIncorporacion({
+      tipo: 'real', db: e.db, huella: '', respaldoVerificado: null, almacenamiento: null,
+      plan: p.plan, vistaPreviaRevisada: true, sintetico: true,
+    });
+    expect(rs.find((x) => x.id === 'archivo')?.ok).toBe(false);
   });
 
   it('dos partes del mismo IT exigen aprobación específica; nunca reemplazan la anterior', async () => {
