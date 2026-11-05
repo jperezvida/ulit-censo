@@ -34,6 +34,8 @@ export interface ArchivoElegido {
 interface Estado {
   etapa: EtapaEspacio;
   archivo: ArchivoElegido | null;
+  /** Confirmación humana: este XLSX es otra parte del mismo itinerario, no una sustitución. */
+  continuacionItinerario: boolean;
   decisiones: DecisionesIncorporacion;
   lectura: LecturaArchivo | null;
   preparado: { resultado: ResultadoInterpretacion & { estructura?: InformeEstructural }; plan: PlanIncorporacion } | null;
@@ -46,7 +48,7 @@ interface Estado {
   reiniciar: () => void;
 }
 
-const INICIAL = { etapa: 1 as EtapaEspacio, archivo: null, decisiones: {}, lectura: null, preparado: null, interpretadoCon: '', revisada: false, cargando: null, error: null, aplicado: null };
+const INICIAL = { etapa: 1 as EtapaEspacio, archivo: null, continuacionItinerario: false, decisiones: {}, lectura: null, preparado: null, interpretadoCon: '', revisada: false, cargando: null, error: null, aplicado: null };
 
 export const useAsistenteEspacio = create<Estado>((set) => ({
   ...INICIAL,
