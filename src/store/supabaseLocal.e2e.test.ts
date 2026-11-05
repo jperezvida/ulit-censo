@@ -520,6 +520,28 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
     expect(sql("select utilizada_en is null from ulit_censo.autorizacion_historico_2025 where espacio_id='" + realId + "'")).toBe('t');
     expect(sql("select count(*) from ulit_censo.entidad where espacio_id='" + realId + "' and coleccion='registros'")).toBe('0');
 
+    // Un segundo coordinador miembro del espacio NO puede borrar el lote ajeno.
+    sql("insert into ulit_censo.miembro(espacio_id,usuario_id,rol,persona_id) values ('"
+      + realId + "','" + ids.revisora + "','coordinador','real-p-otra-coordinacion')");
+    const otraSesion = await sesion('revisora-' + ESPACIO + '@ejemplo.invalid');
+    const otroDescarte = await otraSesion.rpc('ulit_censo_descartar_lote_2025', {
+      p_espacio: realId, p_lote: loteInvalido,
+    });
+    expect(otroDescarte.error).toBeNull();
+    expect(otroDescarte.data).toBe(0);
+    const otroDeposito = await otraSesion.rpc('ulit_censo_lote_subir', {
+      p_espacio: realId, p_lote: globalThis.crypto.randomUUID(), p_parte: 0,
+      p_cambios: [{ c: 'registros', id: 'lote-otra-cuenta', v: { fila: 2 } }],
+    });
+    expect(otroDeposito.error?.code).toBe('42501');
+
+    const descartar = await coord.rpc('ulit_censo_descartar_lote_2025', {
+      p_espacio: realId, p_lote: loteInvalido,
+    });
+    expect(descartar.error).toBeNull();
+    expect(descartar.data).toBe(partesInvalidas.length);
+    expect(sql("select count(*) from ulit_censo.lote_parte where espacio_id='" + realId + "'")).toBe('0');
+
     expect(await real.importarPrimerHistorico2025(inicial, aplicado.db, copia)).toBe(2);
     const despues = await real.leer();
     expect(despues.info).toMatchObject({ version: 2, escrituraHabilitada: false, preparacionHabilitada: false });
