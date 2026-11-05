@@ -452,6 +452,15 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
     expect(plan.plan.nuevas.campanas).toBe(1);
     const aplicado = aplicarIncorporacion(inicial, plan.resultado, d, decisiones, plan.plan, { porId: personaId });
 
+    // Ni siquiera se permite depositar una parte del Excel en la tabla temporal
+    // cuando la administración todavía no ha concedido la autorización.
+    const depositoSinPermiso = await coord.rpc('ulit_censo_lote_subir', {
+      p_espacio: realId, p_lote: globalThis.crypto.randomUUID(), p_parte: 0,
+      p_cambios: [{ c: 'registros', id: 'fila-no-autorizada', v: { fila: 2 } }],
+    });
+    expect(depositoSinPermiso.error?.code).toBe('42501');
+    expect(sql("select count(*) from ulit_censo.lote_parte where espacio_id='" + realId + "'")).toBe('0');
+
     // El servidor rechaza sin autorización SQL específica.
     await expect(real.importarPrimerHistorico2025(inicial, aplicado.db, copia)).rejects.toThrow(/autorización específica/);
     expect((await real.leer()).info).toMatchObject({ version: 1, escrituraHabilitada: false });
@@ -475,6 +484,11 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
       p_version_esperada: 1, p_copia: copia.id,
     });
     expect(caducada.error?.code).toBe('42501');
+    const depositoCaducado = await coord.rpc('ulit_censo_lote_subir', {
+      p_espacio: realId, p_lote: globalThis.crypto.randomUUID(), p_parte: 0,
+      p_cambios: [{ c: 'registros', id: 'fila-caducada', v: { fila: 2 } }],
+    });
+    expect(depositoCaducado.error?.code).toBe('42501');
     sql("update ulit_censo.autorizacion_historico_2025 set vigente_hasta=now()+interval '10 minutes' where espacio_id='" + realId + "'");
 
     // ATAQUE SINTÉTICO: 889 vínculos pero dos dirigidos a la misma fila y otra sin vínculo.
@@ -522,6 +536,11 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
       p_cambios: [{ c: 'campanas', id: 'real-camp-falsa', v: { id: 'real-camp-falsa' } }],
     });
     expect(intento.error?.code).toBe('42501');
+    const depositoDespues = await coord.rpc('ulit_censo_lote_subir', {
+      p_espacio: realId, p_lote: globalThis.crypto.randomUUID(), p_parte: 0,
+      p_cambios: [{ c: 'registros', id: 'fila-post-cierre', v: { fila: 2 } }],
+    });
+    expect(depositoDespues.error?.code).toBe('42501');
     await expect(real.importarPrimerHistorico2025(inicial, aplicado.db, copia)).rejects.toThrow(/versión 1/);
   }, 180000);
 
