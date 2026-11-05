@@ -11,6 +11,8 @@ begin
   assert not has_function_privilege('anon', 'public.ulit_censo_importar_historico_2025(text,uuid,integer,bigint,uuid)', 'EXECUTE'), 'anon ejecuta la importación';
   assert not has_function_privilege('service_role', 'public.ulit_censo_importar_historico_2025(text,uuid,integer,bigint,uuid)', 'EXECUTE'), 'service_role ejecuta la importación';
   assert has_function_privilege('authenticated', 'public.ulit_censo_importar_historico_2025(text,uuid,integer,bigint,uuid)', 'EXECUTE'), 'falta invocación Auth prevista';
+  assert not has_function_privilege('anon', 'public.ulit_censo_descartar_lote_2025(text,uuid)', 'EXECUTE'), 'anon puede borrar lotes';
+  assert has_function_privilege('authenticated', 'public.ulit_censo_descartar_lote_2025(text,uuid)', 'EXECUTE'), 'falta descarte para Auth';
   assert not exists(select 1 from ulit_censo.autorizacion_historico_2025), 'la migración concedió autorización sin aprobación';
 end $audit$;
 -- Alta inicial (plantilla 0003, como postgres)
