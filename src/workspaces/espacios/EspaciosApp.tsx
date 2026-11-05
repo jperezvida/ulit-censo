@@ -214,7 +214,9 @@ function EspacioPage() {
         <b>{ESPACIO_TXT[tipo].nombre.toUpperCase()}</b>
         <span>{tipo === 'real' ? 'Datos auténticos' : 'Solo archivos SINTÉTICOS'}</span>
         <span className="chip" aria-label="Dónde se guarda">{esp.remoto ? `Servidor · ${esp.remoto.espacioId}` : 'Este navegador (IndexedDB)'}</span>
-        {tipo === 'real' && esp.remoto && !esp.remoto.info?.escrituraHabilitada && <span className="chip aviso">Solo lectura · servidor bloqueado</span>}
+        {tipo === 'real' && esp.remoto && (esp.remoto.info?.preparacionHabilitada
+          ? <span className="chip aviso">Preparación de Medina · solo municipio y callejero</span>
+          : !esp.remoto.info?.escrituraHabilitada && <span className="chip aviso">Solo lectura · servidor bloqueado</span>)}
       </div>
       {esp.fase === 'cargando' && <div className="t-info" role="status">Abriendo el espacio…</div>}
       {esp.fase === 'error' && <div className="t-info error" role="alert"><AlertTriangle size={15} /> {esp.error}</div>}
@@ -238,22 +240,26 @@ function Crear({ tipo }: { tipo: TipoEspacio }) {
   const ocupado = useEspacios((s) => s.ocupado);
   const [nombre, setNombre] = useState('');
   const [conMedina, setConMedina] = useState(true);
+  const preparacionRemota = useEspacios((st) => !!st.remoto?.info?.preparacionHabilitada);
+  const preparando = tipo === 'real' && preparacionRemota;
   const [error, setError] = useState<string | null>(null);
   return (
     <section className="tarjeta inc-bloque" aria-label="Crear el espacio" style={{ maxWidth: 720 }}>
       <h3>Crear el {ESPACIO_TXT[tipo].nombre.toLowerCase()}</h3>
-      <p className="muted">Se crea vacío, con la persona responsable. Después podrá dar de alta municipios, sus callejeros y sus campañas. No se copia nada de la demostración. Si ya existiera, no se sobrescribe.</p>
+      <p className="muted">{preparando
+        ? 'Inicialización de un solo uso: guardará Medina del Campo, el callejero OSM y la persona responsable. Supabase cerrará automáticamente la escritura; no se permiten campañas ni Excel.'
+        : 'Se crea vacío, con la persona responsable. Después podrá dar de alta municipios, sus callejeros y sus campañas. No se copia nada de la demostración. Si ya existiera, no se sobrescribe.'}</p>
       <label className="campo">
         <span>Persona responsable (coordinación)</span>
         <input className="input" aria-label="Persona responsable" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre y apellidos" />
       </label>
       <label className="fila" style={{ gap: 8, alignItems: 'flex-start' }}>
-        <input type="checkbox" aria-label="Incluir Medina del Campo" checked={conMedina} onChange={(e) => setConMedina(e.target.checked)} />
+        <input type="checkbox" aria-label="Incluir Medina del Campo" checked={preparando || conMedina} disabled={preparando} onChange={(e) => setConMedina(e.target.checked)} />
         <span>Incluir <b>Medina del Campo</b> con su callejero real (instantánea de OpenStreetMap del proyecto). Es el caso de prueba del importador, no un requisito: puede trabajar solo con otros municipios.</span>
       </label>
       {error && <div className="t-info error" role="alert">{error}</div>}
       <button className="btn primario" disabled={nombre.trim().length < 3 || !!ocupado} onClick={async () => {
-        const r = await crear({ nombre, roles: ['coordinador'] }, { incluirMedina: conMedina });
+        const r = await crear({ nombre, roles: ['coordinador'] }, { incluirMedina: preparando || conMedina });
         setError(r.ok ? null : r.error ?? 'No se ha creado.');
       }}>{ocupado ?? 'Crear el espacio'}</button>
     </section>
@@ -320,7 +326,11 @@ function Almacenamiento({ tipo }: { tipo: TipoEspacio }) {
         <dl className="inc-dl">
           <dt>Espacio</dt><dd className="mono">{remoto.espacioId}</dd>
           <dt>Permiso</dt><dd>{remoto.info?.rol ?? 'Pendiente de validar'}</dd>
-          <dt>Escritura</dt><dd>{remoto.info?.escrituraHabilitada ? <span className="chip ok">Habilitada en servidor</span> : <span className="chip aviso">Bloqueada en servidor</span>}</dd>
+          <dt>Escritura</dt><dd>{remoto.info?.preparacionHabilitada
+            ? <span className="chip aviso">Solo preparación inicial · cierre automático</span>
+            : remoto.info?.escrituraHabilitada
+              ? <span className="chip ok">Habilitada en servidor</span>
+              : <span className="chip aviso">Bloqueada en servidor</span>}</dd>
         </dl>
         <p className="muted">La persistencia en Supabase no sustituye a una copia de seguridad externa comprobada.</p>
       </section>
