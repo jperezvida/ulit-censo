@@ -3,15 +3,17 @@ name: Preflight Medina 2025 - comprobaciones sin despliegue
 # Comprobación específica de la rama de preparación.
 # No contiene secretos, no ejecuta migraciones y no despliega.
 on:
-  push:
-    branches:
-      - codex/preflight-medina-2025-controlado
   pull_request:
     branches:
       - claude/persistencia-supabase-diseno
 
 permissions:
   contents: read
+
+# Evita ejecutar dos veces la misma batería y cancela versiones antiguas del mismo PR.
+concurrency:
+  group: censo-medina-preflight-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   preflight:
