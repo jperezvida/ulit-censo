@@ -446,7 +446,7 @@ export const useEspacios = create<Estado>((set, get) => ({
     // Doble seguro en el espacio real (C1e-B), independiente de lo que muestre la interfaz.
     if (tipo === 'real' && !CONFIRMACION_REAL_HABILITADA) return { ok: false, error: 'C1e-B: la incorporación real está bloqueada hasta revisar la vista previa.' };
     if (tipo === 'real') {
-      if (!get().remoto?.info?.escrituraHabilitada) return { ok: false, error: 'Supabase no autoriza escrituras en el espacio real.' };
+      if (!get().remoto || get().remoto?.info?.escrituraHabilitada || get().remoto?.info?.version !== 1) return { ok: false, error: 'La importación histórica exige el espacio real remoto cerrado en versión 1.' };
       const errores = comprobarCandidatoMedina2025(db.meta.espacioId, plan, { filas: resultado.original.filas.length, columnas: resultado.original.columnas.length });
       if (errores.length) return { ok: false, error: `Preflight de importación real fallido: ${errores.join(' ')}` };
     }
@@ -458,12 +458,19 @@ export const useEspacios = create<Estado>((set, get) => ({
       if (r.sinCambios) return { ok: false, error: 'Este archivo ya estaba incorporado: no se ha duplicado nada.' };
       // Antes de cualquier modificación REAL, crear y verificar una copia recuperable
       // contra los datos y versión EXACTOS que se van a modificar.
+      let h: string;
       if (tipo === 'real') {
         const remoto = get().remoto;
         if (!remoto) throw new Error('La importación real exige persistencia remota verificada en Supabase.');
-        await remoto.asegurarRecuperacionAntesDeImportar(db);
+        const copia = await remoto.asegurarRecuperacionAntesDeImportar(db);
+        // Nunca utilizar persistir()/ulit_censo_aplicar para la importación real:
+        // la RPC específica valida autorización de una sola operación, 889 filas,
+        // copia previa y devuelve el espacio con escritura BLOQUEADA.
+        await remoto.importarPrimerHistorico2025(db, r.db, copia);
+        h = huellaBase(r.db);
+      } else {
+        h = await persistir(get, tipo, db, r.db, huella, `Incorporación de ${plan.archivo.nombre}`);
       }
-      const h = await persistir(get, tipo, db, r.db, huella, `Incorporación de ${plan.archivo.nombre}`);
       set({ db: r.db, huella: h });
       return { ok: true, importacionId: r.importacionId, campanaId: r.campanaId, creadas: r.creadas };
     } catch (e) {
