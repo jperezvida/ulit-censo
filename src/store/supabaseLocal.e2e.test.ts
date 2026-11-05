@@ -11,6 +11,7 @@ import { webcrypto } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { useEspacios } from './espacios';
 import { AlmacenSupabase, ConflictoRemoto, partir, diferencia, jsonCanonico } from './almacenSupabase';
+import { crearRespaldo, comprobarRespaldo } from '../domain/respaldo';
 import { crearBaseEspacio, municipioDeEspacio, PREFIJO, personaEspacio } from '../domain/espacios';
 import { createHash } from 'node:crypto';
 import { altaMunicipio, crearCampana, TERRITORIO_INICIAL } from '../domain/municipios';
@@ -417,6 +418,71 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
     });
     expect(intento.error?.code).toBe('42501');
     expect(sql(`select version from ulit_censo.espacio where id='${realId}'`)).toBe('3');
+  }, 180000);
+
+
+  it('respaldo externo: recuperar 889 filas ficticias desde JSON en espacio real local limpio', async () => {
+    // Simulación de desastre LÓGICO: otra instalación local, no la base de producción.
+    // El respaldo se genera en memoria y se RESTAURA desde su contenido JSON validado.
+    const realId = `real-e2e-rescate-externo-${Date.now().toString(36)}`;
+    const personaId = 'real-p-coordinacion-sintetica';
+    const osm = validarInstantanea(JSON.parse(readFileSync('public/data/medina-callejero.json', 'utf8')));
+    if (!osm.ok) throw new Error(osm.motivo);
+    const inicial = crearBaseEspacio('real', {
+      persona: { nombre: NOMBRE, roles: ['coordinador'] },
+      personaId, espacioId: realId, calles: osm.calles, detalleCallejero: 'Instantánea OSM E2E, solo datos sintéticos',
+    });
+    const d = { municipioId: municipioDeEspacio('real'), anio: 2025 };
+    const decisiones = { periodoTrabajo: {
+      porId: personaId, fecha: '2026-11-05', desde: '2024-01-01', hasta: '2025-12-31',
+      motivo: 'Prueba E2E de recuperación externa de datos ficticios.',
+    } };
+    const p = await prepararIncorporacion(inicial, await libroSinteticoC1e(osm.calles), ARCHIVO_SINTETICO_C1E, d, decisiones);
+    expect(p.plan.registros.previstos).toBe(889);
+    const aplicado = aplicarIncorporacion(inicial, p.resultado, d, decisiones, p.plan, { porId: personaId });
+    expect(Object.keys(aplicado.db.registros)).toHaveLength(889);
+
+    const respaldo = crearRespaldo(aplicado.db, 'real', '2026-11-05T20:00:00.000Z');
+    expect(respaldo.sha256).toMatch(/^[0-9a-f]{64}$/);
+    const comprobado = comprobarRespaldo(respaldo.texto, 'real');
+    if (!comprobado.ok) throw new Error(comprobado.motivo);
+    expect(comprobado.sobre.espacioId).toBe(realId);
+    expect(huella(comprobado.db)).toBe(huella(aplicado.db));
+    // Corrupción y tipo de espacio incorrecto: rechazo antes de tocar la base.
+    expect(comprobarRespaldo(respaldo.texto.replace(NOMBRE, 'Nombre Corrupto'), 'real').ok).toBe(false);
+    expect(comprobarRespaldo(respaldo.texto, 'ensayo').ok).toBe(false);
+    const otroEspacio = crearBaseEspacio('real', {
+      persona: { nombre: NOMBRE, roles: ['coordinador'] },
+      personaId, espacioId: 'real-e2e-otro-espacio', calles: osm.calles, detalleCallejero: 'Instantánea OSM E2E',
+    });
+    expect(comprobado.db.meta.espacioId).not.toBe(otroEspacio.meta.espacioId);
+
+    // Una instalación nueva debe iniciar con el mismo ID lógico para restaurar
+    // los datos íntegros sin renombrar/mezclar registros de espacios diferentes.
+    sql(`insert into ulit_censo.espacio(id,tipo,nombre,escritura_habilitada,preparacion_habilitada)
+      values ('${realId}','real','Recuperación externa sintética',true,true);
+      insert into ulit_censo.miembro(espacio_id,usuario_id,rol,persona_id)
+      values ('${realId}','${ids.coord}','administrador','${personaId}');`);
+    const recuperado = new AlmacenSupabase(coord, realId);
+    expect((await recuperado.leer()).db).toBeNull();
+    expect(await recuperado.guardar(null, inicial, 'Recuperar infraestructura inicial de Medina E2E')).toBe(1);
+    expect((await recuperado.leer()).info).toMatchObject({ version: 1, escrituraHabilitada: false });
+
+    // Solo en este servidor local desechable, la administración autoriza
+    // temporalmente la restauración lógica de una copia EXTERNA comprobada.
+    sql(`update ulit_censo.espacio set escritura_habilitada=true
+       where id='${realId}' and version=1 and preparacion_habilitada=false`);
+    expect((await recuperado.leer()).info.escrituraHabilitada).toBe(true);
+    expect(await recuperado.guardar(inicial, comprobado.db, 'Restauración de JSON externo E2E')).toBe(2);
+    sql(`update ulit_censo.espacio set escritura_habilitada=false
+       where id='${realId}' and version=2`);
+    const final = await new AlmacenSupabase(coord, realId).leer();
+    expect(final.info).toMatchObject({ version: 2, escrituraHabilitada: false, preparacionHabilitada: false });
+    expect(huella(final.db!)).toBe(huella(aplicado.db));
+    expect(Object.keys(final.db!.registros)).toHaveLength(889);
+    expect(Object.keys(final.db!.campanas)).toHaveLength(1);
+    expect(Object.keys(final.db!.importaciones)).toHaveLength(1);
+    expect(sql(`select count(*) from ulit_censo.entidad where espacio_id='${realId}' and coleccion='registros'`)).toBe('889');
   }, 180000);
 
   it('permiso específico: histórico 2025 autorizado una sola vez y cierre automático en SQL', async () => {
