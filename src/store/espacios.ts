@@ -58,7 +58,7 @@ export interface RespaldoVerificado {
 }
 
 export interface Requisito {
-  id: 'persona' | 'vista-previa' | 'plan' | 'perfil' | 'respaldo' | 'espacio-disco' | 'archivo' | 'espacio' | 'confirmacion-real' | 'sin-guardar' | 'preflight-medina-2025';
+  id: 'persona' | 'vista-previa' | 'plan' | 'perfil' | 'respaldo' | 'espacio-disco' | 'archivo' | 'espacio' | 'confirmacion-real' | 'sin-guardar' | 'preflight-medina-2025' | 'operativo-real';
   ok: boolean;
   /** Cumplido, pero con algo que revisar (no bloquea). */
   aviso?: boolean;
