@@ -61,7 +61,7 @@ function Selector() {
     <div className="col" style={{ gap: 16 }}>
       <div>
         <h1>Espacios de trabajo independientes</h1>
-        <p className="muted">La <b>demostración</b> (datos ficticios) sigue intacta en su propio almacenamiento. Los espacios de abajo usan cada uno su <b>propia base de datos</b> en este navegador y nunca se mezclan entre sí ni con la demostración.</p>
+        <p className="muted">La <b>demostración</b> (datos ficticios) se conserva aparte. El <b>ensayo local</b> utiliza IndexedDB, mientras que los espacios del apartado <b>«En el servidor»</b> se guardan en Supabase y requieren una sesión autorizada. No se mezclan sus datos.</p>
       </div>
       <div className="esp-tarjetas">
         <Link to="/espacios/analisis" className="tarjeta esp-tarjeta esp-real">
@@ -87,7 +87,7 @@ function Selector() {
           <div className="tarjeta esp-tarjeta esp-desactivada" aria-disabled="true">
             <Lock size={22} />
             <b>{ESPACIO_TXT.real.nombre} (guardado)</b>
-            <span className="muted">No disponible en la vista previa web: aquí no se guardan datos reales. Para revisar el Excel auténtico use «Analizar el Excel real SIN GUARDAR».</span>
+            <span className="muted">La base local de datos reales está desactivada en esta web. Los espacios reales del servidor solo aparecerán abajo cuando se autoricen; su escritura seguirá bloqueada hasta la activación expresa en Supabase.</span>
           </div>
         )}
       </div>
@@ -214,10 +214,13 @@ function EspacioPage() {
         <b>{ESPACIO_TXT[tipo].nombre.toUpperCase()}</b>
         <span>{tipo === 'real' ? 'Datos auténticos' : 'Solo archivos SINTÉTICOS'}</span>
         <span className="chip" aria-label="Dónde se guarda">{esp.remoto ? `Servidor · ${esp.remoto.espacioId}` : 'Este navegador (IndexedDB)'}</span>
+        {tipo === 'real' && esp.remoto && !esp.remoto.info?.escrituraHabilitada && <span className="chip aviso">Solo lectura · servidor bloqueado</span>}
       </div>
       {esp.fase === 'cargando' && <div className="t-info" role="status">Abriendo el espacio…</div>}
       {esp.fase === 'error' && <div className="t-info error" role="alert"><AlertTriangle size={15} /> {esp.error}</div>}
-      {esp.fase === 'sin-crear' && <Crear tipo={tipo} />}
+      {esp.fase === 'sin-crear' && (tipo === 'real' && esp.remoto && !esp.remoto.info?.escrituraHabilitada
+        ? <div className="t-info aviso" role="status"><Lock size={15} /> Este espacio real todavía no se puede inicializar: la escritura está bloqueada en Supabase. No se ha guardado nada.</div>
+        : <Crear tipo={tipo} />)}
       {esp.fase === 'listo' && esp.db && esp.tipo === tipo && (resto?.startsWith('campo/') && tipo === 'ensayo' ? <CampoEnsayoRutas /> : resto?.startsWith('oficina/') && tipo === 'ensayo' ? <OficinaEnsayoRutas /> : resto?.startsWith('planificar/') && tipo === 'ensayo' ? (
         <PlanificadorEnsayo ruta={resto} />
       ) : avanzado ? (
@@ -305,9 +308,24 @@ function Espacio({ tipo }: { tipo: TipoEspacio }) {
 }
 
 function Almacenamiento({ tipo }: { tipo: TipoEspacio }) {
+  const remoto = useEspacios((s) => s.remoto);
   const a = useEspacios((s) => s.almacenamiento);
   const pedir = useEspacios((s) => s.solicitarPersistencia);
   const medir = useEspacios((s) => s.medirAlmacenamiento);
+  if (remoto) {
+    return (
+      <section className="tarjeta inc-bloque" aria-label="Almacenamiento">
+        <h3><HardDrive size={16} /> Dónde se guarda</h3>
+        <p className="muted">Los datos de este espacio se guardan en <b>Supabase (servidor)</b>, no en la base IndexedDB de este navegador. Para acceder desde otro dispositivo debe iniciar sesión con una cuenta autorizada.</p>
+        <dl className="inc-dl">
+          <dt>Espacio</dt><dd className="mono">{remoto.espacioId}</dd>
+          <dt>Permiso</dt><dd>{remoto.info?.rol ?? 'Pendiente de validar'}</dd>
+          <dt>Escritura</dt><dd>{remoto.info?.escrituraHabilitada ? <span className="chip ok">Habilitada en servidor</span> : <span className="chip aviso">Bloqueada en servidor</span>}</dd>
+        </dl>
+        <p className="muted">La persistencia en Supabase no sustituye a una copia de seguridad externa comprobada.</p>
+      </section>
+    );
+  }
   return (
     <section className="tarjeta inc-bloque" aria-label="Almacenamiento">
       <h3><HardDrive size={16} /> Dónde se guarda</h3>
