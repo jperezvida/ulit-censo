@@ -456,6 +456,13 @@ export const useEspacios = create<Estado>((set, get) => ({
       const persona = personaEspacio(db)!;
       const r = aplicarIncorporacion(db, resultado, destino, decisiones, plan, { porId: persona.id });
       if (r.sinCambios) return { ok: false, error: 'Este archivo ya estaba incorporado: no se ha duplicado nada.' };
+      // Antes de cualquier modificación REAL, crear y verificar una copia recuperable
+      // contra los datos y versión EXACTOS que se van a modificar.
+      if (tipo === 'real') {
+        const remoto = get().remoto;
+        if (!remoto) throw new Error('La importación real exige persistencia remota verificada en Supabase.');
+        await remoto.asegurarRecuperacionAntesDeImportar(db);
+      }
       const h = await persistir(get, tipo, db, r.db, huella, `Incorporación de ${plan.archivo.nombre}`);
       set({ db: r.db, huella: h });
       return { ok: true, importacionId: r.importacionId, campanaId: r.campanaId, creadas: r.creadas };
