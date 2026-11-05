@@ -156,7 +156,20 @@ begin
                 where h.c='vinculos' and (
                   h.v -> 'origen' ->> 'tipo' is distinct from 'registro'
                   or not exists (select 1 from pg_temp._h25_cambios r
-                                 where r.c='registros' and r.id=h.v -> 'origen' ->> 'id'))) then
+                                 where r.c='registros' and r.id=h.v -> 'origen' ->> 'id')))
+     -- 889 vínculos no bastan: debe existir EXACTAMENTE UNO por registro.
+     -- Evita 889 vínculos dirigidos todos a una misma fila dejando 888 sin trazabilidad.
+     or exists (
+       select 1
+         from pg_temp._h25_cambios r
+         left join (
+           select v -> 'origen' ->> 'id' as registro_id, count(*) as n
+           from pg_temp._h25_cambios
+           where c='vinculos'
+           group by v -> 'origen' ->> 'id'
+         ) v on v.registro_id=r.id
+        where r.c='registros' and coalesce(v.n,0) <> 1
+     ) then
     raise exception 'ULIT Censo: faltan filas originales o hay vínculos/exclusiones incoherentes' using errcode='42501';
   end if;
 
