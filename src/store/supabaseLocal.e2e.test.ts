@@ -367,6 +367,12 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
     sql(`update ulit_censo.espacio set escritura_habilitada=true
          where id='${realId}' and version=1 and preparacion_habilitada=false`);
     expect((await real.leer()).info.escrituraHabilitada).toBe(true);
+    // El futuro importador debe crear y LEER una copia del estado exacto.
+    const puntoRecuperacion = await real.asegurarRecuperacionAntesDeImportar(original);
+    expect(puntoRecuperacion).toMatchObject({ version: 1, sha256: exportada.sha256 });
+    // Si el cliente pretende modificar un estado diferente, se rechaza antes de importar.
+    await expect(real.asegurarRecuperacionAntesDeImportar({ ...original, secuencia: original.secuencia + 1 }))
+      .rejects.toThrow(/no coincide con el estado/);
 
     const d = { municipioId: municipioDeEspacio('real'), anio: 2025 };
     const decisiones = { periodoTrabajo: {
@@ -395,7 +401,8 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
     expect(restaurado.info.version).toBe(3);
     expect(sql(`select count(*) from ulit_censo.entidad where espacio_id='${realId}' and coleccion='registros'`)).toBe('0');
     expect(sql(`select count(*) from ulit_censo.entidad where espacio_id='${realId}' and coleccion='campanas'`)).toBe('0');
-    expect((await real.listarCopias()).length).toBe(2);
+    // Una copia manual previa + dos preflights (uno rechazado) + copia automática de la restauración.
+    expect((await real.listarCopias()).length).toBe(4);
 
     const vecinoDespues = await new AlmacenSupabase(coord, vecinoId).leer();
     expect(huella(vecinoDespues.db!)).toBe(huellaVecino);
