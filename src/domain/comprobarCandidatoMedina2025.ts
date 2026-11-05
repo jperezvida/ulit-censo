@@ -1,4 +1,5 @@
 import type { PlanIncorporacion } from './incorporacion';
+import { SHA256_APROBADO_MEDINA_2025 } from './xlsx/referencias';
 
 /**
  * Contrato de preparación, NO autorización para escribir.
@@ -15,7 +16,7 @@ export const CANDIDATO_MEDINA_2025 = {
   espacioId: 'real-medina-del-campo-2026',
   municipioId: 'real-mun-medina',
   anio: 2025,
-  sha256: '9e367ca51cfecf56d93f124d166f708e374f6555a4cc36d3166afde2f1f7ba82',
+  sha256: SHA256_APROBADO_MEDINA_2025,
   filas: 889,
   columnas: 27,
   periodoDesde: '2024-01-01',
