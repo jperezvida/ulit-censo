@@ -62,7 +62,7 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
   beforeAll(async () => {
     // Fail closed: nunca crear cuentas ni modificar tablas si las variables apuntan fuera de localhost.
     const permitido = (direccion: string) => {
-      try { return ['localhost', '127.0.0.1', '::1'].includes(new URL(direccion).hostname); } catch { return false; }
+      try { return ['localhost', '127.0.0.1', '::1'].includes(new globalThis.URL(direccion).hostname); } catch { return false; }
     };
     if (!permitido(URL) || !permitido(PSQL)) throw new Error('E2E denegado: API y PostgreSQL deben ser servidores locales desechables.');
     if (!globalThis.crypto?.subtle) Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true });
