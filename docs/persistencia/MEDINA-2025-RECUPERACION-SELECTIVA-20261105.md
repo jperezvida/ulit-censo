@@ -19,6 +19,14 @@ La E2E solo puede comenzar si ambas conexiones, API y PostgreSQL, tienen destino
 
 **Alcance del resultado:** confirma recuperación lógica de un espacio Censo desde copia interna y aislamiento entre espacios, no un ensayo de desastre integral del proveedor (Auth, Storage, Edge, correo, secretos). Tampoco comprueba todavía la recuperación de la copia JSON externa en un servicio Supabase restituido desde cero.
 
+## Ensayo adicional: reconstrucción desde JSON externo (datos sintéticos)
+
+La prueba `src/store/supabaseLocal.e2e.test.ts` incluye `respaldo externo: recuperar 889 filas ficticias desde JSON en espacio real local limpio`. Se genera un respaldo externo con `crearRespaldo` a partir de la fotografía sintética 2025; se comprueba su SHA-256, se rechazan modificaciones de contenido o un tipo de espacio incorrecto y se levanta un **espacio vacío nuevo** en Supabase local con el **mismo identificador lógico**. Se inicializa su callejero, se recuperan desde el JSON las 889 filas, una campaña y una importación, se comprueba igualdad canónica y se vuelve a cerrar la escritura.
+
+Este ensayo acredita la **recuperabilidad lógica del formato externo** y sus relaciones en un entorno controlado, pero no significa que se haya restaurado el fichero auténtico de la Cátedra ni que exista una recuperación integral de Auth, Storage, correo, secretos o de todo el proyecto compartido. La apertura temporal de escritura realizada por la prueba ocurre **únicamente en el servidor local desechable** y nunca es una receta de ejecución inmediata en producción.
+
+Antes de una recuperación real es necesaria aprobación separada y procedimiento limitado al espacio afectado, con verificación previa de dependencias de otros módulos, usuarios y versiones. No tratar una restauración como un reintento automático de importación.
+
 ## Qué conserva la base de datos
 
 - `ulit_censo.copia`: instantánea íntegra, versión y huella SHA-256 **del espacio escogido**. La copia se puede crear aun cuando `escritura_habilitada=false`, pero solo mediante RPC con membresía y rol adecuados.
