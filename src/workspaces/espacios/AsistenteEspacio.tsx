@@ -7,6 +7,7 @@ import { periodoDe, planificarIncorporacion, type DecisionesIncorporacion, type 
 import { itemsRevision, MOTIVO_TXT, previsualizarDeshacer } from '../../domain/incorporacionDemo';
 import { conciliacionCalles, diagnosticoAgregado, ESTADO_CALLE_TXT, recuentoRegistros, senales, type EstadoCalle } from '../../domain/c1e';
 import { municipioDeEspacio, personaEspacio, SHA256_ORIGINAL_MEDINA_2025, type TipoEspacio } from '../../domain/espacios';
+import { SHA256_APROBADO_MEDINA_2025 } from '../../domain/xlsx/referencias';
 import { esArchivoSintetico } from '../../data/xlsxSinteticoC1e';
 import { RevisionGrupos } from '../imports/incorporacion/RevisionGrupos';
 import { Decisiones } from '../imports/incorporacion/Decisiones';
@@ -179,15 +180,19 @@ function EtapaArchivo({ tipo, destino, simple, onAnalizar }: { tipo: TipoEspacio
   };
   const bloqueo = !a ? null
     : tipo === 'real' && a.sintetico ? 'Este archivo lo ha generado la aplicación (sintético o ficticio): no se admite en el espacio de datos reales. Úselo en el espacio de ensayo.'
-    : tipo === 'ensayo' && a.sha256 === SHA256_ORIGINAL_MEDINA_2025 ? 'Este es el archivo AUTÉNTICO del censo (su SHA-256 coincide con el del diagnóstico agregado): no se usa en el ensayo. Use el espacio de datos reales.'
+    : tipo === 'ensayo' && (a.sha256 === SHA256_APROBADO_MEDINA_2025 || a.sha256 === SHA256_ORIGINAL_MEDINA_2025) ? 'Este Excel corresponde al censo histórico real de Medina 2025 (aprobado o de referencia anterior): está prohibido cargarlo en el espacio de ensayo.'
     : null;
   const detallesArchivo = a && (
           <dl className="inc-dl" aria-label="Identificación del archivo">
             <dt>Archivo</dt><dd>{a.nombre}</dd>
             <dt>Tamaño</dt><dd>{mb(a.tamano)}</dd>
             <dt>SHA-256</dt><dd className="mono" style={{ wordBreak: 'break-all' }}>{a.sha256}</dd>
-            <dt>Diagnóstico agregado</dt>
-            <dd>{a.sha256 === SHA256_ORIGINAL_MEDINA_2025 ? <span className="chip ok">Coincide con la huella del archivo auténtico</span> : <span className="chip aviso">No coincide con la huella del archivo auténtico</span>}</dd>
+            <dt>Fuente oficial 2025</dt>
+            <dd>{a.sha256 === SHA256_APROBADO_MEDINA_2025
+              ? <span className="chip ok">Copia aprobada por la Cátedra (05/11/2026)</span>
+              : a.sha256 === SHA256_ORIGINAL_MEDINA_2025
+                ? <span className="chip aviso">Referencia anterior: huella distinta de la copia aprobada</span>
+                : <span className="chip aviso">No coincide con la copia 2025 aprobada</span>}</dd>
             <dt>Marca de sintético</dt><dd>{a.sintetico ? <span className="chip sim">Archivo SINTÉTICO</span> : 'No'}</dd>
           </dl>
         );
@@ -564,7 +569,8 @@ function EtapaVistaPrevia({ tipo, destino, simple }: { tipo: TipoEspacio; destin
           {plan.pendientes.map((x) => <li key={x}>{x}</li>)}
           {(plan.cruces ?? []).map((x) => <li key={`${x.fila}-${x.tipo}`} className="aviso">Fila {x.fila}: {x.tipo === 'posible-duplicado' ? 'posible duplicado' : 'contradicción'} con {x.itinerario} ({x.detalle}).</li>)}
           {diag.diferencias.map((d) => <li key={d.clave} className="aviso">No coincide con el informe: {d.etiqueta} ({String(d.valor)} frente a {String(d.esperado)}).</li>)}
-          {a.sha256 !== SHA256_ORIGINAL_MEDINA_2025 && tipo === 'real' && <li className="aviso">El SHA-256 del archivo no es el del diagnóstico agregado.</li>}
+          {tipo === 'real' && a.sha256 === SHA256_APROBADO_MEDINA_2025 && <li>Fuente del histórico 2025 aprobada el 05/11/2026. Su SHA-256 difiere de la referencia anterior; la aprobación del archivo no autoriza todavía la incorporación.</li>}
+          {tipo === 'real' && a.sha256 !== SHA256_APROBADO_MEDINA_2025 && <li className="aviso">El SHA-256 no corresponde al Excel 2025 aprobado por la Cátedra: no utilice este archivo para la primera incorporación real.</li>}
           <li>No se toca ninguna campaña operativa (en Medina del Campo, 2026 sigue intacta).</li>
         </ul>
       </section>
