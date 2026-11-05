@@ -57,7 +57,7 @@ export function AccesoServidor() {
           <ul className="inc-lista" aria-label="Mis espacios en el servidor">
             {espacios?.map((x) => (
               <li key={x.espacio_id}>
-                <b>{x.nombre}</b> · {x.tipo === 'real' ? 'datos reales' : 'ensayo'} · {x.rol} · versión {x.version}{x.tipo === 'real' && !x.escritura_habilitada ? ' · escritura no habilitada' : ''}{' '}
+                <b>{x.nombre}</b> · {x.tipo === 'real' ? 'datos reales' : 'ensayo'} · {x.rol} · versión {x.version}{x.tipo === 'real' ? (x.escritura_habilitada ? ' · preparación/autorización limitada' : ' · escritura no habilitada') : ''}{' '}
                 <button className="btn s" onClick={() => void abrir(x)}>Abrir</button>
               </li>
             ))}
