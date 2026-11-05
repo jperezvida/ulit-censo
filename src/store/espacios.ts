@@ -198,18 +198,23 @@ export function requisitosIncorporacion(p: {
     },
     {
       id: 'archivo',
-      // Primera incorporación real: solo la copia documentalmente aprobada,
-      // nunca el Excel anterior ni cualquier otro archivo no sintético.
+      // La huella APROBADA solo se exige en la incorporación excepcional del
+      // HISTÓRICO 2025. Para 2026 cada itinerario es un XLSX distinto, con su
+      // propia huella y revisión; nunca aplicar a todos el SHA del censo 2025.
       ok: p.tipo === 'real'
-        ? !p.sintetico && sha === SHA256_APROBADO_MEDINA_2025
+        ? !p.sintetico && (p.plan?.modo === 'operativo'
+          ? !!sha && sha !== SHA256_APROBADO_MEDINA_2025 && sha !== SHA256_ORIGINAL_MEDINA_2025
+          : sha === SHA256_APROBADO_MEDINA_2025)
         : sha !== SHA256_ORIGINAL_MEDINA_2025 && sha !== SHA256_APROBADO_MEDINA_2025,
-      aviso: p.tipo === 'real' && !p.sintetico && !!sha && sha !== SHA256_APROBADO_MEDINA_2025,
+      aviso: p.tipo === 'real' && !p.sintetico && !!sha && p.plan?.modo !== 'operativo' && sha !== SHA256_APROBADO_MEDINA_2025,
       texto: p.tipo === 'real'
         ? p.sintetico
           ? 'Es un archivo SINTÉTICO: no se incorpora al espacio de datos reales.'
-          : sha === SHA256_APROBADO_MEDINA_2025
-            ? 'Copia del censo histórico 2025 aprobada el 05/11/2026: SHA-256 correcto. La aprobación de la fuente NO autoriza todavía la importación.'
-            : 'El SHA-256 no corresponde a la copia 2025 aprobada por la Cátedra: no se puede importar ese archivo.'
+          : p.plan?.modo === 'operativo'
+            ? 'Excel del itinerario 2026 identificado por su propia huella SHA-256. Su confirmación requiere autorización operativa separada.'
+            : sha === SHA256_APROBADO_MEDINA_2025
+              ? 'Copia del censo histórico 2025 aprobada el 05/11/2026: SHA-256 correcto. La aprobación de la fuente NO autoriza todavía la importación.'
+              : 'El SHA-256 no corresponde a la copia 2025 aprobada por la Cátedra: no se puede importar ese archivo.'
         : sha === SHA256_ORIGINAL_MEDINA_2025 || sha === SHA256_APROBADO_MEDINA_2025
           ? 'Este Excel corresponde al censo histórico real: no se usa en el espacio de ensayo.'
           : 'Archivo de ensayo (no es ninguno de los censos auténticos identificados).',
@@ -232,13 +237,19 @@ export function requisitosIncorporacion(p: {
     return r.filter((x) => x.id !== 'respaldo' && x.id !== 'espacio-disco');
   }
   if (p.tipo === 'real') {
-    if (p.plan) {
-      const errores = comprobarCandidatoMedina2025(p.db.meta.espacioId, p.plan);
-      r.push({ id: 'preflight-medina-2025', ok: errores.length === 0,
-        texto: errores.length ? `Preflight de Medina 2025 no superado: ${errores.join(' ')}` : 'Preflight de Medina 2025: espacio, SHA-256, periodo y 889 registros sin exclusiones comprobados (no autoriza escritura).',
-      });
+    if (p.plan?.modo === 'operativo') {
+      // No heredar la autorización excepcional de 2025: 2026 necesitará un
+      // permiso recurrente específico que mantenga íntegro el histórico.
+      r.push({ id: 'operativo-real', ok: false, texto: 'El Excel operativo 2026 se puede analizar, pero el guardado real exige un permiso operativo separado. No se ha incorporado nada.' });
+    } else {
+      if (p.plan) {
+        const errores = comprobarCandidatoMedina2025(p.db.meta.espacioId, p.plan);
+        r.push({ id: 'preflight-medina-2025', ok: errores.length === 0,
+          texto: errores.length ? `Preflight de Medina 2025 no superado: ${errores.join(' ')}` : 'Preflight de Medina 2025: espacio, SHA-256, periodo y 889 registros sin exclusiones comprobados (no autoriza escritura).',
+        });
+      }
+      r.push({ id: 'confirmacion-real', ok: CONFIRMACION_REAL_HABILITADA, texto: CONFIRMACION_REAL_HABILITADA ? 'Confirmación real habilitada.' : 'C1e-B: la confirmación de la incorporación real está BLOQUEADA hasta revisar juntos la vista previa. No se incorporará nada.' });
     }
-    r.push({ id: 'confirmacion-real', ok: CONFIRMACION_REAL_HABILITADA, texto: CONFIRMACION_REAL_HABILITADA ? 'Confirmación real habilitada.' : 'C1e-B: la confirmación de la incorporación real está BLOQUEADA hasta revisar juntos la vista previa. No se incorporará nada.' });
   }
   return r;
 }
@@ -454,6 +465,8 @@ export const useEspacios = create<Estado>((set, get) => ({
     if (ocupado) return { ok: false, error: 'Ya hay una operación en curso.' };
     const pendientes = requisitos.filter((r) => !r.ok);
     if (pendientes.length) return { ok: false, error: `No se incorpora nada: ${pendientes.map((r) => r.texto).join(' ')}` };
+    // La autorización 2025 NO se usa para itinerarios 2026.
+    if (tipo === 'real' && plan.modo === 'operativo') return { ok: false, error: 'La incorporación real de itinerarios 2026 requiere una autorización operativa específica; no se ejecutará mediante la RPC excepcional de 2025.' };
     // Doble seguro en el espacio real (C1e-B), independiente de lo que muestre la interfaz.
     if (tipo === 'real' && !CONFIRMACION_REAL_HABILITADA) return { ok: false, error: 'C1e-B: la incorporación real está bloqueada hasta revisar la vista previa.' };
     if (tipo === 'real') {
