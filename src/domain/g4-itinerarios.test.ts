@@ -10,6 +10,7 @@ import { leerOsmMunicipio } from './fuentesCallejero';
 import { prepararIncorporacion } from './incorporacionXlsx';
 import { aplicarIncorporacion, deshacerIncorporacion, type DecisionesIncorporacion } from './incorporacion';
 import { callesConObservaciones, censoConsolidado, crearItinerario, validarItinerario } from './campanaOperativa';
+import { itinerarioDesdeNombre, prepararLoteItinerarios } from './loteItinerarios';
 import type { BaseDatos } from './db';
 
 /**
@@ -68,6 +69,61 @@ async function tresItinerarios() {
   }
   return { ...e, db, imps };
 }
+
+describe('Lote de varios itinerarios 2026', () => {
+  it('asigna por código IT, sin adivinar archivos ambiguos ni ajenos', () => {
+    const its = [{ id: 'it-1', codigo: 'IT1' }, { id: 'it-5', codigo: 'IT5' }];
+    expect(itinerarioDesdeNombre('IT5 parte 2.xlsx', its)).toBe('it-5');
+    expect(itinerarioDesdeNombre('itinerario_IT1_medina_2026.xlsx', its)).toBe('it-1');
+    expect(itinerarioDesdeNombre('IT1_IT5.xlsx', its)).toBeNull();
+    expect(itinerarioDesdeNombre('CENSO COMPLETO 2025.xlsx', its)).toBeNull();
+    expect(itinerarioDesdeNombre('IT9.xlsx', its)).toBeNull();
+  });
+
+  it('prepara tres Excel en una operación lógica, conservando los originales e identificando cruces', async () => {
+    const e = escenario();
+    const antes = JSON.stringify(e.db);
+    const archivos = await Promise.all((['IT1', 'IT2', 'IT3'] as const).map(async (k) => ({
+      nombre: archivoItinerario(k), bytes: await libroItinerario(k), itinerarioId: e.its[k],
+    })));
+    const lote = await prepararLoteItinerarios(e.db, e.campanaId, archivos, e.porId, false);
+    expect(lote.aplicable).toBe(true);
+    expect(lote.totalFilas).toBe(15);
+    expect(lote.archivos.every((a) => a.aplicable && !!a.sha256)).toBe(true);
+    expect(lote.archivos[1].cruces).toBeGreaterThan(0);
+    expect(Object.keys(lote.dbResultado!.importaciones)).toHaveLength(3);
+    expect(censoConsolidado(lote.dbResultado!, e.campanaId).total.registros).toBe(15);
+    expect(JSON.stringify(e.db)).toBe(antes); // solo análisis: no se modifica ni se guarda nada
+  });
+
+  it('un archivo repetido bloquea TODO el lote, no deja un resultado para guardar', async () => {
+    const e = escenario();
+    const bytes = await libroItinerario('IT1');
+    const archivos = [
+      { nombre: archivoItinerario('IT1'), bytes, itinerarioId: e.its.IT1 },
+      { nombre: 'IT2-copia.xlsx', bytes, itinerarioId: e.its.IT2 },
+    ];
+    const lote = await prepararLoteItinerarios(e.db, e.campanaId, archivos, e.porId, false);
+    expect(lote.aplicable).toBe(false);
+    expect(lote.dbResultado).toBeNull();
+    expect(lote.archivos[1].aplicable).toBe(false);
+    expect(Object.keys(e.db.registros)).toHaveLength(0);
+  });
+
+  it('dos partes del mismo IT exigen aprobación específica; nunca reemplazan la anterior', async () => {
+    const e = escenario();
+    const archivos = [
+      { nombre: archivoItinerario('IT1'), bytes: await libroItinerario('IT1'), itinerarioId: e.its.IT1 },
+      { nombre: archivoItinerario('IT1', 2), bytes: await libroItinerario('IT1', 2), itinerarioId: e.its.IT1 },
+    ];
+    const no = await prepararLoteItinerarios(e.db, e.campanaId, archivos, e.porId, false);
+    expect(no.aplicable).toBe(false);
+    const si = await prepararLoteItinerarios(e.db, e.campanaId, archivos, e.porId, true);
+    expect(si.aplicable).toBe(true);
+    expect(si.dbResultado && censoConsolidado(si.dbResultado, e.campanaId).itinerarios[0].archivos).toHaveLength(2);
+    expect(si.archivos[1].avisos.join(' ')).toMatch(/Parte adicional/);
+  });
+});
 
 describe('G4 · Itinerarios de una campaña operativa', () => {
   it('cada Excel se incorpora en SU itinerario, sin crear ni modificar la campaña, con trazabilidad completa', async () => {
