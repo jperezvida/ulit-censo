@@ -152,6 +152,11 @@ async function persistir(get: () => Estado, tipo: TipoEspacio, antes: BaseDatos 
     throw new Error('El identificador interno del espacio no coincide con el servidor: no se guarda.');
   }
   if (!remoto.info) throw new Error('El espacio remoto no tiene una sesión validada.');
+  // Defensa adicional al cierre de escritura del servidor. No habilitar datos reales
+  // desde la interfaz: solo Supabase puede activar escritura_habilitada tras autorización.
+  if (tipo === 'real' && !remoto.info.escrituraHabilitada) {
+    throw new Error('El espacio real está en solo lectura: Supabase no tiene habilitada su escritura.');
+  }
   // Hasta el trabajo con varias personas (2027), solo la persona responsable del espacio escribe desde aquí.
   if (remoto.info && personaEspacio(db)?.id !== remoto.info.personaId) {
     throw new Error(`Esta cuenta representa a «${remoto.info.personaId}», no a la persona responsable del espacio: no se guarda.`);
