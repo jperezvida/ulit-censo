@@ -315,4 +315,96 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
     expect(huella).toBe('1:false:false:0');
   }, 180000);
 
+
+  it('recuperación selectiva: copia de real antes de 889 filas sintéticas, restauración atómica y aislamiento de otros espacios', async () => {
+    // SOLO se ejecuta con Supabase local desechable (sin URLs ni claves de producción).
+    const realId = `real-e2e-restauracion-${Date.now().toString(36)}`;
+    const vecinoId = `ensayo-e2e-vecino-${Date.now().toString(36)}`;
+    const personaId = 'real-p-coordinacion-sintetica';
+    const osm = validarInstantanea(JSON.parse(readFileSync('public/data/medina-callejero.json', 'utf8')));
+    if (!osm.ok) throw new Error(osm.motivo);
+
+    const original = crearBaseEspacio('real', {
+      persona: { nombre: NOMBRE, roles: ['coordinador'] }, personaId, espacioId: realId,
+      calles: osm.calles, detalleCallejero: 'Instantánea OSM sintética para test',
+    });
+    const vecinoBase = crearBaseEspacio('ensayo', {
+      persona: { nombre: 'Coordinación vecina de prueba', roles: ['coordinador'] },
+      espacioId: vecinoId, incluirMedina: false, calles: [], detalleCallejero: '',
+    });
+    sql(`insert into ulit_censo.espacio (id,tipo,nombre,escritura_habilitada,preparacion_habilitada)
+           values ('${realId}','real','Restauración E2E, prueba sintética',true,true);
+         insert into ulit_censo.miembro (espacio_id,usuario_id,rol,persona_id)
+           values ('${realId}','${ids.coord}','administrador','${personaId}');
+         insert into ulit_censo.espacio (id,tipo,nombre,escritura_habilitada)
+           values ('${vecinoId}','ensayo','Espacio vecino inalterable',true);
+         insert into ulit_censo.miembro (espacio_id,usuario_id,rol,persona_id)
+           values ('${vecinoId}','${ids.coord}','administrador','${vecinoBase.meta.espacioCreadoPorId}');`);
+
+    const real = new AlmacenSupabase(coord, realId);
+    const vecino = new AlmacenSupabase(coord, vecinoId);
+    await real.leer();
+    await vecino.leer();
+    expect(await real.guardar(null, original, 'Carga inicial permitida: solo Medina y OSM')).toBe(1);
+    expect(await vecino.guardar(null, vecinoBase, 'Alta de espacio vecino')).toBe(1);
+    const vecinoAntes = await vecino.leer();
+    const huellaVecino = huella(vecinoAntes.db!);
+    expect((await real.leer()).info).toMatchObject({ version: 1, escrituraHabilitada: false, preparacionHabilitada: false });
+
+    // La copia interna puede prepararse mientras el espacio real sigue BLOQUEADO.
+    const copia = await real.crearCopia('Punto de recuperación antes del histórico 2025');
+    const exportada = await real.descargarCopia(copia);
+    expect(exportada.sha256).toMatch(/^[a-f0-9]{64}$/);
+    expect((exportada.contenido as { espacioId: string; version: number })).toMatchObject({ espacioId: realId, version: 1 });
+    expect((await real.listarCopias()).length).toBe(1);
+
+    // SIMULACIÓN en BD local: apertura administrativa limitada y una importación de prueba.
+    sql(`update ulit_censo.espacio set escritura_habilitada=true
+         where id='${realId}' and version=1 and preparacion_habilitada=false`);
+    expect((await real.leer()).info.escrituraHabilitada).toBe(true);
+
+    const d = { municipioId: municipioDeEspacio('real'), anio: 2025 };
+    const decisiones = { periodoTrabajo: {
+      porId: personaId, fecha: '2026-11-05', desde: '2024-01-01', hasta: '2025-12-31',
+      motivo: 'Simulación local de recuperación del histórico, sin datos comerciales auténticos.',
+    } };
+    const p = await prepararIncorporacion(original, await libroSinteticoC1e(osm.calles), ARCHIVO_SINTETICO_C1E, d, decisiones);
+    expect(p.plan.aplicable).toBe(true);
+    expect(p.plan.registros.previstos).toBe(889);
+    expect(p.plan.destino.nueva).toBe(true);
+    const aplicado = aplicarIncorporacion(original, p.resultado, d, decisiones, p.plan, { porId: personaId });
+    expect(await real.guardar(original, aplicado.db, '889 filas sintéticas 2025 (PRUEBA LOCAL)')).toBe(2);
+    expect(sql(`select count(*) from ulit_censo.entidad where espacio_id='${realId}' and coleccion='registros'`)).toBe('889');
+
+    // El cliente con la versión antigua no puede restaurar (sin sobrescribir operaciones nuevas).
+    const obsoleto = new AlmacenSupabase(coord, realId);
+    await obsoleto.leer();
+    obsoleto.info!.version = 1;
+    await expect(obsoleto.restaurarCopia(copia, 'Intento obsoleto')).rejects.toBeInstanceOf(ConflictoRemoto);
+    expect(sql(`select version from ulit_censo.espacio where id='${realId}'`)).toBe('2');
+
+    // Restauración SOLO del espacio real. Supabase crea antes otra copia automática.
+    expect(await real.restaurarCopia(copia, 'Reversión selectiva tras importación sintética')).toBe(3);
+    const restaurado = await real.leer();
+    expect(huella(restaurado.db!)).toBe(huella(original));
+    expect(restaurado.info.version).toBe(3);
+    expect(sql(`select count(*) from ulit_censo.entidad where espacio_id='${realId}' and coleccion='registros'`)).toBe('0');
+    expect(sql(`select count(*) from ulit_censo.entidad where espacio_id='${realId}' and coleccion='campanas'`)).toBe('0');
+    expect((await real.listarCopias()).length).toBe(2);
+
+    const vecinoDespues = await new AlmacenSupabase(coord, vecinoId).leer();
+    expect(huella(vecinoDespues.db!)).toBe(huellaVecino);
+    expect(vecinoDespues.info.version).toBe(vecinoAntes.info.version);
+
+    // Cierre explícito en el entorno desechable: tampoco el cliente Auth puede reabrirlo por su cuenta.
+    sql(`update ulit_censo.espacio set escritura_habilitada=false where id='${realId}' and version=3`);
+    expect((await real.leer()).info.escrituraHabilitada).toBe(false);
+    const intento = await coord.rpc('ulit_censo_aplicar', {
+      p_espacio: realId, p_version_esperada: 3, p_etiqueta: 'Intento tras cierre',
+      p_cambios: [{ c: 'campanas', id: 'real-camp-no', v: { id: 'real-camp-no' } }],
+    });
+    expect(intento.error?.code).toBe('42501');
+    expect(sql(`select version from ulit_censo.espacio where id='${realId}'`)).toBe('3');
+  }, 180000);
+
 });
