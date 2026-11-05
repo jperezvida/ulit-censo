@@ -17,7 +17,7 @@ const planValido = (): PlanIncorporacion => ({
   decisiones: { exclusiones: 0, periodo: { desde: '2024-01-01', hasta: '2025-12-31' } },
 } as unknown as PlanIncorporacion);
 
-const examinar = (p = planValido(), espacio = c.espacioId, lectura = { filas: 889, columnas: 27 }) =>
+const examinar = (p = planValido(), espacio: string = c.espacioId, lectura = { filas: 889, columnas: 27 }) =>
   comprobarCandidatoMedina2025(espacio, p, lectura);
 
 describe('Preparación sin autorización de Medina 2025', () => {
