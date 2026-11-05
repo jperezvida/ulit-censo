@@ -68,7 +68,14 @@ function useDestino(tipo: TipoEspacio): DestinoIncorporacion | null {
   return useMemo(() => {
     const { municipioId, campana, itinerario } = destinoElegido(db, tipo, sel);
     if (sel.modo === 'operativo') return municipioId && campana && itinerario ? { municipioId, anio: campana.anio, nombre: campana.nombre, campanaId: campana.id, itinerarioId: itinerario.id } : null;
-    return municipioId && campana ? { municipioId, anio: campana.anio, nombre: campana.nombre, campanaId: campana.id } : null;
+    if (municipioId && campana) return { municipioId, anio: campana.anio, nombre: campana.nombre, campanaId: campana.id };
+    // Primera incorporación real en v1: la campaña NO existe todavía y la RPC
+    // de la migración 0005 exige crearla DENTRO de la importación transaccional.
+    // No obligar a hacer una escritura previa que el servidor bloquea.
+    if (tipo === 'real' && municipioId === municipioDeEspacio('real') && Object.keys(db.campanas).length === 0) {
+      return { municipioId, anio: 2025, nombre: 'Censo histórico Medina del Campo 2025' };
+    }
+    return null;
   }, [db, tipo, sel]);
 }
 
@@ -392,6 +399,7 @@ function Destino({ tipo, destino }: { tipo: TipoEspacio; destino: DestinoIncorpo
             <span>Campaña histórica</span>
             <select className="input" aria-label="Campaña de destino" value={destino?.campanaId ?? ''} disabled={!opciones.length} onChange={(e) => cambiar({ campanaId: e.target.value })}>
               {!destino && <option value="">— No hay ninguna campaña histórica vacía —</option>}
+              {tipo === 'real' && destino && !destino.campanaId && <option value="">Se creará al incorporar el histórico 2025</option>}
               {opciones.map(({ c, motivo }) => <option key={c.id} value={c.id} disabled={!!motivo}>{c.nombre} ({c.anio}){motivo ? ' · ya tiene datos' : ''}</option>)}
             </select>
           </label>
@@ -413,9 +421,10 @@ function Destino({ tipo, destino }: { tipo: TipoEspacio; destino: DestinoIncorpo
       {cj && (cj.disponible
         ? <p className="muted" style={{ margin: 0 }}>Callejero: {cj.texto}.</p>
         : <div className="t-info aviso" role="note"><AlertTriangle size={15} /> <div><b>Este municipio no tiene callejero todavía.</b> Los registros se incorporan y se conservan, pero sin vínculo con calles ni locales: la conciliación territorial queda pendiente.</div></div>)}
-      {municipioId && !soloMemoria && sel.modo === 'historico' && (nueva
+      {municipioId && !soloMemoria && sel.modo === 'historico' && !(tipo === 'real' && destino && !destino.campanaId) && (nueva
         ? <FormCampana municipioId={municipioId} soloHistorica onCerrar={(id) => { setNueva(false); if (id) cambiar({ municipioId, campanaId: id }); }} />
         : <button className="btn s" style={{ alignSelf: 'flex-start' }} onClick={() => setNueva(true)}>Crear una campaña histórica</button>)}
+      {tipo === 'real' && destino && !destino.campanaId && sel.modo === 'historico' && <div className="t-info ok" role="note"><CheckCircle2 size={15} /> La campaña histórica 2025 se creará automáticamente en la misma incorporación única de los 889 registros. No tiene que crearla previamente.</div>}
       {!destino && !nueva && sel.modo === 'historico' && <p className="muted" style={{ margin: 0 }}>Cree primero la campaña histórica en la que se incorporará el Excel (por ejemplo, «Censo 2023 · histórico»).</p>}
     </section>
   );
