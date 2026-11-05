@@ -29,3 +29,31 @@ jobs:
       - run: npm test
       - run: npm run comprobar-datos
       - run: npm run build
+
+  e2e-local:
+    name: Recuperación selectiva en Supabase local sintético
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Cliente PostgreSQL
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y postgresql-client
+          fi
+      - name: Supabase LOCAL - 889 filas sintéticas y recuperación selectiva
+        run: bash docs/persistencia/pruebas/e2e-supabase-local.sh /tmp/ulit-censo-preflight-e2e
+      - name: Eliminar el entorno local
+        if: always()
+        run: |
+          if [ -f /tmp/ulit-censo-preflight-e2e/supabase/config.toml ]; then
+            (cd /tmp/ulit-censo-preflight-e2e && npx -y supabase@2.58.5 stop --no-backup) || true
+          fi
