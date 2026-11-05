@@ -10,6 +10,7 @@ import { comprobarRespaldo, crearRespaldo, type Respaldo } from '../domain/respa
 import { cargarInstantaneaMedina } from '../data/callejero';
 import type { ResultadoInterpretacion } from '../domain/xlsx/interpretacion';
 import type { Id, Rol } from '../domain/types';
+import { comprobarCandidatoMedina2025 } from '../domain/comprobarCandidatoMedina2025';
 import { AlmacenSupabase } from './almacenSupabase';
 import { clienteServidor } from './clienteSupabase';
 import { guardarSeleccionRemota, type SeleccionRemota } from './seleccionRemota';
@@ -56,7 +57,7 @@ export interface RespaldoVerificado {
 }
 
 export interface Requisito {
-  id: 'persona' | 'vista-previa' | 'plan' | 'perfil' | 'respaldo' | 'espacio-disco' | 'archivo' | 'espacio' | 'confirmacion-real' | 'sin-guardar';
+  id: 'persona' | 'vista-previa' | 'plan' | 'perfil' | 'respaldo' | 'espacio-disco' | 'archivo' | 'espacio' | 'confirmacion-real' | 'sin-guardar' | 'preflight-medina-2025';
   ok: boolean;
   /** Cumplido, pero con algo que revisar (no bloquea). */
   aviso?: boolean;
@@ -220,6 +221,12 @@ export function requisitosIncorporacion(p: {
     return r.filter((x) => x.id !== 'respaldo' && x.id !== 'espacio-disco');
   }
   if (p.tipo === 'real') {
+    if (p.plan) {
+      const errores = comprobarCandidatoMedina2025(p.db.meta.espacioId, p.plan);
+      r.push({ id: 'preflight-medina-2025', ok: errores.length === 0,
+        texto: errores.length ? `Preflight de Medina 2025 no superado: ${errores.join(' ')}` : 'Preflight de Medina 2025: espacio, SHA-256, periodo y 889 registros sin exclusiones comprobados (no autoriza escritura).',
+      });
+    }
     r.push({ id: 'confirmacion-real', ok: CONFIRMACION_REAL_HABILITADA, texto: CONFIRMACION_REAL_HABILITADA ? 'Confirmación real habilitada.' : 'C1e-B: la confirmación de la incorporación real está BLOQUEADA hasta revisar juntos la vista previa. No se incorporará nada.' });
   }
   return r;
@@ -438,6 +445,11 @@ export const useEspacios = create<Estado>((set, get) => ({
     if (pendientes.length) return { ok: false, error: `No se incorpora nada: ${pendientes.map((r) => r.texto).join(' ')}` };
     // Doble seguro en el espacio real (C1e-B), independiente de lo que muestre la interfaz.
     if (tipo === 'real' && !CONFIRMACION_REAL_HABILITADA) return { ok: false, error: 'C1e-B: la incorporación real está bloqueada hasta revisar la vista previa.' };
+    if (tipo === 'real') {
+      if (!get().remoto?.info?.escrituraHabilitada) return { ok: false, error: 'Supabase no autoriza escrituras en el espacio real.' };
+      const errores = comprobarCandidatoMedina2025(db.meta.espacioId, plan, { filas: resultado.original.filas.length, columnas: resultado.original.columnas.length });
+      if (errores.length) return { ok: false, error: `Preflight de importación real fallido: ${errores.join(' ')}` };
+    }
     if (!db.municipios[destino.municipioId]) return { ok: false, error: 'El destino no es un municipio de este espacio.' };
     set({ ocupado: 'Incorporando…' });
     try {
