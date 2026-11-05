@@ -419,4 +419,72 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
     expect(sql(`select version from ulit_censo.espacio where id='${realId}'`)).toBe('3');
   }, 180000);
 
+  it('permiso específico: histórico 2025 autorizado una sola vez y cierre automático en SQL', async () => {
+    const realId = 'real-medina-del-campo-2026'; // SOLO entorno desechable local
+    const personaId = 'real-p-coordinacion-sintetica';
+    const osm = validarInstantanea(JSON.parse(readFileSync('public/data/medina-callejero.json', 'utf8')));
+    if (!osm.ok) throw new Error(osm.motivo);
+    const inicial = crearBaseEspacio('real', {
+      persona: { nombre: NOMBRE, roles: ['coordinador'] },
+      personaId, espacioId: realId, calles: osm.calles, detalleCallejero: 'Instantánea OSM sintética E2E',
+    });
+    sql("insert into ulit_censo.espacio(id,tipo,nombre,escritura_habilitada,preparacion_habilitada) values ('"
+      + realId + "','real','Medina 2025 E2E',true,true);"
+      + "insert into ulit_censo.miembro(espacio_id,usuario_id,rol,persona_id) values ('"
+      + realId + "','" + ids.coord + "','administrador','" + personaId + "');");
+
+    const real = new AlmacenSupabase(coord, realId);
+    await real.leer();
+    expect(await real.guardar(null, inicial, 'Inicialización local solo Medina y calles OSM')).toBe(1);
+    expect((await real.leer()).info).toMatchObject({ version: 1, escrituraHabilitada: false, preparacionHabilitada: false });
+    const antes = huella(inicial);
+    const copia = await real.asegurarRecuperacionAntesDeImportar(inicial);
+    expect(copia.version).toBe(1);
+
+    const d = { municipioId: municipioDeEspacio('real'), anio: 2025 };
+    const decisiones = { periodoTrabajo: {
+      porId: personaId, fecha: '2026-11-05', desde: '2024-01-01', hasta: '2025-12-31',
+      motivo: 'Revisión humana del periodo de trabajo de campo (E2E ficticia).',
+    } };
+    const plan = await prepararIncorporacion(inicial, await libroSinteticoC1e(osm.calles), ARCHIVO_SINTETICO_C1E, d, decisiones);
+    expect(plan.plan.registros.previstos).toBe(889);
+    expect(plan.plan.nuevas.registros).toBe(889);
+    expect(plan.plan.nuevas.campanas).toBe(1);
+    const aplicado = aplicarIncorporacion(inicial, plan.resultado, d, decisiones, plan.plan, { porId: personaId });
+
+    // El servidor rechaza sin autorización SQL específica.
+    await expect(real.importarPrimerHistorico2025(inicial, aplicado.db, copia)).rejects.toThrow(/autorización específica/);
+    expect((await real.leer()).info).toMatchObject({ version: 1, escrituraHabilitada: false });
+    expect(huella((await real.leer()).db!)).toBe(antes);
+
+    // Inserción por administración SQL en base desechable: nunca por Auth/API pública.
+    const sha = plan.plan.archivo.sha256;
+    expect(sha).toMatch(/^[0-9a-f]{64}$/);
+    sql("insert into ulit_censo.autorizacion_historico_2025" +
+      "(espacio_id,usuario_id,version_esperada,sha256_archivo,vigente_hasta,motivo)" +
+      " values ('" + realId + "','" + ids.coord + "',1,'" + sha + "',now()+interval '10 minutes'," +
+      "'Prueba E2E aislada, permiso de uso único para una importación ficticia');");
+
+    const lectora = new AlmacenSupabase(await sesion('lectora-' + ESPACIO + '@ejemplo.invalid'), realId);
+    await expect(lectora.leer()).rejects.toThrow(/sin permiso/);
+
+    expect(await real.importarPrimerHistorico2025(inicial, aplicado.db, copia)).toBe(2);
+    const despues = await real.leer();
+    expect(despues.info).toMatchObject({ version: 2, escrituraHabilitada: false, preparacionHabilitada: false });
+    expect(huella(despues.db!)).toBe(huella(aplicado.db));
+    expect(Object.keys(despues.db!.registros).length).toBe(889);
+    expect(Object.keys(despues.db!.campanas).length).toBe(1);
+    expect(Object.keys(despues.db!.importaciones).length).toBe(1);
+    expect(sql("select count(*) from ulit_censo.operacion where espacio_id='" + realId + "' and version=2")).toBe('1');
+    expect(sql("select version_resultante from ulit_censo.autorizacion_historico_2025 where espacio_id='" + realId + "'")).toBe('2');
+    expect(sql("select count(*) from ulit_censo.copia where espacio_id='" + realId + "'")).toBe('1');
+
+    const intento = await coord.rpc('ulit_censo_aplicar', {
+      p_espacio: realId, p_version_esperada: 2, p_etiqueta: 'Fuera del permiso',
+      p_cambios: [{ c: 'campanas', id: 'real-camp-falsa', v: { id: 'real-camp-falsa' } }],
+    });
+    expect(intento.error?.code).toBe('42501');
+    await expect(real.importarPrimerHistorico2025(inicial, aplicado.db, copia)).rejects.toThrow(/versión 1/);
+  }, 180000);
+
 });
