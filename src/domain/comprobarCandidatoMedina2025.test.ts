@@ -7,7 +7,7 @@ const planValido = (): PlanIncorporacion => ({
   municipio: { id: c.municipioId, nombre: 'Medina del Campo' },
   destino: { campanaId: 'campana-historica-prueba', importacionId: 'importacion-prueba', anio: 2025, nombre: 'Histórico 2025', nueva: true },
   archivo: { nombre: 'copia-para-prueba.xlsx', sha256: c.sha256 },
-  modo: 'historico',
+  // El planificador omite modo cuando es histórico; lo reserva para 'operativo'.
   aplicable: true,
   bloqueos: [],
   registros: { previstos: 889, excluidos: 0, candidatasExcluir: [] },
