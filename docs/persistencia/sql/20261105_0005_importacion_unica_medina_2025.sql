@@ -20,6 +20,50 @@ create table ulit_censo.autorizacion_historico_2025 (
 revoke all on table ulit_censo.autorizacion_historico_2025 from public,anon,authenticated,service_role;
 alter table ulit_censo.autorizacion_historico_2025 enable row level security;
 
+-- Seguridad adicional: NO permitir siquiera el almacenamiento TEMPORAL de
+-- partes de un Excel auténtico en el espacio real hasta que exista autorización
+-- SQL expresa para el usuario. La RPC antigua lote_subir() por sí sola solo
+-- verificaba membresía y podía dejar datos en lote_parte con escritura bloqueada.
+-- Los ensayos y otros espacios no cambian.
+create function ulit_censo.validar_lote_historico_2025()
+returns trigger
+language plpgsql security definer set search_path = ''
+as $guardia_2025$
+declare
+  a ulit_censo.autorizacion_historico_2025;
+  e ulit_censo.espacio;
+begin
+  if new.espacio_id <> 'real-medina-del-campo-2026' then
+    return new;
+  end if;
+  select * into a from ulit_censo.autorizacion_historico_2025
+    where espacio_id=new.espacio_id;
+  if not found or a.usuario_id is distinct from auth.uid()
+      or new.usuario_id is distinct from auth.uid()
+      or a.utilizada_en is not null or a.vigente_hasta <= now() then
+    raise exception 'ULIT Censo: autorización específica requerida antes de subir datos del histórico real'
+      using errcode='42501';
+  end if;
+  select * into e from ulit_censo.espacio where id=new.espacio_id;
+  if e.version <> 1 or e.tipo <> 'real' or e.escritura_habilitada or e.preparacion_habilitada then
+    raise exception 'ULIT Censo: no se admite un lote fuera del estado real cerrado v1'
+      using errcode='42501';
+  end if;
+  if new.parte < 0 or new.parte >= 40
+      or jsonb_array_length(new.cambios) > 2000
+      or octet_length(new.cambios::text) > 2000000 then
+    raise exception 'ULIT Censo: parte de lote real fuera de los límites de seguridad'
+      using errcode='22023';
+  end if;
+  return new;
+end;
+$guardia_2025$;
+revoke all on function ulit_censo.validar_lote_historico_2025()
+  from public,anon,authenticated,service_role;
+create trigger guardia_lote_real_2025
+before insert on ulit_censo.lote_parte
+for each row execute function ulit_censo.validar_lote_historico_2025();
+
 -- Solo la RPC limitada puede activar brevemente la guarda genérica DENTRO de su
 -- propia transacción. Otros clientes no observan nunca el estado abierto.
 create function public.ulit_censo_importar_historico_2025(
