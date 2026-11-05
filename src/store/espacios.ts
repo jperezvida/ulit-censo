@@ -3,6 +3,7 @@ import { createStore, get as idbGet, set as idbSet, type UseStore } from 'idb-ke
 import { VERSION_DATOS, type BaseDatos } from '../domain/db';
 import { migrarALaActual } from '../domain/migraciones';
 import { PERFIL_ITINERARIO_28 } from '../domain/xlsx/perfilesImportacion';
+import { SHA256_APROBADO_MEDINA_2025 } from '../domain/xlsx/referencias';
 import { BASE_INDEXEDDB, crearBaseEspacio, huellaBase, municipioDeEspacio, personaEspacio, PREFIJO, SHA256_ORIGINAL_MEDINA_2025, verificarEspacio, type TipoEspacio } from '../domain/espacios';
 import { altaMunicipio, crearCampana, type DatosCampana, type DatosMunicipio } from '../domain/municipios';
 import { aplicarIncorporacion, deshacerIncorporacion, type DecisionesIncorporacion, type DestinoIncorporacion, type PlanIncorporacion } from '../domain/incorporacion';
@@ -197,11 +198,21 @@ export function requisitosIncorporacion(p: {
     },
     {
       id: 'archivo',
-      ok: p.tipo === 'real' ? !p.sintetico : sha !== SHA256_ORIGINAL_MEDINA_2025,
-      aviso: p.tipo === 'real' && !p.sintetico && !!sha && sha !== SHA256_ORIGINAL_MEDINA_2025,
+      // Primera incorporación real: solo la copia documentalmente aprobada,
+      // nunca el Excel anterior ni cualquier otro archivo no sintético.
+      ok: p.tipo === 'real'
+        ? !p.sintetico && sha === SHA256_APROBADO_MEDINA_2025
+        : sha !== SHA256_ORIGINAL_MEDINA_2025 && sha !== SHA256_APROBADO_MEDINA_2025,
+      aviso: p.tipo === 'real' && !p.sintetico && !!sha && sha !== SHA256_APROBADO_MEDINA_2025,
       texto: p.tipo === 'real'
-        ? (p.sintetico ? 'Es un archivo SINTÉTICO: no se incorpora al espacio de datos reales.' : sha === SHA256_ORIGINAL_MEDINA_2025 ? 'Archivo auténtico: su SHA-256 coincide con el del diagnóstico agregado.' : 'Atención: el SHA-256 no coincide con el del diagnóstico agregado (¿otra versión del archivo?). Revíselo antes de continuar.')
-        : (sha === SHA256_ORIGINAL_MEDINA_2025 ? 'Es el archivo AUTÉNTICO: no se usa en el ensayo (use el espacio de datos reales).' : 'Archivo de ensayo (no es el auténtico).'),
+        ? p.sintetico
+          ? 'Es un archivo SINTÉTICO: no se incorpora al espacio de datos reales.'
+          : sha === SHA256_APROBADO_MEDINA_2025
+            ? 'Copia del censo histórico 2025 aprobada el 05/11/2026: SHA-256 correcto. La aprobación de la fuente NO autoriza todavía la importación.'
+            : 'El SHA-256 no corresponde a la copia 2025 aprobada por la Cátedra: no se puede importar ese archivo.'
+        : sha === SHA256_ORIGINAL_MEDINA_2025 || sha === SHA256_APROBADO_MEDINA_2025
+          ? 'Este Excel corresponde al censo histórico real: no se usa en el espacio de ensayo.'
+          : 'Archivo de ensayo (no es ninguno de los censos auténticos identificados).',
     },
     { id: 'vista-previa', ok: p.vistaPreviaRevisada, texto: p.vistaPreviaRevisada ? 'Vista previa revisada.' : 'Revise la vista previa completa y márquela como revisada.' },
     {
