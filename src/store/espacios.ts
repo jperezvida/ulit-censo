@@ -324,12 +324,27 @@ export const useEspacios = create<Estado>((set, get) => ({
     try {
       const remoto = get().remoto;
       if (remoto ? remoto.version > 0 : await idbGet(CLAVE_DB, almacen(tipo))) return { ok: false, error: 'El espacio ya existe: no se sobrescribe.' };
+      if (remoto?.info?.preparacionHabilitada && opciones.incluirMedina === false) {
+        return { ok: false, error: 'La preparación real exige incluir Medina del Campo y su callejero OSM.' };
+      }
       const conMedina = opciones.incluirMedina !== false;
       const inst = conMedina ? await cargarInstantaneaMedina() : null;
       if (inst && !inst.ok) return { ok: false, error: `Hace falta el callejero real de Medina del Campo (instantánea OSM del proyecto). ${inst.motivo ?? ''}`.trim() };
       const espacioId = remoto?.espacioId ?? (globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`);
       const db = crearBaseEspacio(tipo, { persona, calles: inst?.ok ? inst.calles : [], detalleCallejero: inst?.ok ? inst.detalle : '', espacioId, personaId: remoto?.info?.personaId, incluirMedina: conMedina });
       const huella = await persistir(get, tipo, null, db, null, 'Creación del espacio');
+      if (remoto?.info?.preparacionHabilitada) {
+        // La RPC cierra la autorización de inicialización en la misma transacción.
+        // La recarga evita mostrar permisos de escritura caducados después del primer guardado.
+        try {
+          await remoto.leer();
+        } catch {
+          if (remoto.info) {
+            remoto.info.escrituraHabilitada = false;
+            remoto.info.preparacionHabilitada = false;
+          }
+        }
+      }
       set({ db, huella, fase: 'listo', respaldoVerificado: null });
       return { ok: true };
     } catch (e) {
