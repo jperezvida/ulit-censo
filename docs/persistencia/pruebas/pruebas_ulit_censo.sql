@@ -3,7 +3,7 @@
 \set QUIET on
 -- Auditoría del permiso excepcional de 2025. Debe ser invocable SOLO por Auth,
 -- no exponer ni la autorización administrativa ni el esquema privado.
-do $
+do $audit$
 begin
   assert not has_table_privilege('anon', 'ulit_censo.autorizacion_historico_2025', 'SELECT'), 'anon lee la tabla privada de autorizaciones';
   assert not has_table_privilege('authenticated', 'ulit_censo.autorizacion_historico_2025', 'SELECT'), 'authenticated lee la tabla privada de autorizaciones';
@@ -12,7 +12,7 @@ begin
   assert not has_function_privilege('service_role', 'public.ulit_censo_importar_historico_2025(text,uuid,integer,bigint,uuid)', 'EXECUTE'), 'service_role ejecuta la importación';
   assert has_function_privilege('authenticated', 'public.ulit_censo_importar_historico_2025(text,uuid,integer,bigint,uuid)', 'EXECUTE'), 'falta invocación Auth prevista';
   assert not exists(select 1 from ulit_censo.autorizacion_historico_2025), 'la migración concedió autorización sin aprobación';
-end $;
+end $audit$;
 -- Alta inicial (plantilla 0003, como postgres)
 insert into ulit_censo.espacio (id, tipo, nombre, escritura_habilitada) values ('ensayo-prueba', 'ensayo', 'Ensayo', true), ('real-medina', 'real', 'Real (bloqueado)', false);
 insert into ulit_censo.miembro (espacio_id, usuario_id, rol, persona_id) values
