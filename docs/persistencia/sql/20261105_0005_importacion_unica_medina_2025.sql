@@ -64,6 +64,30 @@ create trigger guardia_lote_real_2025
 before insert on ulit_censo.lote_parte
 for each row execute function ulit_censo.validar_lote_historico_2025();
 
+-- Una carga rechazada puede haber dejado partes en la tabla privada. El
+-- propietario autenticado puede DESCARTAR solo SU lote incluso después de
+-- caducar la autorización: no modifica entidades, campañas ni el espacio.
+create function public.ulit_censo_descartar_lote_2025(p_espacio text, p_lote uuid)
+returns integer
+language plpgsql security definer set search_path = '' as $descarte_2025$
+declare n integer;
+begin
+  if p_espacio is distinct from 'real-medina-del-campo-2026' or p_lote is null then
+    raise exception 'ULIT Censo: descarte reservado a los lotes de Medina 2025'
+      using errcode='42501';
+  end if;
+  perform ulit_censo.exigir(p_espacio, array['coordinador','administrador']);
+  delete from ulit_censo.lote_parte
+   where espacio_id=p_espacio and lote=p_lote and usuario_id=auth.uid();
+  get diagnostics n = row_count;
+  return n;
+end;
+$descarte_2025$;
+revoke all on function public.ulit_censo_descartar_lote_2025(text,uuid)
+  from public,anon,authenticated,service_role;
+grant execute on function public.ulit_censo_descartar_lote_2025(text,uuid)
+  to authenticated;
+
 -- Solo la RPC limitada puede activar brevemente la guarda genérica DENTRO de su
 -- propia transacción. Otros clientes no observan nunca el estado abierto.
 create function public.ulit_censo_importar_historico_2025(
