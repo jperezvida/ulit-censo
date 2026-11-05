@@ -114,7 +114,7 @@ function FuenteEspacio({ campanaId, children }: { campanaId: Id; children: React
     await cola.current;
     pendientes.current = [];
     enCola.current = null;
-    if (tipo) await useEspacios.getState().abrir(tipo);
+    if (tipo) await useEspacios.getState().reabrir();
     // Al volver a abrir el espacio, la Oficina se monta de nuevo con lo guardado.
     detenida.current = false;
     setFallo(null);

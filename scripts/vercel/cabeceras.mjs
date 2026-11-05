@@ -8,6 +8,11 @@
  * no hay analítica, ni barras de herramientas inyectadas, ni scripts de terceros, ni formularios.
  */
 export const ORIGENES_EXTERNOS = ['https://tiles.openfreemap.org'];
+/**
+ * Servidor de ULIT Censo (Supabase, esquema `ulit_censo`): solo se admite si la compilación se configura
+ * expresamente con `VITE_ULIT_CENSO_SUPABASE_URL`. Sin esa variable, la política no cambia.
+ */
+export const ORIGEN_SERVIDOR = process.env.VITE_ULIT_CENSO_SUPABASE_URL ? new URL(process.env.VITE_ULIT_CENSO_SUPABASE_URL).origin : null;
 
 export const CSP = [
   "default-src 'self'",
@@ -15,7 +20,7 @@ export const CSP = [
   "style-src 'self' 'unsafe-inline'",
   `img-src 'self' data: blob: ${ORIGENES_EXTERNOS.join(' ')}`,
   "font-src 'self' data:",
-  `connect-src 'self' ${ORIGENES_EXTERNOS.join(' ')}`,
+  `connect-src 'self' ${[...ORIGENES_EXTERNOS, ...(ORIGEN_SERVIDOR ? [ORIGEN_SERVIDOR] : [])].join(' ')}`,
   "worker-src 'self' blob:",
   "child-src 'self' blob:",
   "object-src 'none'",

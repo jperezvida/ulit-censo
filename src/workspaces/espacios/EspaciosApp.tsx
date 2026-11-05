@@ -14,6 +14,8 @@ import { MapaCensoTemporal } from './MapaCensoTemporal';
 import { PlanificadorEnsayo } from './PlanificadorEnsayo';
 import { CampoEnsayoRutas } from './CampoEnsayo';
 import { OficinaEnsayoRutas } from './OficinaEnsayo';
+import { AccesoServidor } from './AccesoServidor';
+import { borrarSeleccionRemota, leerSeleccionRemota, seleccionRealRemota } from '../../store/seleccionRemota';
 import { comprobarGarantias, VERSION_EMBEBIDA, type ResultadoGarantias } from './garantiasNavegador';
 import { entornoDe } from '../../domain/garantias';
 import '../../styles/datos.css';
@@ -59,7 +61,7 @@ function Selector() {
     <div className="col" style={{ gap: 16 }}>
       <div>
         <h1>Espacios de trabajo independientes</h1>
-        <p className="muted">La <b>demostración</b> (datos ficticios) sigue intacta en su propio almacenamiento. Los espacios de abajo usan cada uno su <b>propia base de datos</b> en este navegador y nunca se mezclan entre sí ni con la demostración.</p>
+        <p className="muted">La <b>demostración</b> (datos ficticios) se conserva aparte. El <b>ensayo local</b> utiliza IndexedDB, mientras que los espacios del apartado <b>«En el servidor»</b> se guardan en Supabase y requieren una sesión autorizada. No se mezclan sus datos.</p>
       </div>
       <div className="esp-tarjetas">
         <Link to="/espacios/analisis" className="tarjeta esp-tarjeta esp-real">
@@ -68,14 +70,14 @@ function Selector() {
           <span className="muted">Seleccione el XLSX auténtico, analícelo en este navegador y consulte la vista previa. No se sube, no se incorpora y no se guarda ningún registro.</span>
           <span className="mono muted">solo en memoria</span>
         </Link>
-        <Link to="/espacios/ensayo" className="tarjeta esp-tarjeta esp-ensayo">
+        <Link to="/espacios/ensayo" className="tarjeta esp-tarjeta esp-ensayo" onClick={borrarSeleccionRemota}>
           <FlaskConical size={22} />
           <b>{ESPACIO_TXT.ensayo.nombre}</b>
           <span className="muted">{ESPACIO_TXT.ensayo.descripcion}</span>
           <span className="mono muted">IndexedDB «{BASE_INDEXEDDB.ensayo}»</span>
         </Link>
         {realPersistente ? (
-          <Link to="/espacios/real" className="tarjeta esp-tarjeta esp-real">
+          <Link to="/espacios/real" className="tarjeta esp-tarjeta esp-real" onClick={borrarSeleccionRemota}>
             <ShieldCheck size={22} />
             <b>{ESPACIO_TXT.real.nombre}</b>
             <span className="muted">{ESPACIO_TXT.real.descripcion}</span>
@@ -85,10 +87,11 @@ function Selector() {
           <div className="tarjeta esp-tarjeta esp-desactivada" aria-disabled="true">
             <Lock size={22} />
             <b>{ESPACIO_TXT.real.nombre} (guardado)</b>
-            <span className="muted">No disponible en la vista previa web: aquí no se guardan datos reales. Para revisar el Excel auténtico use «Analizar el Excel real SIN GUARDAR».</span>
+            <span className="muted">La base local de datos reales está desactivada en esta web. Los espacios reales del servidor solo aparecerán abajo cuando se autoricen; su escritura seguirá bloqueada hasta la activación expresa en Supabase.</span>
           </div>
         )}
       </div>
+      <AccesoServidor />
     </div>
   );
 }
@@ -174,11 +177,24 @@ function EspacioPage() {
   const esp = useEspacios();
   const reiniciarAsistente = useAsistenteEspacio((s) => s.reiniciar);
   const nav = useNavigate();
-  const bloqueado = tipo === 'real' && !REAL_PERSISTENTE_PERMITIDO();
+  // La web pública nunca usa IndexedDB real. Puede abrir un espacio remoto real
+  // exclusivamente tras la comprobación de sesión y membresía en la RPC del servidor.
+  const bloqueado = tipo === 'real' && !REAL_PERSISTENTE_PERMITIDO() &&
+    !seleccionRealRemota(tipo, leerSeleccionRemota());
   useEffect(() => {
     if (!tipo) return void nav('/espacios', { replace: true });
     if (bloqueado) return;
-    if (esp.tipo !== tipo || esp.soloMemoria) {
+    // Espacio del servidor elegido en esta pestaña: se restaura desde el servidor (nunca desde IndexedDB).
+    const remota = leerSeleccionRemota();
+    if (remota && remota.tipo === tipo) {
+      if (esp.remoto?.espacioId !== remota.espacioId) {
+        reiniciarAsistente();
+        useSeleccionEspacio.getState().reiniciar();
+        void esp.restaurarRemoto(remota);
+      }
+      return;
+    }
+    if (esp.tipo !== tipo || esp.soloMemoria || esp.remoto) {
       reiniciarAsistente();
       useSeleccionEspacio.getState().reiniciar();
       void esp.abrir(tipo);
@@ -197,10 +213,16 @@ function EspacioPage() {
         {tipo === 'real' ? <ShieldCheck size={18} /> : <FlaskConical size={18} />}
         <b>{ESPACIO_TXT[tipo].nombre.toUpperCase()}</b>
         <span>{tipo === 'real' ? 'Datos auténticos' : 'Solo archivos SINTÉTICOS'}</span>
+        <span className="chip" aria-label="Dónde se guarda">{esp.remoto ? `Servidor · ${esp.remoto.espacioId}` : 'Este navegador (IndexedDB)'}</span>
+        {tipo === 'real' && esp.remoto && (esp.remoto.info?.preparacionHabilitada
+          ? <span className="chip aviso">Preparación de Medina · solo municipio y callejero</span>
+          : !esp.remoto.info?.escrituraHabilitada && <span className="chip aviso">Solo lectura · servidor bloqueado</span>)}
       </div>
       {esp.fase === 'cargando' && <div className="t-info" role="status">Abriendo el espacio…</div>}
       {esp.fase === 'error' && <div className="t-info error" role="alert"><AlertTriangle size={15} /> {esp.error}</div>}
-      {esp.fase === 'sin-crear' && <Crear tipo={tipo} />}
+      {esp.fase === 'sin-crear' && (tipo === 'real' && esp.remoto && !esp.remoto.info?.escrituraHabilitada
+        ? <div className="t-info aviso" role="status"><Lock size={15} /> Este espacio real todavía no se puede inicializar: la escritura está bloqueada en Supabase. No se ha guardado nada.</div>
+        : <Crear tipo={tipo} />)}
       {esp.fase === 'listo' && esp.db && esp.tipo === tipo && (resto?.startsWith('campo/') && tipo === 'ensayo' ? <CampoEnsayoRutas /> : resto?.startsWith('oficina/') && tipo === 'ensayo' ? <OficinaEnsayoRutas /> : resto?.startsWith('planificar/') && tipo === 'ensayo' ? (
         <PlanificadorEnsayo ruta={resto} />
       ) : avanzado ? (
@@ -218,22 +240,26 @@ function Crear({ tipo }: { tipo: TipoEspacio }) {
   const ocupado = useEspacios((s) => s.ocupado);
   const [nombre, setNombre] = useState('');
   const [conMedina, setConMedina] = useState(true);
+  const preparacionRemota = useEspacios((st) => !!st.remoto?.info?.preparacionHabilitada);
+  const preparando = tipo === 'real' && preparacionRemota;
   const [error, setError] = useState<string | null>(null);
   return (
     <section className="tarjeta inc-bloque" aria-label="Crear el espacio" style={{ maxWidth: 720 }}>
       <h3>Crear el {ESPACIO_TXT[tipo].nombre.toLowerCase()}</h3>
-      <p className="muted">Se crea vacío, con la persona responsable. Después podrá dar de alta municipios, sus callejeros y sus campañas. No se copia nada de la demostración. Si ya existiera, no se sobrescribe.</p>
+      <p className="muted">{preparando
+        ? 'Inicialización de un solo uso: guardará Medina del Campo, el callejero OSM y la persona responsable. Supabase cerrará automáticamente la escritura; no se permiten campañas ni Excel.'
+        : 'Se crea vacío, con la persona responsable. Después podrá dar de alta municipios, sus callejeros y sus campañas. No se copia nada de la demostración. Si ya existiera, no se sobrescribe.'}</p>
       <label className="campo">
         <span>Persona responsable (coordinación)</span>
         <input className="input" aria-label="Persona responsable" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre y apellidos" />
       </label>
       <label className="fila" style={{ gap: 8, alignItems: 'flex-start' }}>
-        <input type="checkbox" aria-label="Incluir Medina del Campo" checked={conMedina} onChange={(e) => setConMedina(e.target.checked)} />
+        <input type="checkbox" aria-label="Incluir Medina del Campo" checked={preparando || conMedina} disabled={preparando} onChange={(e) => setConMedina(e.target.checked)} />
         <span>Incluir <b>Medina del Campo</b> con su callejero real (instantánea de OpenStreetMap del proyecto). Es el caso de prueba del importador, no un requisito: puede trabajar solo con otros municipios.</span>
       </label>
       {error && <div className="t-info error" role="alert">{error}</div>}
       <button className="btn primario" disabled={nombre.trim().length < 3 || !!ocupado} onClick={async () => {
-        const r = await crear({ nombre, roles: ['coordinador'] }, { incluirMedina: conMedina });
+        const r = await crear({ nombre, roles: ['coordinador'] }, { incluirMedina: preparando || conMedina });
         setError(r.ok ? null : r.error ?? 'No se ha creado.');
       }}>{ocupado ?? 'Crear el espacio'}</button>
     </section>
@@ -288,9 +314,28 @@ function Espacio({ tipo }: { tipo: TipoEspacio }) {
 }
 
 function Almacenamiento({ tipo }: { tipo: TipoEspacio }) {
+  const remoto = useEspacios((s) => s.remoto);
   const a = useEspacios((s) => s.almacenamiento);
   const pedir = useEspacios((s) => s.solicitarPersistencia);
   const medir = useEspacios((s) => s.medirAlmacenamiento);
+  if (remoto) {
+    return (
+      <section className="tarjeta inc-bloque" aria-label="Almacenamiento">
+        <h3><HardDrive size={16} /> Dónde se guarda</h3>
+        <p className="muted">Los datos de este espacio se guardan en <b>Supabase (servidor)</b>, no en la base IndexedDB de este navegador. Para acceder desde otro dispositivo debe iniciar sesión con una cuenta autorizada.</p>
+        <dl className="inc-dl">
+          <dt>Espacio</dt><dd className="mono">{remoto.espacioId}</dd>
+          <dt>Permiso</dt><dd>{remoto.info?.rol ?? 'Pendiente de validar'}</dd>
+          <dt>Escritura</dt><dd>{remoto.info?.preparacionHabilitada
+            ? <span className="chip aviso">Solo preparación inicial · cierre automático</span>
+            : remoto.info?.escrituraHabilitada
+              ? <span className="chip ok">Habilitada en servidor</span>
+              : <span className="chip aviso">Bloqueada en servidor</span>}</dd>
+        </dl>
+        <p className="muted">La persistencia en Supabase no sustituye a una copia de seguridad externa comprobada.</p>
+      </section>
+    );
+  }
   return (
     <section className="tarjeta inc-bloque" aria-label="Almacenamiento">
       <h3><HardDrive size={16} /> Dónde se guarda</h3>

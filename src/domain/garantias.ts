@@ -40,7 +40,8 @@ export function directivasCsp(csp: string): Map<string, string[]> {
   return m;
 }
 
-export function evaluarCsp(csp: string | null): Garantia {
+/** `servidor`: origen del servidor de ULIT Censo configurado en la compilación (solo para conectar). */
+export function evaluarCsp(csp: string | null, servidor?: string | null): Garantia {
   if (!csp) return { id: 'csp', ok: false, texto: 'El sitio no envía una Content-Security-Policy: no se puede garantizar que los datos no salgan a servicios externos.' };
   const d = directivasCsp(csp);
   const problemas: string[] = [];
@@ -52,7 +53,7 @@ export function evaluarCsp(csp: string | null): Garantia {
   };
   if ((d.get('default-src') ?? []).join(' ') !== "'self'") problemas.push("default-src no es 'self'");
   solo('script-src', ["'self'"]);
-  solo('connect-src', ["'self'", ...EXTERNOS_PERMITIDOS]);
+  solo('connect-src', ["'self'", ...EXTERNOS_PERMITIDOS, ...(servidor ? [servidor] : [])]);
   solo('img-src', ["'self'", 'data:', 'blob:', ...EXTERNOS_PERMITIDOS]);
   solo('worker-src', ["'self'", 'blob:']);
   solo('font-src', ["'self'", 'data:']);
@@ -60,7 +61,7 @@ export function evaluarCsp(csp: string | null): Garantia {
   if ((d.get('object-src') ?? []).join(' ') !== "'none'") problemas.push("object-src no es 'none'");
   return problemas.length
     ? { id: 'csp', ok: false, texto: `La política de seguridad no impide la salida de datos: ${problemas.join('; ')}.` }
-    : { id: 'csp', ok: true, texto: `El navegador solo permite conectar con este sitio y con las teselas del mapa base (${EXTERNOS_PERMITIDOS.join(', ')}); sin scripts de terceros, eval ni formularios.` };
+    : { id: 'csp', ok: true, texto: `El navegador solo permite conectar con este sitio${servidor ? `, con el servidor de ULIT Censo (${servidor})` : ''} y con las teselas del mapa base (${EXTERNOS_PERMITIDOS.join(', ')}); sin scripts de terceros, eval ni formularios.` };
 }
 
 export function evaluarProteccion(sinSesion: { status: number; type: string } | null): Garantia {

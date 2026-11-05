@@ -52,6 +52,7 @@ function seleccionValida(db: BaseDatos, tipo: TipoEspacio, p: Preferencias) {
 
 export function Inicio({ tipo }: { tipo: TipoEspacio }) {
   const db = useEspacios((s) => s.db!);
+  const remoto = useEspacios((s) => s.remoto);
   const [pref, setPref] = useState<Preferencias>(() => leerPreferencias(tipo));
   const [alta, setAlta] = useState<'municipio' | 'campana' | null>(null);
   const [filtro, setFiltro] = useState<FiltrosPendientes>({});
@@ -107,6 +108,9 @@ export function Inicio({ tipo }: { tipo: TipoEspacio }) {
         </div>
       </section>
 
+      {tipo === 'real' && remoto && !remoto.info?.escrituraHabilitada && (
+        <div className="t-info aviso" role="status"><AlertTriangle size={15} /> Espacio real en modo consulta. Supabase bloquea altas, cambios e importaciones hasta su activación autorizada.</div>
+      )}
       {alta === 'campana' && <FormCampana municipioId={mun.id} onCerrar={(id) => { setAlta(null); if (id) cambiar({ campanaId: id, vista: 'itinerarios' }); }} />}
       {cj && !cj.disponible && (
         <div className="t-info aviso" role="note"><AlertTriangle size={15} /> <div><b>{mun.nombre} no tiene callejero.</b> Se puede incorporar, pero las direcciones quedarán sin calle. <Link to={`/espacios/${tipo}/avanzado`}>Cargarlo en la vista completa</Link>.</div></div>

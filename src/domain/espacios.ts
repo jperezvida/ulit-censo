@@ -83,6 +83,8 @@ export interface DatosCreacion {
   detalleCallejero: string;
   /** Identificador aleatorio del espacio (lo da quien llama; en pruebas, fijo). */
   espacioId: string;
+  /** ID estable de la membresía del servidor; el nombre visible puede ser distinto. */
+  personaId?: Id;
   ahora?: string;
 }
 
@@ -103,7 +105,11 @@ export function crearBaseEspacio(tipo: TipoEspacio, d: DatosCreacion): BaseDatos
   const ahora = d.ahora ?? new Date().toISOString();
   const db = baseVacia();
   const munId = municipioDeEspacio(tipo);
-  const persona: Persona = { id: `${p}-p-${slug(nombre)}`, nombre, iniciales: iniciales(nombre), roles: d.persona.roles, color: tipo === 'real' ? '#8a1c1c' : '#5a48c9' };
+  const personaId = d.personaId ?? `${p}-p-${slug(nombre)}`;
+  if (!personaId.startsWith(`${p}-p-`) || !/^[a-z0-9-]+$/.test(personaId)) {
+    throw new ErrorDominio('regla', 'Identificador de persona ajeno al tipo de espacio.');
+  }
+  const persona: Persona = { id: personaId, nombre, iniciales: iniciales(nombre), roles: d.persona.roles, color: tipo === 'real' ? '#8a1c1c' : '#5a48c9' };
   db.personas[persona.id] = persona;
   if (!conMedina) {
     db.meta = { espacio: tipo, espacioId: d.espacioId, espacioCreado: ahora, espacioCreadoPorId: persona.id };
