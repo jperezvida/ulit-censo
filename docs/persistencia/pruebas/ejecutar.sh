@@ -16,7 +16,8 @@ q -f "$P/emulacion_supabase.sql"
 ANTES=$(huella)
 q -f "$SQL/20261104_0001_ulit_censo_esquema.sql"
 q -f "$SQL/20261104_0002_ulit_censo_operaciones.sql"
-[ "$(huella)" = "$ANTES" ] && echo "✓ Objetos de ULIT base sin cambios tras aplicar 0001 y 0002" || { echo "✗ Cambió algo de ULIT base"; exit 1; }
+q -f "$SQL/20261105_0004_ulit_censo_inicializacion_real.sql"
+[ "$(huella)" = "$ANTES" ] && echo "✓ Objetos de ULIT base sin cambios tras aplicar 0001, 0002 y 0004" || { echo "✗ Cambió algo de ULIT base"; exit 1; }
 q -t -f "$P/pruebas_ulit_censo.sql" 2>&1 | grep -E "^[0-9]+ ·|OK rechazado|SUPERADAS|ERROR|Esperaba|Debía" | sed -E "s/^psql:[^ ]+ NOTICE: +/   /"
 q -f "$SQL/20261104_9000_ulit_censo_retirada.sql" 2>/dev/null
 [ "$(q -At -c "select count(*) from pg_namespace where nspname = 'ulit_censo'")" = 0 ] && [ "$(q -At -c "select count(*) from pg_proc where proname like 'ulit\_censo\_%'")" = 0 ] && echo "✓ Retirada completa"
