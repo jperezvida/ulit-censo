@@ -186,20 +186,30 @@ export class AlmacenSupabase {
     const partes = partir(cambios);
     if (!partes.length || partes.length > 999) throw new ErrorRemoto('El lote histórico no tiene un tamaño admitido.');
     const lote = globalThis.crypto.randomUUID();
-    for (const [i, parte] of partes.entries()) {
-      await this.rpc('ulit_censo_lote_subir', { p_espacio: this.espacioId, p_lote: lote, p_parte: i, p_cambios: parte });
+    try {
+      for (const [i, parte] of partes.entries()) {
+        await this.rpc('ulit_censo_lote_subir', { p_espacio: this.espacioId, p_lote: lote, p_parte: i, p_cambios: parte });
+      }
+      const version = await this.rpc<number>('ulit_censo_importar_historico_2025', {
+        p_espacio: this.espacioId, p_lote: lote, p_partes: partes.length, p_version_esperada: 1, p_copia: copia.id,
+      });
+      if (Number(version) !== 2) throw new ErrorRemoto('La versión devuelta por el servidor no es la esperada tras incorporar.');
+      // Comprobación posterior: se ha guardado exactamente lo planeado Y permanece cerrado.
+      const verificado = await this.leer();
+      if (verificado.info.version !== 2 || verificado.info.escrituraHabilitada || !verificado.db ||
+          jsonCanonico(verificado.db) !== jsonCanonico(despues)) {
+        throw new ErrorRemoto('La operación del servidor se ejecutó, pero la verificación posterior no coincide. No repetir; comprobar el estado antes de restaurar.');
+      }
+      return 2;
+    } catch (error) {
+      // El servidor mantiene una carga rechazada como partes privadas. Borrarlas
+      // únicamente para ESTE lote y ESTA cuenta; nunca restaurar automáticamente.
+      // Si hubo un commit pero falló la red, el lote ya no existe: descartar es inocuo.
+      await this.rpc<number>('ulit_censo_descartar_lote_2025', {
+        p_espacio: this.espacioId, p_lote: lote,
+      }).catch(() => undefined);
+      throw error;
     }
-    const version = await this.rpc<number>('ulit_censo_importar_historico_2025', {
-      p_espacio: this.espacioId, p_lote: lote, p_partes: partes.length, p_version_esperada: 1, p_copia: copia.id,
-    });
-    if (Number(version) !== 2) throw new ErrorRemoto('La versión devuelta por el servidor no es la esperada tras incorporar.');
-    // Comprobación posterior: se ha guardado exactamente lo planeado Y permanece cerrado.
-    const verificado = await this.leer();
-    if (verificado.info.version !== 2 || verificado.info.escrituraHabilitada || !verificado.db ||
-        jsonCanonico(verificado.db) !== jsonCanonico(despues)) {
-      throw new ErrorRemoto('La operación del servidor se ejecutó, pero la verificación posterior no coincide. No repetir; comprobar el estado antes de restaurar.');
-    }
-    return 2;
   }
 
   crearCopia(motivo: string) { return this.rpc<string>('ulit_censo_crear_copia', { p_espacio: this.espacioId, p_motivo: motivo }); }
