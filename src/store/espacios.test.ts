@@ -98,8 +98,8 @@ describe('C1e · Almacén de espacios aislados', () => {
     expect(Object.keys((await idbGet<BaseDatos>('db', createStore('ulit-censo-ensayo', 'datos')))!.registros)).toHaveLength(0);
   }, 90000);
 
-  it('espacio REAL: no admite archivos sintéticos y la confirmación está bloqueada (C1e-B)', async () => {
-    expect(CONFIRMACION_REAL_HABILITADA).toBe(false);
+  it('espacio REAL: no admite sintéticos ni escritura sin servidor aunque la confirmación esté visible', async () => {
+    expect(CONFIRMACION_REAL_HABILITADA).toBe(true);
     const db = await abrirYCrear('real');
     const p = await preparar('real', db);
     await respaldarYComprobar();
@@ -114,12 +114,12 @@ describe('C1e · Almacén de espacios aislados', () => {
       .toMatchObject({ ok: false, texto: expect.stringMatching(/no corresponde a la copia 2025 aprobada/) });
     expect(requisitos('ensayo', planAprobado, false).find((r) => r.id === 'archivo')?.ok).toBe(false);
     expect(requisitos('ensayo', planAnterior, false).find((r) => r.id === 'archivo')?.ok).toBe(false);
-    // No transformar la aprobación documental en permiso de ejecución.
-    expect(requisitos('real', planAprobado, false).find((r) => r.id === 'confirmacion-real')?.ok).toBe(false);
-    expect(req.find((r) => r.id === 'confirmacion-real')).toMatchObject({ ok: false, texto: expect.stringMatching(/BLOQUEADA/) });
+    // La aprobación documental por sí sola no concede permisos de servidor.
+    expect(requisitos('real', planAprobado, false).find((r) => r.id === 'confirmacion-real')?.ok).toBe(true);
+    expect(req.find((r) => r.id === 'confirmacion-real')).toMatchObject({ ok: true });
     // Aunque la interfaz pasase requisitos falsos, el almacén se niega
     const todoOk = req.map((r) => ({ ...r, ok: true }));
-    expect(await useEspacios.getState().incorporar({ ...p, decisiones: p.dec, requisitos: todoOk })).toMatchObject({ ok: false, error: expect.stringMatching(/C1e-B/) });
+    expect(await useEspacios.getState().incorporar({ ...p, decisiones: p.dec, requisitos: todoOk })).toMatchObject({ ok: false, error: expect.stringMatching(/remoto cerrado|Supabase/) });
     expect(Object.keys((await idbGet<BaseDatos>('db', createStore('ulit-censo-real', 'datos')))!.registros)).toHaveLength(0);
   }, 90000);
 
