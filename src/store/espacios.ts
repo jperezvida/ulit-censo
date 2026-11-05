@@ -452,6 +452,9 @@ export const useEspacios = create<Estado>((set, get) => ({
     }
     if (!db.municipios[destino.municipioId]) return { ok: false, error: 'El destino no es un municipio de este espacio.' };
     set({ ocupado: 'Incorporando…' });
+    // Un fallo de red después de enviar la RPC podría ocultar una confirmación
+    // del servidor. Nunca declarar "no se ha incorporado nada" sin comprobarlo.
+    let intentoRealEnviado = false;
     try {
       const persona = personaEspacio(db)!;
       const r = aplicarIncorporacion(db, resultado, destino, decisiones, plan, { porId: persona.id });
@@ -466,6 +469,7 @@ export const useEspacios = create<Estado>((set, get) => ({
         // Nunca utilizar persistir()/ulit_censo_aplicar para la importación real:
         // la RPC específica valida autorización de una sola operación, 889 filas,
         // copia previa y devuelve el espacio con escritura BLOQUEADA.
+        intentoRealEnviado = true;
         await remoto.importarPrimerHistorico2025(db, r.db, copia);
         h = huellaBase(r.db);
       } else {
@@ -474,6 +478,9 @@ export const useEspacios = create<Estado>((set, get) => ({
       set({ db: r.db, huella: h });
       return { ok: true, importacionId: r.importacionId, campanaId: r.campanaId, creadas: r.creadas };
     } catch (e) {
+      if (intentoRealEnviado) {
+        return { ok: false, error: `IMPORTANTE: el resultado de la escritura real debe comprobarse en el servidor. No repita la importación ni intente restaurar hasta comprobar la versión y los registros. Detalle: ${texto(e)}` };
+      }
       return { ok: false, error: `No se ha incorporado nada. ${texto(e)}` };
     } finally {
       set({ ocupado: null });
