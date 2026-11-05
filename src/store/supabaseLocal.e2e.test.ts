@@ -239,4 +239,80 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
     const estado = sql(`select version || ':' || (select count(*) from ulit_censo.entidad where espacio_id = '${ESPACIO_REAL}') from ulit_censo.espacio where id = '${ESPACIO_REAL}'`);
     expect(estado).toBe('0:0');
   }, 60000);
+
+  it('real: solo permite inicializar Medina + callejero OSM, cierra la escritura y rechaza Excel', async () => {
+    const realId = `real-e2e-preparacion-${Date.now().toString(36)}`;
+    const personaId = 'real-p-coordinacion-sintetica';
+    sql(`insert into ulit_censo.espacio (id,tipo,nombre,escritura_habilitada,preparacion_habilitada)
+           values ('${realId}','real','Medina E2E, inicialización exclusiva',true,true);
+         insert into ulit_censo.miembro (espacio_id,usuario_id,rol,persona_id)
+           values ('${realId}','${ids.coord}','administrador','${personaId}');`);
+
+    const almacen = new AlmacenSupabase(coord, realId);
+    await useEspacios.getState().abrirRemoto(almacen);
+    expect(useEspacios.getState().fase).toBe('sin-crear');
+    expect(almacen.info?.preparacionHabilitada).toBe(true);
+
+    const osm = validarInstantanea(JSON.parse(readFileSync('public/data/medina-callejero.json', 'utf8')));
+    if (!osm.ok) throw new Error(osm.motivo);
+    const callesOsm = osm.calles;
+    const base = crearBaseEspacio('real', {
+      persona: { nombre: NOMBRE, roles: ['coordinador'] }, personaId, espacioId: realId,
+      calles: callesOsm,
+      detalleCallejero: 'Instantánea OSM local validada',
+    });
+    expect(Object.keys(base.calles).length).toBeGreaterThanOrEqual(20);
+
+    // Un administrador NO puede saltarse la fase mediante RPC para crear una campaña/Excel.
+    const noCampana = await coord.rpc('ulit_censo_aplicar', {
+      p_espacio: realId, p_version_esperada: 0, p_etiqueta: 'Campaña prohibida',
+      p_cambios: [
+        { c: '_raiz', id: 'raiz', v: { meta: { espacio: 'real', espacioId: realId } } },
+        { c: 'campanas', id: 'real-camp-falsa', v: { id: 'real-camp-falsa' } },
+      ],
+    });
+    expect(noCampana.error?.code).toBe('42501');
+    const noExcel = await coord.rpc('ulit_censo_aplicar', {
+      p_espacio: realId, p_version_esperada: 0, p_etiqueta: 'Excel prohibido',
+      p_cambios: [
+        { c: '_raiz', id: 'raiz', v: { meta: { espacio: 'real', espacioId: realId } } },
+        { c: 'importaciones', id: 'real-imp-falsa', v: { id: 'real-imp-falsa' } },
+      ],
+    });
+    expect(noExcel.error?.code).toBe('42501');
+
+    // Una carga inicial sin el callejero tampoco debe crear nada, ni cerrar el permiso.
+    const sinCalles = {
+      ...base,
+      calles: {},
+    };
+    const sinCallesRpc = await coord.rpc('ulit_censo_aplicar', {
+      p_espacio: realId, p_version_esperada: 0, p_etiqueta: 'Sin callejero',
+      p_cambios: diferencia(null, sinCalles),
+    });
+    expect(sinCallesRpc.error?.code).toBe('42501');
+    expect(sql(`select version || ':' || preparacion_habilitada::text from ulit_censo.espacio where id='${realId}'`)).toBe('0:true');
+
+    // El mismo almacenador real usa el RPC en lotes si hacen falta; toda la carga es atómica.
+    expect(await almacen.guardar(null, base, 'Primera y única inicialización de Medina')).toBe(1);
+    const recuperado = await new AlmacenSupabase(coord, realId).leer();
+    expect(recuperado.info.version).toBe(1);
+    expect(recuperado.info.preparacionHabilitada).toBe(false);
+    expect(recuperado.info.escrituraHabilitada).toBe(false);
+    expect(Object.keys(recuperado.db!.calles).length).toBe(Object.keys(base.calles).length);
+    expect(Object.keys(recuperado.db!.municipios)).toEqual(['real-mun-medina']);
+    expect(Object.keys(recuperado.db!.campanas)).toHaveLength(0);
+    expect(Object.keys(recuperado.db!.importaciones)).toHaveLength(0);
+
+    const segunda = await coord.rpc('ulit_censo_aplicar', {
+      p_espacio: realId, p_version_esperada: 1, p_etiqueta: 'Otro cambio',
+      p_cambios: [{ c: 'campanas', id: 'real-camp-falsa', v: { id: 'real-camp-falsa' } }],
+    });
+    expect(segunda.error?.code).toBe('42501');
+    const huella = sql(`select version || ':' || escritura_habilitada::text || ':' || preparacion_habilitada::text ||
+      ':' || (select count(*) from ulit_censo.entidad where espacio_id='${realId}' and coleccion='importaciones')
+      from ulit_censo.espacio where id='${realId}'`);
+    expect(huella).toBe('1:false:false:0');
+  }, 180000);
+
 });
