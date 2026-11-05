@@ -130,7 +130,7 @@ describe('C1e · Espacios aislados (interfaz)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Siguiente: Vista previa/ }));
     const conf = screen.getByRole('region', { name: 'Confirmación' });
     expect(conf).toHaveTextContent(/C1e-B · Detenido aquí/);
-    expect(conf).toHaveTextContent(/el SHA-256 no coincide con el del diagnóstico agregado/);
+    expect(conf).toHaveTextContent(/El SHA-256 no corresponde a la copia 2025 aprobada/);
     fireEvent.click(within(conf).getByLabelText('He revisado la vista previa'));
     expect(within(conf).getByRole('button', { name: /Incorporar al espacio/ })).toBeDisabled();
     expect(Object.keys((await idbGet<BaseDatos>('db', createStore('ulit-censo-real', 'datos')))!.registros)).toHaveLength(0);
