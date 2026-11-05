@@ -217,5 +217,26 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
     expect(partes.length).toBeGreaterThan(1);
     expect(Math.max(...tamanos)).toBeLessThan(1_600_000);
     expect(ms).toBeLessThan(8000 * partes.length);
+  it('espacio real dado de alta sin escritura: no permite inicializar ni forzar una RPC', async () => {
+    const ESPACIO_REAL = ESPACIO.replace(/^ensayo-/, 'real-');
+    sql(`insert into ulit_censo.espacio (id, tipo, nombre, escritura_habilitada) values ('${ESPACIO_REAL}', 'real', 'Medina real (solo lectura)', false);
+         insert into ulit_censo.miembro (espacio_id, usuario_id, rol, persona_id) values ('${ESPACIO_REAL}', '${ids.coord}', 'administrador', 'real-p-coordinacion-sintetica');`);
+    await useEspacios.getState().abrirRemoto(new AlmacenSupabase(coord, ESPACIO_REAL));
+    expect(useEspacios.getState().fase).toBe('sin-crear');
+    expect(useEspacios.getState().remoto?.info?.escrituraHabilitada).toBe(false);
+    const creacion = await useEspacios.getState().crear({ nombre: NOMBRE, roles: ['coordinador'] }, { incluirMedina: false });
+    expect(creacion.ok).toBe(false);
+    expect(creacion.error).toMatch(/solo lectura/);
+    const intento = await coord.rpc('ulit_censo_aplicar', {
+      p_espacio: ESPACIO_REAL,
+      p_version_esperada: 0,
+      p_etiqueta: 'Intento no autorizado',
+      p_cambios: [{ c: '_raiz', id: 'raiz', v: { meta: { espacio: 'real', espacioId: ESPACIO_REAL } } }],
+    });
+    expect(intento.error?.code).toBe('42501');
+    const estado = sql(`select version || ':' || (select count(*) from ulit_censo.entidad where espacio_id = '${ESPACIO_REAL}') from ulit_censo.espacio where id = '${ESPACIO_REAL}'`);
+    expect(estado).toBe('0:0');
+  }, 60000);
+
   }, 180000);
 });
