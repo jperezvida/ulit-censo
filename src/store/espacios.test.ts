@@ -7,6 +7,7 @@ import { useStore } from './store';
 import { validarInstantanea } from '../data/instantaneaOsm';
 import { ARCHIVO_SINTETICO_C1E, libroSinteticoC1e } from '../data/xlsxSinteticoC1e';
 import { prepararIncorporacion } from '../domain/incorporacionXlsx';
+import { SHA256_APROBADO_MEDINA_2025, SHA256_ORIGINAL_MEDINA_2025 } from '../domain/xlsx/referencias';
 import { huellaBase, municipioDeEspacio, type TipoEspacio } from '../domain/espacios';
 import type { DecisionesIncorporacion } from '../domain/incorporacion';
 import type { BaseDatos } from '../domain/db';
@@ -104,6 +105,17 @@ describe('C1e · Almacén de espacios aislados', () => {
     await respaldarYComprobar();
     const req = requisitos('real', p.plan, true);
     expect(req.find((r) => r.id === 'archivo')).toMatchObject({ ok: false, texto: expect.stringMatching(/SINTÉTICO/) });
+    // Aprobación DOCUMENTAL: solo el SHA aprobado pasa la identificación en real.
+    const planAprobado = { ...p.plan, archivo: { ...p.plan.archivo, sha256: SHA256_APROBADO_MEDINA_2025 } };
+    const planAnterior = { ...p.plan, archivo: { ...p.plan.archivo, sha256: SHA256_ORIGINAL_MEDINA_2025 } };
+    expect(requisitos('real', planAprobado, false).find((r) => r.id === 'archivo'))
+      .toMatchObject({ ok: true, texto: expect.stringMatching(/aprobada el 05\/11\/2026/) });
+    expect(requisitos('real', planAnterior, false).find((r) => r.id === 'archivo'))
+      .toMatchObject({ ok: false, texto: expect.stringMatching(/no corresponde a la copia 2025 aprobada/) });
+    expect(requisitos('ensayo', planAprobado, false).find((r) => r.id === 'archivo')?.ok).toBe(false);
+    expect(requisitos('ensayo', planAnterior, false).find((r) => r.id === 'archivo')?.ok).toBe(false);
+    // No transformar la aprobación documental en permiso de ejecución.
+    expect(requisitos('real', planAprobado, false).find((r) => r.id === 'confirmacion-real')?.ok).toBe(false);
     expect(req.find((r) => r.id === 'confirmacion-real')).toMatchObject({ ok: false, texto: expect.stringMatching(/BLOQUEADA/) });
     // Aunque la interfaz pasase requisitos falsos, el almacén se niega
     const todoOk = req.map((r) => ({ ...r, ok: true }));
