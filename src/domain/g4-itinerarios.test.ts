@@ -129,6 +129,33 @@ describe('G4 · Itinerarios de una campaña operativa', () => {
     expect(plan.bloqueos.map((b) => b.mensaje).join(' ')).toMatch(/Elija el itinerario/);
   });
 
+  it('IT5 dividido en dos Excel: exige marcar parte adicional, conserva ambos y bloquea reimportación', async () => {
+    const e = escenario();
+    const primera = await preparar(e.db, e, e.its.IT1, await libroItinerario('IT1'), archivoItinerario('IT1'));
+    expect(primera.plan.aplicable).toBe(true);
+    const r1 = primera.aplicar(e.porId);
+    const bytes2 = await libroItinerario('IT1', 2);
+    const nombre2 = archivoItinerario('IT1', 2);
+    const destino = { municipioId: e.munId, anio: 2026, campanaId: e.campanaId, itinerarioId: e.its.IT1 };
+
+    const sinMarcar = await prepararIncorporacion(r1.db, bytes2, nombre2, destino);
+    expect(sinMarcar.plan.aplicable).toBe(false);
+    expect(sinMarcar.plan.bloqueos.map((b) => b.mensaje).join(' ')).toMatch(/ya tiene otro archivo/);
+
+    const conMarcar = await prepararIncorporacion(r1.db, bytes2, nombre2, { ...destino, continuacionItinerario: true });
+    expect(conMarcar.plan.aplicable).toBe(true);
+    expect(conMarcar.plan.modo).toBe('operativo');
+    const r2 = aplicarIncorporacion(r1.db, conMarcar.resultado, { ...destino, continuacionItinerario: true }, {}, conMarcar.plan, { porId: e.porId, ahora: AHORA });
+    expect(Object.values(r2.db.importaciones).filter((i) => i.c1?.itinerario?.id === e.its.IT1)).toHaveLength(2);
+    expect(censoConsolidado(r2.db, e.campanaId).itinerarios.find((it) => it.itinerario.id === e.its.IT1)?.archivos).toHaveLength(2);
+    expect(r2.db.importaciones[r1.importacionId].estado).toBe('confirmada');
+    expect(Object.keys(r2.db.registros).length).toBeGreaterThan(Object.keys(r1.db.registros).length);
+
+    const repetida = await prepararIncorporacion(r2.db, bytes2, nombre2, { ...destino, continuacionItinerario: true });
+    expect(repetida.plan.aplicable).toBe(false);
+    expect(repetida.plan.bloqueos[0].codigo).toBe('reimportacion-identica');
+  });
+
   it('censo consolidado: totales, desglose por itinerario, solapamientos, duplicados, contradicciones y mismo portal', async () => {
     const { db, campanaId } = await tresItinerarios();
     const c = censoConsolidado(db, campanaId);
