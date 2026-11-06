@@ -43,7 +43,7 @@ function fixture() {
     [op]: { id:op, municipioId:'real-mun-medina', anio:2026, nombre:'Censo Medina del Campo 2026', tipo:'actualizacion', periodo:{inicio:'2026-01-01'}, ambitoCalleIds:[], ampliacionCalleIds:[], estados, procedencia:'manual', campanaReferenciaId:hist },
   };
   const imp = 'imp-real-2025';
-  db.importaciones = { [imp]: { id: imp, campanaId: hist, estado: 'confirmada' } } as typeof db.importaciones;
+  db.importaciones = { [imp]: { id: imp, campanaId: hist, estado: 'confirmada' } } as unknown as typeof db.importaciones;
   db.registros = Object.fromEntries(Array.from({ length:889 },(_,i)=>['reg-real-'+i,{ id:'reg-real-'+i, importacionId:imp, fila:i+2 }])) as typeof db.registros;
   db.locales = Object.fromEntries(Array.from({length:696},(_,i)=>['real-local-'+i,{id:'real-local-'+i, municipioId:'real-mun-medina'}])) as typeof db.locales;
   return db;
