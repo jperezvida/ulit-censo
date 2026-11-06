@@ -70,7 +70,7 @@ export default function CampanasPage() {
                 <MapPinned size={18} />
                 <b>{m.nombre}</b>
                 <span className="esp" />
-                {m.id === 'mun-medina' ? <span className="chip azul">Caso piloto</span> : <Sim texto="Demo de volumen" />}
+                {soloLectura ? <span className="chip real">Datos reales</span> : m.id === 'mun-medina' ? <span className="chip azul">Caso piloto</span> : <Sim texto="Demo de volumen" />}
               </div>
               <div className="municipio-datos mono">
                 {m.centro ? `${m.centro[1].toFixed(4)}° N · ${Math.abs(m.centro[0]).toFixed(4)}° O` : 'Sin coordenadas'}
