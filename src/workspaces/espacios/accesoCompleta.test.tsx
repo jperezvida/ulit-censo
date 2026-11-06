@@ -9,8 +9,10 @@ const auth = vi.hoisted(() => ({
   consultas: 0,
 }));
 
-vi.mock('../../store/clienteSupabase', () => ({
-  clienteServidor: () => ({
+vi.mock('../../store/clienteSupabase', () => {
+  // En producción clienteServidor devuelve un cliente singleton: respetar
+  // también esa identidad en la prueba para no repetir efectos artificialmente.
+  const cliente = {
     auth: {
       getSession: async () => ({ data: { session: auth.sesion ? { user: { email: 'responsable@example.invalid' } } : null } }),
       signInWithPassword: async ({ email }: { email: string }) => {
@@ -19,8 +21,9 @@ vi.mock('../../store/clienteSupabase', () => ({
         return { data: { user: { email } }, error: null };
       },
     },
-  }),
-}));
+  };
+  return { clienteServidor: () => cliente };
+});
 vi.mock('../../store/almacenSupabase', () => ({
   misEspacios: async () => {
     auth.consultas++;
