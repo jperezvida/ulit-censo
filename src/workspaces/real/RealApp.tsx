@@ -3,6 +3,7 @@ import { Link, Navigate, Route, Routes } from 'react-router-dom';
 import { AlertTriangle, LockKeyhole } from 'lucide-react';
 import { Shell } from '../../components/Shell';
 import CampanasPage from '../campaigns/CampanasPage';
+import DatosRealPage from './DatosRealPage';
 import { FuenteOficinaContext } from '../../store/fuenteOficina';
 import { clienteServidor } from '../../store/clienteSupabase';
 import { AlmacenSupabase } from '../../store/almacenSupabase';
@@ -97,6 +98,7 @@ export default function RealApp() {
           </div>
           <CampanasPage />
         </>} />
+        <Route path="datos" element={<DatosRealPage />} />
         <Route path="*" element={<Navigate to="campanas" replace />} />
       </Route>
     </Routes>
