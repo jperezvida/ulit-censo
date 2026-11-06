@@ -87,6 +87,12 @@ describe('Interfaz COMPLETA con base real', () => {
     expect(screen.queryByRole('button', { name: /Incorporar al espacio|Guardar IT1/i })).toBeNull();
     expect(servidor.llamadas).toEqual(['ulit_censo_leer']);
   });
+  it('con sesión ya iniciada abre directamente la pestaña Datos de IT1', async () => {
+    montar('/real/datos');
+    await waitFor(() => expect(screen.getByRole('heading', { name: /Incorporación de Excel · IT1/ })).toBeInTheDocument());
+    expect(screen.queryByRole('heading', { name: 'Acceso al censo real' })).toBeNull();
+    expect(servidor.llamadas).toEqual(['ulit_censo_leer']);
+  });
   it('cuando falta sesión en Datos conserva el destino IT1 para el regreso', async () => {
     servidor.sesion = false;
     montar('/real/datos');
