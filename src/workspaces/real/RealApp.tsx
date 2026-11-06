@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, Route, Routes } from 'react-router-dom';
+import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AlertTriangle, LockKeyhole } from 'lucide-react';
 import { Shell } from '../../components/Shell';
 import CampanasPage from '../campaigns/CampanasPage';
@@ -26,6 +26,7 @@ interface LecturaReal {
  * y la RPC autenticada de Supabase. Las demás áreas permanecen sin escrituras.
  */
 export default function RealApp() {
+  const rutaActual = useLocation();
   const [lectura, setLectura] = useState<LecturaReal | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -84,7 +85,7 @@ export default function RealApp() {
       <h1>Acceso al censo real</h1>
       <p role="alert"><AlertTriangle size={16} /> {error ?? 'No hay campañas reales disponibles.'}</p>
       <p>Los datos simulados no sustituyen nunca a los reales cuando falla el acceso.</p>
-      <Link className="btn primario" to={location.pathname.endsWith("/datos") ? "/espacios?volver=datos" : "/espacios?volver=real"}>Iniciar sesión y volver a la aplicación completa</Link>
+      <Link className="btn primario" to={rutaActual.pathname.endsWith("/datos") ? "/espacios?volver=datos" : "/espacios?volver=real"}>Iniciar sesión y volver a la aplicación completa</Link>
     </main>;
   }
   return <FuenteOficinaContext.Provider value={fuente}>
