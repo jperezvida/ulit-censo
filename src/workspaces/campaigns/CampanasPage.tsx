@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowRight, CalendarRange, FileSpreadsheet, MapPinned, Plus, Route, Users } from 'lucide-react';
 import { useContexto } from '../../store/contexto';
 import { useStore } from '../../store/store';
+import { useFuenteOficina } from '../../store/fuenteOficina';
 import type { BaseDatos } from '../../domain/db';
 import { coberturaCalle, esCompletada, itinerariosDe } from '../../domain/consultas';
 import { asignacionDelAmbito, progresoItinerario } from '../../domain/planificacion';
@@ -35,6 +36,8 @@ export function metricasCampana(db: BaseDatos, c: Campana) {
 export default function CampanasPage() {
   const { db, municipio, campana } = useContexto();
   const setPrefs = useStore((s) => s.setPrefs);
+  const fuente = useFuenteOficina();
+  const soloLectura = fuente?.soloLectura === true;
   const nav = useNavigate();
   const [nueva, setNueva] = useState(false);
   const campanas = useMemo(() => Object.values(db.campanas).filter((c) => c.municipioId === municipio.id).sort((a, b) => b.anio - a.anio), [db, municipio.id]);
@@ -47,9 +50,9 @@ export default function CampanasPage() {
           <h1>Cartera de censos</h1>
           <p>Cada campaña tiene cuatro estados independientes. Un campo terminado no es un censo terminado.</p>
         </div>
-        <button className="btn primario" onClick={() => setNueva(true)}>
+        {!soloLectura && <button className="btn primario" onClick={() => setNueva(true)}>
           <Plus size={16} /> Nueva campaña
-        </button>
+        </button>}
       </div>
 
       <div className="municipios">
@@ -61,7 +64,7 @@ export default function CampanasPage() {
             <button
               key={m.id}
               className={`municipio tarjeta ${on ? 'on' : ''}`}
-              onClick={() => setPrefs({ municipioId: m.id, campanaId: cs.sort((a, b) => b.anio - a.anio)[0]?.id })}
+              onClick={() => { const id = cs.sort((a, b) => b.anio - a.anio)[0]?.id; if (soloLectura) { if (id) fuente?.elegirCampana?.(id); } else setPrefs({ municipioId: m.id, campanaId: id }); }}
             >
               <div className="fila">
                 <MapPinned size={18} />
@@ -104,22 +107,26 @@ export default function CampanasPage() {
             key={c.id}
             c={c}
             activa={c.id === campana?.id}
+            soloLectura={soloLectura}
             onAbrir={(destino) => {
+              if (soloLectura) { fuente?.elegirCampana?.(c.id); return; }
               setPrefs({ campanaId: c.id });
               nav(destino);
             }}
           />
         ))}
       </div>
-      {nueva && <NuevaCampana onCerrar={() => setNueva(false)} />}
+      {!soloLectura && nueva && <NuevaCampana onCerrar={() => setNueva(false)} />}
     </div>
   );
 }
 
-function TarjetaCampana({ c, activa, onAbrir }: { c: Campana; activa: boolean; onAbrir: (destino: string) => void }) {
+function TarjetaCampana({ c, activa, soloLectura, onAbrir }: { c: Campana; activa: boolean; soloLectura: boolean; onAbrir: (destino: string) => void }) {
   const { db } = useContexto();
   const m = useMemo(() => metricasCampana(db, c), [db, c]);
   const nAmbito = c.ambitoCalleIds.length;
+  const importaciones = new Set(Object.values(db.importaciones).filter((i) => i.campanaId === c.id && i.estado === 'confirmada').map((i) => i.id));
+  const filas = Object.values(db.registros).filter((r) => importaciones.has(r.importacionId)).length;
   const fases: { k: keyof Campana['estados']; t: string; v: number; detalle: string }[] = [
     {
       k: 'planificacion', t: 'Planificación',
@@ -145,6 +152,7 @@ function TarjetaCampana({ c, activa, onAbrir }: { c: Campana; activa: boolean; o
           {activa && <span className="chip azul">Campaña activa</span>}
         </div>
         <div className="campana-meta">
+          {soloLectura && <span className="chip real">{fmt(filas)} filas reales · {importaciones.size} Excel</span>}
           <span><CalendarRange size={14} /> {c.periodo.inicio}{c.periodo.fin ? ` → ${c.periodo.fin}` : ' → en curso'}</span>
           <span><Route size={14} /> {fmt(nAmbito)} calles · {formatoDistancia(m.km)}</span>
           {c.ampliacionCalleIds.length > 0 && (
@@ -173,6 +181,7 @@ function TarjetaCampana({ c, activa, onAbrir }: { c: Campana; activa: boolean; o
           ))}
         </div>
         <div className="fila" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+          {soloLectura ? <button className="btn s" onClick={() => onAbrir('/real/campanas')}>Seleccionar campaña real</button> : <>
           {c.tipo !== 'historico-importado' && db.municipios[c.municipioId]?.fuenteCallejero !== 'sin-geometria' && (
             <button className="btn primario s" onClick={() => onAbrir('/territorio')}>
               <Route size={14} /> Planificar territorio
@@ -189,6 +198,7 @@ function TarjetaCampana({ c, activa, onAbrir }: { c: Campana; activa: boolean; o
           <button className="btn s fantasma" onClick={() => onAbrir('/analisis')}>
             Análisis
           </button>
+          </>}
         </div>
       </div>
     </article>
