@@ -44,7 +44,7 @@ begin
    select * into a25 from ulit_censo.autorizacion_historico_2025 where espacio_id=new.espacio_id;
    if not found or a25.usuario_id is distinct from auth.uid()
       or a25.utilizada_en is not null or a25.vigente_hasta <= now() then
-     raise exception 'ULIT Censo: autorización del histórico 2025 requerida' using errcode='42501';
+     raise exception 'ULIT Censo: autorización específica del histórico 2025 requerida' using errcode='42501';
    end if;
  elsif e.version=3 then
    select * into a26 from ulit_censo.autorizacion_it1_2026 where espacio_id=new.espacio_id;
