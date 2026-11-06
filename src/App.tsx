@@ -13,6 +13,7 @@ import VisualizacionPage from './workspaces/visualizacion/VisualizacionPage';
 import HojaCampo from './workspaces/print/HojaCampo';
 import CampoApp from './workspaces/field/CampoApp';
 import EspaciosApp from './workspaces/espacios/EspaciosApp';
+import RealApp from './workspaces/real/RealApp';
 
 function Arranque() {
   const carga = useStore((s) => s.carga);
@@ -55,6 +56,8 @@ export default function App() {
       <Routes>
         {/* C1e · Espacios aislados (ensayo y datos reales): no dependen de la demostración ni de su carga. */}
         <Route path="/espacios/*" element={<EspaciosApp />} />
+        {/* LA INTERFAZ COMPLETA es la definitiva. Su primera fuente real es de solo lectura. */}
+        <Route path="/real/*" element={<RealApp />} />
         <Route path="*" element={fase !== 'lista' ? <Arranque /> : <RutasDemo />} />
       </Routes>
       <Avisos />
