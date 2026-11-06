@@ -83,7 +83,7 @@ export default function RealApp() {
       <h1>Acceso al censo real</h1>
       <p role="alert"><AlertTriangle size={16} /> {error ?? 'No hay campañas reales disponibles.'}</p>
       <p>Los datos simulados no sustituyen nunca a los reales cuando falla el acceso.</p>
-      <Link className="btn primario" to="/espacios">Iniciar sesión o comprobar el espacio</Link>
+      <Link className="btn primario" to="/espacios?volver=real">Iniciar sesión y volver a la aplicación completa</Link>
     </main>;
   }
   return <FuenteOficinaContext.Provider value={fuente}>
