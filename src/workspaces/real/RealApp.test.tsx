@@ -69,6 +69,8 @@ describe('Interfaz COMPLETA con base real', () => {
     expect(screen.getByText(/889 filas reales/)).toBeInTheDocument();
     expect(screen.getByText(/Datos reales · consulta/i)).toBeInTheDocument();
     expect(screen.queryByText('Datos simulados')).toBeNull();
+    expect(screen.queryByText('Demo de volumen')).toBeNull();
+    expect(screen.getAllByText('Datos reales').length).toBeGreaterThan(0);
     expect(screen.queryByRole('button',{name:'Nueva campaña'})).toBeNull();
     expect(screen.queryByRole('link',{name:'Oficina'})).toBeNull();
     expect(screen.getByText(/versión 3/)).toBeInTheDocument();
