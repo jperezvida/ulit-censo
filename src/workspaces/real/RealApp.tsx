@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, Route, Routes } from 'react-router-dom';
-import { AlertTriangle, LockKeyhole, RefreshCw } from 'lucide-react';
+import { AlertTriangle, LockKeyhole } from 'lucide-react';
 import { Shell } from '../../components/Shell';
 import CampanasPage from '../campaigns/CampanasPage';
 import { FuenteOficinaContext } from '../../store/fuenteOficina';
@@ -93,7 +93,6 @@ export default function RealApp() {
           <div className="pagina" style={{ paddingBottom: 0 }} role="status">
             <div className="t-info ok"><LockKeyhole size={16} />
               <span><b>DATOS REALES · SOLO CONSULTA.</b> Lectura verificada de Supabase, versión {lectura!.version}. La aplicación completa es la definitiva; aún no están habilitados los cambios ni los módulos restantes.</span>
-              <RefreshCw size={15} />
             </div>
           </div>
           <CampanasPage />
