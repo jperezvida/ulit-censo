@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Server } from 'lucide-react';
 import { clienteServidor } from '../../store/clienteSupabase';
 import { AlmacenSupabase, misEspacios } from '../../store/almacenSupabase';
@@ -15,6 +15,9 @@ type Espacio = Awaited<ReturnType<typeof misEspacios>>[number];
 export function AccesoServidor() {
   const cliente = clienteServidor();
   const nav = useNavigate();
+  const location = useLocation();
+  // El retorno solo acepta un destino FIJO de la aplicación completa: no admite URLs arbitrarias.
+  const volverCompleta = new URLSearchParams(location.search).get('volver') === 'real';
   const [correo, setCorreo] = useState('');
   const [clave, setClave] = useState('');
   const [sesion, setSesion] = useState<string | null>(null);
@@ -28,6 +31,13 @@ export function AccesoServidor() {
     if (!cliente || !sesion) return;
     misEspacios(cliente).then(setEspacios, (e) => setError(String(e.message ?? e)));
   }, [cliente, sesion]);
+  const accesoReal = !!sesion && espacios?.some((e) => e.tipo === 'real' && e.espacio_id === 'real-medina-del-campo-2026');
+  useEffect(() => {
+    // Solo retornar automáticamente cuando se llegó desde la aplicación completa
+    // y el servidor ha confirmado pertenencia AL espacio real. El acceso auxiliar
+    // ordinario sigue disponible para respaldos y tareas técnicas.
+    if (volverCompleta && accesoReal) nav('/real/campanas', { replace: true });
+  }, [volverCompleta, accesoReal, nav]);
   if (!cliente) return null;
   const entrar = async () => {
     setError(null);
@@ -52,7 +62,7 @@ export function AccesoServidor() {
         </form>
       ) : (
         <>
-          <div className="fila" style={{ gap: 6 }}><span className="muted">Sesión: {sesion}</span><button className="btn s" onClick={() => void salir()}>Cerrar sesión</button></div>
+          <div className="fila" style={{ gap: 6, flexWrap: 'wrap' }}><span className="muted">Sesión: {sesion}</span><button className="btn s" onClick={() => void salir()}>Cerrar sesión</button>{accesoReal && <Link className="btn s primario" to="/real/campanas">Abrir la aplicación completa con datos reales</Link>}</div>
           {espacios && !espacios.length && <div className="t-info">Esta cuenta no pertenece a ningún espacio de ULIT Censo.</div>}
           <ul className="inc-lista" aria-label="Mis espacios en el servidor">
             {espacios?.map((x) => (
