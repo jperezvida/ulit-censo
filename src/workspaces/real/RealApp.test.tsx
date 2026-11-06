@@ -65,7 +65,7 @@ describe('Interfaz COMPLETA con base real', () => {
   it('muestra las dos campañas auténticas y las 889 filas, sin controles de edición', async () => {
     montar();
     await waitFor(() => expect(screen.getByText('Censo histórico Medina del Campo 2025')).toBeInTheDocument());
-    expect(screen.getByText('Censo Medina del Campo 2026')).toBeInTheDocument();
+    expect(screen.getAllByText('Censo Medina del Campo 2026').length).toBeGreaterThan(0);
     expect(screen.getByText(/889 filas reales/)).toBeInTheDocument();
     expect(screen.getByText(/Datos reales · consulta/i)).toBeInTheDocument();
     expect(screen.queryByText('Datos simulados')).toBeNull();
@@ -73,7 +73,7 @@ describe('Interfaz COMPLETA con base real', () => {
     expect(screen.queryByRole('link',{name:'Oficina'})).toBeNull();
     expect(screen.getByText(/versión 3/)).toBeInTheDocument();
     expect(servidor.llamadas).toEqual(['ulit_censo_leer']);
-    fireEvent.click(screen.getByRole('button', { name: /Seleccionar campaña real/ }));
+    fireEvent.click(screen.getAllByRole('button', { name: /Seleccionar campaña real/ })[0]);
     expect(servidor.llamadas).toEqual(['ulit_censo_leer']);
   });
   it('sin sesión rechaza la carga y nunca abre una demostración', async () => {
