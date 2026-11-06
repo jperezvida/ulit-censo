@@ -49,7 +49,7 @@ function fixture() {
   return db;
 }
 
-const montar = () => render(<MemoryRouter initialEntries={['/real/campanas']}><Routes><Route path="/real/*" element={<RealApp />} /></Routes></MemoryRouter>);
+const montar = (ruta = '/real/campanas') => render(<MemoryRouter initialEntries={[ruta]}><Routes><Route path="/real/*" element={<RealApp />} /></Routes></MemoryRouter>);
 
 beforeEach(() => {
   servidor.sesion = true;
@@ -86,6 +86,12 @@ describe('Interfaz COMPLETA con base real', () => {
     expect(screen.getByRole('button', { name: 'Analizar IT1 sin guardar' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: /Incorporar al espacio|Guardar IT1/i })).toBeNull();
     expect(servidor.llamadas).toEqual(['ulit_censo_leer']);
+  });
+  it('cuando falta sesión en Datos conserva el destino IT1 para el regreso', async () => {
+    servidor.sesion = false;
+    montar('/real/datos');
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/No hay una sesión autorizada/));
+    expect(screen.getByRole('link', { name: 'Iniciar sesión y volver a la aplicación completa' })).toHaveAttribute('href', '/espacios?volver=datos');
   });
   it('sin sesión rechaza la carga y nunca abre una demostración', async () => {
     servidor.sesion = false;
