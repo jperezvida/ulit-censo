@@ -6,7 +6,7 @@ import type { Id, Rol } from '../domain/types';
 export type Aplicar = (fn: (db: BaseDatos) => BaseDatos, etiqueta: string, opciones?: { silencioso?: boolean; sinAvisoError?: boolean }) => boolean;
 
 /**
- * Fuente de datos de Oficina. Sin proveedor, Oficina trabaja con la demostración (`useStore`), como
+ * Fuente compartida de la interfaz completa. Sin proveedor, la aplicación trabaja con la demostración (`useStore`), como
  * siempre. Con proveedor (espacio de ensayo), lee la base del espacio, fija la campaña y la persona, y
  * guarda por la vía del espacio (`useEspacios.modificar`): nada se copia ni se escribe en la demostración.
  */
@@ -16,6 +16,9 @@ export interface FuenteOficina {
   personaId: Id;
   roles: Rol[];
   aplicar: Aplicar;
+  /** En la interfaz completa, una fuente real es de consulta hasta autorizar escrituras específicas. */
+  soloLectura?: boolean;
+  elegirCampana?: (campanaId: Id) => void;
 }
 
 export const FuenteOficinaContext = createContext<FuenteOficina | null>(null);

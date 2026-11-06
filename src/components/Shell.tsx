@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { BarChart3, ChevronDown, Compass, Database, FolderKanban, Inbox, Map, PieChart, ShieldCheck, Smartphone, UserCog } from 'lucide-react';
 import { useStore } from '../store/store';
+import { useFuenteOficina } from '../store/fuenteOficina';
 import { useContexto, useFichaLocal } from '../store/contexto';
 import type { Rol } from '../domain/types';
 import { FichaLocal } from '../workspaces/local/FichaLocal';
@@ -26,6 +27,8 @@ const ROLES: { r: Rol; t: string; d: string }[] = [
 export function Shell() {
   const { db, municipio, campana, campanas, prefs } = useContexto();
   const setPrefs = useStore((s) => s.setPrefs);
+  const fuente = useFuenteOficina();
+  const enReal = fuente?.soloLectura === true;
   const ficha = useFichaLocal();
   const nav = useNavigate();
   const [menu, setMenu] = useState<'ctx' | 'rol' | null>(null);
@@ -33,7 +36,7 @@ export function Shell() {
   return (
     <div className="shell">
       <header className="barra-sup">
-        <NavLink to="/campanas" className="marca-ulit" title="ULIT Censo · prototipo">
+        <NavLink to={enReal ? '/real/campanas' : '/campanas'} className="marca-ulit" title="ULIT Censo · interfaz completa">
           <b>ULIT</b>
           <span>Censo</span>
         </NavLink>
@@ -57,7 +60,8 @@ export function Shell() {
                         key={c.id}
                         className={`menu-item ${c.id === campana?.id ? 'on' : ''}`}
                         onClick={() => {
-                          setPrefs({ municipioId: m.id, campanaId: c.id });
+                          if (enReal) fuente?.elegirCampana?.(c.id);
+                          else setPrefs({ municipioId: m.id, campanaId: c.id });
                           setMenu(null);
                         }}
                       >
@@ -73,8 +77,10 @@ export function Shell() {
         </div>
 
         <nav className="espacios" aria-label="Espacios de trabajo">
-          {ESPACIOS.map(({ to, txt, icono: I }) => (
-            <NavLink key={to} to={to} className={({ isActive }) => `espacio ${isActive ? 'on' : ''}`}>
+          {ESPACIOS.map(({ to, txt, icono: I }) => enReal && to !== '/campanas' ? (
+            <span key={to} className="espacio" aria-disabled="true" title="Módulo pendiente de conectar a Supabase, sin posibilidad de guardar datos ficticios"><I size={16} /><span>{txt}</span></span>
+          ) : (
+            <NavLink key={to} to={enReal ? `/real${to}` : to} className={({ isActive }) => `espacio ${isActive ? 'on' : ''}`}>
               <I size={16} />
               <span>{txt}</span>
             </NavLink>
@@ -83,22 +89,24 @@ export function Shell() {
 
         <div className="barra-der">
           <span className="mono ocultar-m version-app" title={`Versión en ejecución: commit ${import.meta.env.VITE_COMMIT ?? '?'} · rama ${import.meta.env.VITE_RAMA ?? '?'}`}>v {String(import.meta.env.VITE_COMMIT ?? '').slice(0, 7)}</span>
-          <span className="chip sim sim-global" title="Todos los locales, negocios, personas, itinerarios y resultados son ficticios">
-            Datos simulados
-          </span>
-          <button className="btn s oscuro-borde" onClick={() => nav('/espacios')} title="Espacios aislados: ensayo y datos reales (separados de esta demostración)">
+          {enReal ? <span className="chip real sim-global" title="Datos auténticos de Supabase. Lectura segura; no están habilitadas las escrituras.">Datos reales · consulta</span> : (
+            <span className="chip sim sim-global" title="Todos los locales, negocios, personas, itinerarios y resultados son ficticios">
+              Datos simulados
+            </span>
+          )}
+          <button className="btn s oscuro-borde" onClick={() => nav(enReal ? '/campanas' : '/real/campanas')} title={enReal ? 'Volver a la demostración (separada)' : 'Abrir la interfaz completa conectada a Supabase'}>
             <ShieldCheck size={15} />
-            <span className="ocultar-m">Datos reales</span>
+            <span className="ocultar-m">{enReal ? 'Volver a demo' : 'Datos reales'}</span>
           </button>
-          <button className="btn s oscuro-borde" onClick={() => nav('/campo')} title="Abrir la app de campo (móvil)">
+          {!enReal && <button className="btn s oscuro-borde" onClick={() => nav('/campo')} title="Abrir la app de campo (móvil)">
             <Smartphone size={15} />
             <span className="ocultar-m">Campo</span>
-          </button>
-          <button className="btn s oscuro-borde" onClick={() => setPrefs({ guiaAbierta: !prefs.guiaAbierta })} title="Guion de demostración">
+          </button>}
+          {!enReal && <button className="btn s oscuro-borde" onClick={() => setPrefs({ guiaAbierta: !prefs.guiaAbierta })} title="Guion de demostración">
             <Compass size={15} />
             <span className="ocultar-m">Guion</span>
-          </button>
-          <div className="ctx-wrap">
+          </button>}
+          {!enReal && <div className="ctx-wrap">
             <button className="btn s oscuro-borde" onClick={() => setMenu(menu === 'rol' ? null : 'rol')} title="Rol de demostración">
               <UserCog size={15} />
               <span className="ocultar-m">{prefs.roles.map((r) => r[0].toUpperCase() + r.slice(1, 5)).join(' · ')}</span>
@@ -132,7 +140,7 @@ export function Shell() {
                 <div className="menu-nota muted">Una persona puede tener varios roles.</div>
               </div>
             )}
-          </div>
+          </div>}
         </div>
       </header>
 
@@ -141,20 +149,22 @@ export function Shell() {
       </main>
 
       <nav className="nav-inferior" aria-label="Espacios">
-        {ESPACIOS.map(({ to, txt, icono: I }) => (
-          <NavLink key={to} to={to} className={({ isActive }) => (isActive ? 'on' : '')}>
+        {ESPACIOS.map(({ to, txt, icono: I }) => enReal && to !== '/campanas' ? (
+          <span key={to} aria-disabled="true" title="Pendiente de integración"><I size={19}/><span>{txt}</span></span>
+        ) : (
+          <NavLink key={to} to={enReal ? `/real${to}` : to} className={({ isActive }) => (isActive ? 'on' : '')}>
             <I size={19} />
             <span>{txt}</span>
           </NavLink>
         ))}
-        <NavLink to="/campo">
+        {!enReal && <NavLink to="/campo">
           <Smartphone size={19} />
           <span>Campo</span>
-        </NavLink>
+        </NavLink>}
       </nav>
 
-      {ficha.abierto && db.locales[ficha.abierto] && <FichaLocal localId={ficha.abierto} onCerrar={ficha.cerrar} />}
-      {prefs.guiaAbierta && <GuiaDemo onCerrar={() => setPrefs({ guiaAbierta: false })} />}
+      {!enReal && ficha.abierto && db.locales[ficha.abierto] && <FichaLocal localId={ficha.abierto} onCerrar={ficha.cerrar} />}
+      {!enReal && prefs.guiaAbierta && <GuiaDemo onCerrar={() => setPrefs({ guiaAbierta: false })} />}
     </div>
   );
 }
