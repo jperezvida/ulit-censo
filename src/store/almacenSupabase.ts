@@ -243,8 +243,19 @@ export class AlmacenSupabase {
     const cambios = diferencia(antes, despues);
     const permitidas = new Set(['itinerarios','importaciones','registros','vinculos','locales','negocios',
       'observaciones','ocupaciones','franquicias','digital','clasificaciones']);
-    if (cambios.some((x) => !permitidas.has(x.c) || x.v == null ||
-         !!(antes[x.c as keyof BaseDatos] as Record<string, unknown> | undefined)?.[x.id])) {
+    // siguienteOrden() actualiza la secuencia global: es la ÚNICA modificación
+    // admitida de la raíz, sin tocar la identidad, permisos ni la configuración.
+    const raizAntes = Object.fromEntries(ESCALARES.map((k) => [k, antes[k]]));
+    const raizValida = (x: Cambio) => {
+      if (x.c !== '_raiz' || x.id !== 'raiz' || !x.v || typeof x.v !== 'object') return false;
+      const raizNueva = x.v as Record<string, unknown>;
+      return Number.isSafeInteger(raizNueva.secuencia) &&
+        Number(raizNueva.secuencia) > Number(antes.secuencia) &&
+        jsonCanonico({ ...raizNueva, secuencia: raizAntes.secuencia }) === jsonCanonico(raizAntes);
+    };
+    if (cambios.some((x) => x.c === '_raiz' ? !raizValida(x) :
+        !permitidas.has(x.c) || x.v == null ||
+        !!(antes[x.c as keyof BaseDatos] as Record<string, unknown> | undefined)?.[x.id])) {
       throw new ErrorRemoto('La operación intenta cambiar datos existentes o colecciones ajenas al IT1. No se ha escrito nada.');
     }
     const partes = partir(cambios);
