@@ -78,6 +78,15 @@ describe('Interfaz COMPLETA con base real', () => {
     fireEvent.click(screen.getAllByRole('button', { name: /Seleccionar campaña real/ })[0]);
     expect(servidor.llamadas).toEqual(['ulit_censo_leer']);
   });
+  it('la aplicación COMPLETA abre Datos de IT1 real sin ofrecer escrituras en Supabase', async () => {
+    montar();
+    await waitFor(() => expect(screen.getAllByText('Censo Medina del Campo 2026').length).toBeGreaterThan(0));
+    fireEvent.click(screen.getAllByRole('link', { name: 'Datos' })[0]);
+    expect(screen.getByRole('heading', { name: /Incorporación de Excel · IT1/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Analizar IT1 sin guardar' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /Incorporar al espacio|Guardar IT1/i })).toBeNull();
+    expect(servidor.llamadas).toEqual(['ulit_censo_leer']);
+  });
   it('sin sesión rechaza la carga y nunca abre una demostración', async () => {
     servidor.sesion = false;
     montar();
