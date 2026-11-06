@@ -19,6 +19,9 @@ export interface FuenteOficina {
   /** En la interfaz completa, una fuente real es de consulta hasta autorizar escrituras específicas. */
   soloLectura?: boolean;
   elegirCampana?: (campanaId: Id) => void;
+  /** Recarga verificada desde Supabase después de una operación real restringida. */
+  recargarReal?: () => Promise<void>;
+  versionReal?: number;
 }
 
 export const FuenteOficinaContext = createContext<FuenteOficina | null>(null);
