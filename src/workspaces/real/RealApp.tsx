@@ -66,6 +66,19 @@ export default function RealApp() {
     return () => { vigente = false; };
   }, []);
 
+  const recargarReal = async () => {
+    const cliente = clienteServidor();
+    if (!cliente) throw new Error('Conexión a Supabase no disponible');
+    const { data, error: sesionError } = await cliente.auth.getSession();
+    if (sesionError || !data.session?.user) throw new Error('Sesión caducada: no es posible verificar el resultado');
+    const { db, info } = await new AlmacenSupabase(cliente, MEDINA_REAL).leer();
+    if (!db || info.tipo !== 'real' || info.espacioId !== MEDINA_REAL || db.meta.espacioId !== MEDINA_REAL ||
+        verificarEspacio(db, 'real').length || personaEspacio(db)?.id !== info.personaId) {
+      throw new Error('Los datos recibidos no superan la comprobación del espacio real');
+    }
+    setLectura({ db, personaId: info.personaId, rol: info.rol as Rol, version: info.version });
+  };
+
   const elegida = lectura?.db.campanas[campanaId] ? campanaId
     : Object.values(lectura?.db.campanas ?? {}).sort((a, b) => b.anio - a.anio)[0]?.id ?? '';
   const fuente = useMemo(() => lectura && elegida ? ({
@@ -75,6 +88,8 @@ export default function RealApp() {
     roles: [lectura.rol] as Rol[],
     soloLectura: true as const,
     elegirCampana: setCampanaId,
+    recargarReal,
+    versionReal: lectura.version,
     // Guardia de seguridad: NUNCA escribe ni en IndexedDB demo ni en Supabase.
     aplicar: () => false,
   }) : null, [lectura, elegida]);
