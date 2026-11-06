@@ -24,10 +24,19 @@ export default function DatosRealPage() {
   const [error, setError] = useState<string | null>(null);
   const [confirmado, setConfirmado] = useState(false);
   const [guardado, setGuardado] = useState<string | null>(null);
+  const [verPendientes, setVerPendientes] = useState(false);
 
   const real = fuente?.soloLectura === true && db.meta.espacio === 'real';
   const operativa = campana?.tipo !== 'historico-importado' && campana?.anio === 2026;
   const it1 = campana ? itinerariosDe(db, campana.id).find((i) => i.codigo.toUpperCase() === 'IT1') : undefined;
+  const importacionesIT1 = new Set(Object.values(db.importaciones)
+    .filter((i) => i.campanaId === campana?.id && i.c1?.itinerario?.id === it1?.id && i.estado === 'confirmada')
+    .map((i) => i.id));
+  const registrosIT1 = Object.values(db.registros).filter((r) => importacionesIT1.has(r.importacionId))
+    .sort((a, b) => a.fila - b.fila);
+  const vinculosPorRegistro = new Map(Object.values(db.vinculos)
+    .filter((v) => v.origen.tipo === 'registro').map((v) => [v.origen.id,v]));
+  const pendientesIT1 = registrosIT1.filter((r) => !vinculosPorRegistro.get(r.id)?.localId);
 
   const analizar = async () => {
     if (!real || !operativa || !campana || !archivo || !fuente || ocupado) return;
@@ -102,7 +111,30 @@ export default function DatosRealPage() {
     </div>
     {!real ? <div className="t-info error" role="alert">Abra esta página desde el espacio real de ULIT Censo.</div> :
       !operativa ? <div className="t-info" role="status">Seleccione primero «Censo Medina del Campo 2026» en la barra superior. El histórico 2025 se conserva intacto.</div> :
-      <section className="tarjeta inc-bloque" aria-label="Analizar Excel real IT1" style={{ maxWidth: 950 }}>
+      <div>
+      {registrosIT1.length > 0 && <section className="tarjeta inc-bloque" aria-label="IT1 guardado en Supabase" style={{ maxWidth: 950 }}>
+        <h2><CheckCircle2 size={18} /> IT1 incorporado en la aplicación completa</h2>
+        <div className="ap-resumen">
+          <div><span className="muted">Filas guardadas</span><b>{fmt(registrosIT1.length)}</b></div>
+          <div><span className="muted">Con local</span><b>{fmt(registrosIT1.length-pendientesIT1.length)}</b></div>
+          <div><span className="muted">Pendientes de conciliación</span><b>{fmt(pendientesIT1.length)}</b></div>
+        </div>
+        <p>Los registros pendientes conservan sus celdas originales y no se han vinculado automáticamente a locales históricos.</p>
+        <button className="btn s" onClick={() => setVerPendientes((v) => !v)}>
+          {verPendientes ? 'Ocultar pendientes' : `Consultar ${pendientesIT1.length} pendientes`}
+        </button>
+        {verPendientes && <div className="tabla-scroll">
+          <table className="tabla ap-tabla" aria-label="Pendientes de conciliación de IT1">
+            <thead><tr><th>Fila original</th><th>Nombre en el Excel</th><th>Motivo de la falta de vínculo</th></tr></thead>
+            <tbody>{pendientesIT1.map((r) => {
+              const nombre = Object.entries(r.datos ?? {}).find(([k]) => /nombre|denominaci[oó]n/i.test(k))?.[1];
+              return <tr key={r.id}><td>{r.fila}</td><td>{String(nombre ?? '—')}</td>
+                <td>{vinculosPorRegistro.get(r.id)?.criterio ?? 'Sin correspondencia segura'}</td></tr>;
+            })}</tbody>
+          </table>
+        </div>}
+      </section>}
+      {registrosIT1.length === 0 && <section className="tarjeta inc-bloque" aria-label="Analizar Excel real IT1" style={{ maxWidth: 950 }}>
         <h2><FileSpreadsheet size={19} /> IT1 · Censo Medina del Campo 2026</h2>
         <p className="muted">Seleccione el Excel auténtico de IT1. Se revisan filas, direcciones y pendientes antes de ofrecer una confirmación explícita para guardar.</p>
         <label className="campo"><span>Excel IT1 (.xlsx)</span>
@@ -146,5 +178,6 @@ export default function DatosRealPage() {
         {guardado && <div className="t-info ok" role="status"><CheckCircle2 size={16}/>{guardado}</div>}
         {error && <div className="t-info error" role="alert"><AlertTriangle size={16}/>{error}</div>}
       </section>}
+      </div>}
   </div>;
 }
