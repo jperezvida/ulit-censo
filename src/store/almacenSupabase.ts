@@ -212,6 +212,85 @@ export class AlmacenSupabase {
     }
   }
 
+  /**
+   * Única carga real de IT1 (2026): el SERVIDOR crea la copia íntegra v3,
+   * autoriza exclusivamente el SHA comprobado y aplica el lote en UNA transacción.
+   * No utiliza el guardar() genérico, ni abre escritura normal.
+   */
+  async importarIt1_2026(antes: BaseDatos, despues: BaseDatos, sha: string): Promise<number> {
+    const esperado = '7a6d4230a68370cc0bb0245ce68e8c56648be4d89e76531cc0edbd9ab341da61';
+    if (this.espacioId !== 'real-medina-del-campo-2026' || sha !== esperado)
+      throw new ErrorRemoto('El archivo no corresponde al IT1 aprobado. No se ha escrito nada.');
+    const { db: actual, info } = await this.leer();
+    if (!actual || info.tipo !== 'real' || info.rol !== 'administrador' || info.version !== 3 ||
+        info.escrituraHabilitada || info.preparacionHabilitada ||
+        jsonCanonico(actual) !== jsonCanonico(antes)) {
+      throw new ErrorRemoto('El espacio real cambió desde el análisis o no está cerrado en versión 3. No se ha escrito nada.');
+    }
+    const origen = Object.values(antes.importaciones).find((x) => x.campanaId === 'camp-hist-real-mun-medina-2025-9e367ca51c');
+    const incorporada = Object.values(despues.importaciones).find((x) => x.campanaId === 'real-camp-medina-2026-censo-medina-del-campo-2026');
+    const itinerario = Object.values(despues.itinerarios).find((x) => x.codigo === 'IT1');
+    const nuevosReg = Object.values(despues.registros).filter((x) => x.importacionId === incorporada?.id);
+    const nuevosVin = Object.values(despues.vinculos).filter((x) => nuevosReg.some((r) => x.origen.id === r.id));
+    if (!origen || Object.keys(antes.registros).length !== 889 || Object.keys(antes.itinerarios).length !== 0 ||
+        Object.keys(despues.registros).length !== 994 || Object.keys(despues.itinerarios).length !== 1 ||
+        Object.keys(despues.locales).length !== 710 || incorporada?.filas !== 105 ||
+        incorporada.huella !== esperado || incorporada.c1?.sha256 !== esperado ||
+        incorporada.c1?.itinerario?.id !== itinerario?.id || nuevosReg.length !== 105 ||
+        nuevosVin.length !== 105 || Object.keys(despues.campanas).length !== 2) {
+      throw new ErrorRemoto('El plan de IT1 no coincide con las 105 filas y los 14 locales previstos. No se ha escrito nada.');
+    }
+    const cambios = diferencia(antes, despues);
+    const permitidas = new Set(['itinerarios','importaciones','registros','vinculos','locales','negocios',
+      'observaciones','ocupaciones','franquicias','digital','clasificaciones']);
+    if (cambios.some((x) => !permitidas.has(x.c) || x.v == null ||
+         !!(antes[x.c as keyof BaseDatos] as Record<string, unknown> | undefined)?.[x.id])) {
+      throw new ErrorRemoto('La operación intenta cambiar datos existentes o colecciones ajenas al IT1. No se ha escrito nada.');
+    }
+    const partes = partir(cambios);
+    if (!partes.length || partes.length > 40) throw new ErrorRemoto('El lote de IT1 excede el tamaño autorizado.');
+
+    // Preparación por la propia cuenta ADMINISTRADORA: reserva permiso específico
+    // y copia interna recuperable ANTES de que se suba ninguna parte del lote.
+    const preparado = await this.rpc<{ copia: string; version: number }>('ulit_censo_preparar_it1_2026', {
+      p_espacio: this.espacioId, p_sha: sha, p_version: 3,
+    });
+    if (preparado.version !== 3 || !preparado.copia) throw new ErrorRemoto('El servidor no ha emitido una copia previa válida.');
+    const respaldo = await this.descargarCopia(preparado.copia);
+    const contenido = respaldo.contenido as { espacioId?: string; tipo?: string; version?: number; entidades?: Record<string, Record<string, unknown>> } | null;
+    if (contenido?.espacioId !== this.espacioId || contenido.tipo !== 'real' || contenido.version !== 3 ||
+        !contenido.entidades || jsonCanonico(reconstruir(contenido.entidades)) !== jsonCanonico(antes)) {
+      throw new ErrorRemoto('La copia recuperable no coincide con el estado anterior. No se importa IT1.');
+    }
+
+    const lote = globalThis.crypto.randomUUID();
+    try {
+      for (const [indice, parte] of partes.entries()) {
+        await this.rpc<number>('ulit_censo_lote_subir', {
+          p_espacio: this.espacioId, p_lote: lote, p_parte: indice, p_cambios: parte,
+        });
+      }
+      const version = await this.rpc<number>('ulit_censo_importar_it1_2026', {
+        p_espacio: this.espacioId, p_lote: lote, p_partes: partes.length,
+        p_version_esperada: 3, p_copia: preparado.copia,
+      });
+      if (Number(version) !== 4) throw new ErrorRemoto('La versión de IT1 no es la prevista; no repetir la operación.');
+      const { db: guardado, info: comprobacion } = await this.leer();
+      if (!guardado || comprobacion.version !== 4 || comprobacion.escrituraHabilitada ||
+          jsonCanonico(guardado) !== jsonCanonico(despues)) {
+        throw new ErrorRemoto('El servidor respondió, pero falta verificar el estado. No repetir; consultar Supabase.');
+      }
+      return 4;
+    } catch (error) {
+      // No restaurar ni repetir: si hubo commit y falló la red se debe
+      // verificar manualmente primero. Solo descartar partes propias.
+      await this.rpc<number>('ulit_censo_descartar_lote_2025', {
+        p_espacio: this.espacioId, p_lote: lote,
+      }).catch(() => undefined);
+      throw error;
+    }
+  }
+
   crearCopia(motivo: string) { return this.rpc<string>('ulit_censo_crear_copia', { p_espacio: this.espacioId, p_motivo: motivo }); }
   listarCopias() { return this.rpc<{ id: string; version: number; motivo: string; sha256: string; bytes: number; creada_en: string }[]>('ulit_censo_listar_copias', { p_espacio: this.espacioId }); }
   /** Exportación: el contenido de una copia con su SHA-256, para archivarla fuera de Supabase. */
