@@ -1,0 +1,59 @@
+# Vista previa de ULIT Censo en Vercel: SOLO PREVIEW, nunca producción.
+# Se ejecuta únicamente al publicar en la rama de desarrollo indicada. No hay integración Git de Vercel,
+# así que `main` nunca se despliega. Antes de publicar se pasan TypeScript, las pruebas y el control de
+# datos reales; se publica exactamente lo compilado aquí.
+# El token está SOLO en el entorno «preview» de GitHub, restringido a esta rama (ver docs/fase2/PREVIEW-VERCEL.md).
+name: Vista previa en Vercel (pruebas)
+
+on:
+  push:
+    branches: ['claude/fase2-oficina-itinerarios']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-vercel
+  cancel-in-progress: true
+
+env:
+  VERCEL_CLI: vercel@63.1.0
+  PROYECTO: ulit-censo-pruebas
+  DIRECCION_FIJA: ulit-censo-pruebas-vista.vercel.app
+  RAMA_PERMITIDA: claude/fase2-oficina-itinerarios
+  # Despliegue creado por error como PRODUCCIÓN en la primera ejecución (Vercel asigna a producción el primer
+  # despliegue de un proyecto). Se retira SOLO si sigue siendo de este proyecto y de producción.
+  RETIRAR_PRODUCCION: dpl_5wBBNu998QbWfURDUtHgy5FSKgJV
+  # Alias de ese despliegue: tras retirarlo se comprueba POR LA API que ninguno apunta ya a él.
+  ALIAS_PRODUCCION: ulit-censo-pruebas.vercel.app ulit-censo-pruebas-jaimes-projects-e2a33d1a.vercel.app
+  VERCEL_TELEMETRY_DISABLED: '1'
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    environment:
+      name: preview
+      url: https://ulit-censo-pruebas-vista.vercel.app
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: TypeScript
+        run: npm run typecheck
+      - name: Pruebas
+        run: npm test
+      - name: Control de datos reales
+        run: npm run comprobar-datos
+      - name: Compilación
+        run: npm run build
+      - name: Preparar la salida (solo archivos previstos, huellas comprobadas)
+        run: node scripts/vercel/preparar-vercel.mjs
+      - name: Desplegar PREVIEW protegida
+        env:
+          # Secreto del ENTORNO «preview» (no del repositorio).
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: node scripts/vercel/desplegar-preview.mjs
