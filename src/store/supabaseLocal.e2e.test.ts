@@ -720,9 +720,25 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
     expect(reintento.data?.reutilizada).toBe(true);
     expect(sql("select count(*) from ulit_censo.copia where espacio_id='" + realId + "' and version=3")).toBe('1');
 
-    // Recorrido completo de la APP, incluido lote temporal, RPC transaccional,
-    // validación de 105/14/91, recarga exacta y bloqueo de reimportación.
-    expect(await real.importarIt1_2026(antes,despues,origenSha)).toBe(4);
+    // Recorrido de la RPC DE PRODUCCIÓN con datos ficticios. La huella del
+    // histórico C1e sintético difiere de la auténtica de 2025; por eso aquí
+    // ejercitamos la escritura SQL sin el preflight de cliente específico del
+    // archivo histórico auténtico. La reproducción cubre la ambigüedad "c".
+    const cambios = diferencia(antes,despues);
+    const partes = partir(cambios);
+    const lote = globalThis.crypto.randomUUID();
+    for (const [indice,parte] of partes.entries()) {
+      const subida = await coord.rpc('ulit_censo_lote_subir',{
+        p_espacio:realId,p_lote:lote,p_parte:indice,p_cambios:parte,
+      });
+      expect(subida.error).toBeNull();
+    }
+    const aplicacion = await coord.rpc('ulit_censo_importar_it1_2026',{
+      p_espacio:realId,p_lote:lote,p_partes:partes.length,
+      p_version_esperada:3,p_copia:primera.data!.copia,
+    });
+    expect(aplicacion.error).toBeNull();
+    expect(aplicacion.data).toBe(4);
     const guardado = await real.leer();
     expect(guardado.info).toMatchObject({version:4,escrituraHabilitada:false,preparacionHabilitada:false});
     expect(huella(guardado.db!)).toBe(huella(despues));
