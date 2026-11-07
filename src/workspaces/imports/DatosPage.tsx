@@ -6,6 +6,8 @@ import { InspectorExcel } from './InspectorExcel';
 import { AnalisisPrevio } from './AnalisisPrevio';
 import { useContexto } from '../../store/contexto';
 import { useStore } from '../../store/store';
+import { useFuenteOficina } from '../../store/fuenteOficina';
+import DatosRealPage from '../real/DatosRealPage';
 import { CAMPOS, compararImportacion, interpretarFilas, mapearCabecera, parsearCSV, type CampoCanonico, type ClaseDiff, type FilaDiff } from '../../domain/importacion';
 import { aplicarResultadosPapel, importarCensoHistorico } from '../../domain/aplicarImportacion';
 import { itinerariosDe } from '../../domain/consultas';
@@ -34,6 +36,7 @@ const CLASE_TXT: Record<ClaseDiff, { t: string; c: string }> = {
 
 export default function DatosPage() {
   const { db, municipio, campana } = useContexto();
+  const soloReal = useFuenteOficina()?.soloLectura === true;
   const nav = useNavigate();
   const [sel, setSel] = useState<string | null>(null);
   const [asistente, setAsistente] = useState(false);
@@ -50,14 +53,15 @@ export default function DatosPage() {
           <h1>Procedencia de los datos</h1>
           <p>Todo lo que entra se revisa antes de incorporarse. Los archivos originales se conservan fila a fila; una fila que desaparece nunca se interpreta como un cierre.</p>
         </div>
-        <button className="btn" onClick={() => setInspector(true)}><FileSearch size={16} /> Inspeccionar estructura de Excel</button>
-        <button className="btn primario" onClick={() => setAnalisis(true)} title="Lector XLSX de C1a: solo lectura, para los Excel de la Cátedra"><FileScan size={16} /> Análisis previo de importación</button>
-        <button className="btn" onClick={() => nav('/datos/incorporar')} title="Asistente de incorporación controlada (C1d): solo escenarios ficticios generados por la aplicación"><Workflow size={16} /> Incorporación controlada <span className="tag naranja">demostración</span></button>
-        <button className="btn fantasma" onClick={() => setAsistente(true)} title="Importador CSV antiguo con problemas conocidos de interpretación: solo para los ejemplos ficticios">
+        {!soloReal && <button className="btn" onClick={() => setInspector(true)}><FileSearch size={16} /> Inspeccionar estructura de Excel</button>}
+        {!soloReal && <button className="btn primario" onClick={() => setAnalisis(true)} title="Lector XLSX de C1a: solo lectura, para los Excel de la Cátedra"><FileScan size={16} /> Análisis previo de importación</button>}
+        {!soloReal && <button className="btn" onClick={() => nav('/datos/incorporar')} title="Asistente de incorporación controlada (C1d): solo escenarios ficticios generados por la aplicación"><Workflow size={16} /> Incorporación controlada <span className="tag naranja">demostración</span></button>}
+        {!soloReal && <button className="btn fantasma" onClick={() => setAsistente(true)} title="Importador CSV antiguo con problemas conocidos de interpretación: solo para los ejemplos ficticios">
           <FlaskConical size={16} /> Importador CSV provisional <span className="tag naranja">demostración</span>
-        </button>
+        </button>}
       </div>
 
+      {soloReal && <DatosRealPage />}
       <div className="dat-rejilla">
         <div className="dat-lista">
           {imps.length === 0 && <div className="vacio-estado tarjeta">Sin importaciones en {municipio.nombre}.</div>}
@@ -79,15 +83,16 @@ export default function DatosPage() {
         </div>
         {imp && <DetalleImportacion imp={imp} />}
       </div>
-      {asistente && campana && <Asistente onCerrar={() => setAsistente(false)} />}
-      {inspector && <InspectorExcel onCerrar={() => setInspector(false)} />}
-      {analisis && <AnalisisPrevio municipioId={municipio.id} onCerrar={() => setAnalisis(false)} />}
+      {!soloReal && asistente && campana && <Asistente onCerrar={() => setAsistente(false)} />}
+      {!soloReal && inspector && <InspectorExcel onCerrar={() => setInspector(false)} />}
+      {!soloReal && analisis && <AnalisisPrevio municipioId={municipio.id} onCerrar={() => setAnalisis(false)} />}
     </div>
   );
 }
 
 function DetalleImportacion({ imp }: { imp: Importacion }) {
   const { db } = useContexto();
+  const soloReal = useFuenteOficina()?.soloLectura === true;
   const [deshacer, setDeshacer] = useState(false);
   const registros = useMemo(() => Object.values(db.registros).filter((r) => r.importacionId === imp.id).sort((a, b) => a.fila - b.fila), [db.registros, imp.id]);
   const vincPorReg = useMemo(() => {
@@ -112,11 +117,11 @@ function DetalleImportacion({ imp }: { imp: Importacion }) {
           <span className="chip">Por {db.personas[imp.c1.porId]?.nombre ?? imp.c1.porId}</span>
           <span className="chip">Huellas {imp.c1.algoritmoHuellas ?? 'FNV-1a 32 bits'}</span>
           {imp.c1.deshecha ? <span className="chip aviso">Deshecha por {db.personas[imp.c1.deshecha.porId]?.nombre ?? imp.c1.deshecha.porId} · {fmtFecha(imp.c1.deshecha.fecha)}</span> : (
-            <button className="btn s peligro" onClick={() => setDeshacer(true)}><Undo2 size={14} /> Deshacer la incorporación…</button>
+            !soloReal && <button className="btn s peligro" onClick={() => setDeshacer(true)}><Undo2 size={14} /> Deshacer la incorporación…</button>
           )}
         </div>
       )}
-      {deshacer && <DeshacerIncorporacion importacionId={imp.id} onCerrar={() => setDeshacer(false)} />}
+      {!soloReal && deshacer && <DeshacerIncorporacion importacionId={imp.id} onCerrar={() => setDeshacer(false)} />}
       <div className="dat-cifras">
         <div><b className="num">{fmt(imp.filas)}</b><span>filas del archivo</span></div>
         <div><b className="num">{fmt(registros.length)}</b><span>registros de origen conservados</span></div>
