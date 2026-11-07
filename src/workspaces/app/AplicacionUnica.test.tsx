@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Outlet, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { baseVacia } from '../../domain/db';
 import { useFuenteOficina } from '../../store/fuenteOficina';
 
@@ -28,7 +28,7 @@ vi.mock('../../store/almacenSupabase', () => ({
       db.campanas = {
         'camp-real-2025': { id: 'camp-real-2025', municipioId: 'real-mun-medina', anio: 2025, nombre: 'Histórico real 2025' },
         'camp-real-2026': { id: 'camp-real-2026', municipioId: 'real-mun-medina', anio: 2026, nombre: 'Censo real 2026' },
-      } as typeof db.campanas;
+      } as unknown as typeof db.campanas;
       return { db, info: { tipo: 'real', espacioId: 'real-medina-del-campo-2026', personaId: 'coordinacion', rol: 'administrador', version: 4 } };
     }
   },
