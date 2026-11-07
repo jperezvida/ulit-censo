@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo } from 'react';
 import { useContexto, useIndices } from '../../store/contexto';
 import { useStore, type ModoOficina } from '../../store/store';
+import { useFuenteOficina } from '../../store/fuenteOficina';
 import { filasOficina, resumenItinerarios, type FilaOficina } from '../../domain/oficina';
 import { estaBloqueado, type Alcance } from '../../domain/bloqueo';
 import type { Campana, Id, Itinerario } from '../../domain/types';
@@ -38,7 +39,9 @@ export function useResumenes() {
 }
 
 export function useModoOficina(): [ModoOficina, (m: ModoOficina) => void] {
-  const personaId = useStore((s) => s.prefs.personaId);
+  const fuente = useFuenteOficina();
+  const personaDemo = useStore((s) => s.prefs.personaId);
+  const personaId = fuente?.personaId ?? personaDemo;
   const modo = useStore((s) => s.prefs.oficina?.[s.prefs.personaId]?.modo ?? 'tareas');
   const set = useStore((s) => s.setPrefsOficina);
   return [modo, (m) => set(personaId, { modo: m })];
