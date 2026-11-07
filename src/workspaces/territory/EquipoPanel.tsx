@@ -1,14 +1,15 @@
 import { useMemo } from 'react';
 import { AlertTriangle, CloudOff, RefreshCw } from 'lucide-react';
 import { useContexto } from '../../store/contexto';
-import { useStore } from '../../store/store';
+import { useAplicar, useFuenteOficina } from '../../store/fuenteOficina';
 import { progresoItinerario } from '../../domain/planificacion';
 import type { Id, Itinerario } from '../../domain/types';
 import { Avatar, Barra, Sim, fmtFecha } from '../../components/ui';
 
 export function EquipoPanel({ itinerarios, onIt }: { itinerarios: Itinerario[]; onIt: (id: Id) => void }) {
   const { db, campana } = useContexto();
-  const aplicar = useStore((s) => s.aplicar);
+  const aplicar = useAplicar();
+  const real = useFuenteOficina()?.soloLectura === true;
   const personas = useMemo(() => {
     if (!campana) return [];
     const obs = Object.values(db.observaciones).filter((o) => o.campanaId === campana.id && o.fuente !== 'importacion');
@@ -38,10 +39,10 @@ export function EquipoPanel({ itinerarios, onIt }: { itinerarios: Itinerario[]; 
     <div className="t-equipo">
       <div className="t-cab">
         <div className="rotulo">03 · Equipo · {campana.nombre}</div>
-        <div className="fila" style={{ marginTop: 6, flexWrap: 'wrap' }}>
+        {!real && <div className="fila" style={{ marginTop: 6, flexWrap: 'wrap' }}>
           <Sim texto="Progreso simulado" title="Actividad de campo inventada para la demostración" />
           <Sim texto="Sincronización simulada" title="No existe todavía un motor de sincronización" />
-        </div>
+        </div>}
       </div>
 
       {(conflictos.length > 0 || enCola.length > 0) && (
@@ -77,7 +78,7 @@ export function EquipoPanel({ itinerarios, onIt }: { itinerarios: Itinerario[]; 
               <Avatar p={p} size={30} />
               <div className="esp">
                 <b>{p.nombre}</b>
-                <div className="muted" style={{ fontSize: 11.5 }}>{p.roles.join(' · ')} · persona ficticia</div>
+                <div className="muted" style={{ fontSize: 11.5 }}>{p.roles.join(' · ')}{real ? '' : ' · persona ficticia'}</div>
               </div>
               {pendientesSync > 0 && (
                 <span className="chip aviso" title="Registros guardados en el dispositivo sin sincronizar">
