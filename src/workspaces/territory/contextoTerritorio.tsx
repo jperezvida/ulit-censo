@@ -2,6 +2,7 @@ import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { indiceObservaciones, indiceOcupaciones } from '../../domain/consultas';
 import { useContexto, useIndices, useRol } from '../../store/contexto';
 import { useStore } from '../../store/store';
+import { useFuenteOficina, useAplicar } from '../../store/fuenteOficina';
 import { useEspacios } from '../../store/espacios';
 import { personaEspacio } from '../../domain/espacios';
 import type { BaseDatos } from '../../domain/db';
@@ -33,11 +34,12 @@ export function TerritorioDemo({ children }: { children: ReactNode }) {
   const { db, municipio, campana, referencia, prefs } = useContexto();
   const ix = useIndices();
   const { tiene } = useRol();
-  const aplicar = useStore((s) => s.aplicar);
+  const fuente = useFuenteOficina();
+  const aplicar = useAplicar();
   const avisar = useStore((s) => s.avisar);
   return <Context.Provider value={{ db, municipio, campana, referencia, ix, personaId: prefs.personaId,
-    demo: true, puedeEditar: tiene('coordinador') && campana?.tipo !== 'historico-importado', puedePlanificarEnsayo: false,
-    aplicar, avisar, dbVigente: () => useStore.getState().db! }}>{children}</Context.Provider>;
+    demo: !fuente, puedeEditar: !fuente?.soloLectura && tiene('coordinador') && campana?.tipo !== 'historico-importado', puedePlanificarEnsayo: false,
+    aplicar, avisar, dbVigente: () => fuente?.db ?? useStore.getState().db! }}>{children}</Context.Provider>;
 }
 
 export function TerritorioEnsayo({ campanaId, children }: { campanaId: Id; children: ReactNode }) {
