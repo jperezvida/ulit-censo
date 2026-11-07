@@ -15,6 +15,21 @@ begin
   assert has_function_privilege('authenticated', 'public.ulit_censo_descartar_lote_2025(text,uuid)', 'EXECUTE'), 'falta descarte para Auth';
   assert not exists(select 1 from ulit_censo.autorizacion_historico_2025), 'la migración concedió autorización sin aprobación';
 end $audit$;
+-- Seguridad de IT1 2026: ninguna autorización viene concedida en la migración.
+do $audit_it1$
+begin
+  assert not has_table_privilege('anon','ulit_censo.autorizacion_it1_2026','SELECT'), 'anon lee autorizaciones IT1';
+  assert not has_table_privilege('authenticated','ulit_censo.autorizacion_it1_2026','SELECT'), 'Auth lee autorizaciones IT1';
+  assert not has_table_privilege('service_role','ulit_censo.autorizacion_it1_2026','SELECT'), 'service_role lee autorizaciones IT1';
+  assert not has_function_privilege('anon','public.ulit_censo_preparar_it1_2026(text,text,bigint)','EXECUTE'), 'anon prepara IT1';
+  assert not has_function_privilege('service_role','public.ulit_censo_preparar_it1_2026(text,text,bigint)','EXECUTE'), 'service_role prepara IT1';
+  assert has_function_privilege('authenticated','public.ulit_censo_preparar_it1_2026(text,text,bigint)','EXECUTE'), 'Auth no prepara IT1';
+  assert not has_function_privilege('anon','public.ulit_censo_importar_it1_2026(text,uuid,integer,bigint,uuid)','EXECUTE'), 'anon incorpora IT1';
+  assert not has_function_privilege('service_role','public.ulit_censo_importar_it1_2026(text,uuid,integer,bigint,uuid)','EXECUTE'), 'service_role incorpora IT1';
+  assert has_function_privilege('authenticated','public.ulit_censo_importar_it1_2026(text,uuid,integer,bigint,uuid)','EXECUTE'), 'Auth no incorpora IT1';
+  assert not exists(select 1 from ulit_censo.autorizacion_it1_2026), 'la migración ha autorizado IT1 sin petición del administrador';
+end $audit_it1$;
+
 -- Alta inicial (plantilla 0003, como postgres)
 insert into ulit_censo.espacio (id, tipo, nombre, escritura_habilitada) values ('ensayo-prueba', 'ensayo', 'Ensayo', true), ('real-medina', 'real', 'Real (bloqueado)', false);
 insert into ulit_censo.miembro (espacio_id, usuario_id, rol, persona_id) values

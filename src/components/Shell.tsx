@@ -77,7 +77,7 @@ export function Shell() {
         </div>
 
         <nav className="espacios" aria-label="Espacios de trabajo">
-          {ESPACIOS.map(({ to, txt, icono: I }) => enReal && to !== '/campanas' ? (
+          {ESPACIOS.map(({ to, txt, icono: I }) => enReal && to !== '/campanas' && to !== '/datos' ? (
             <span key={to} className="espacio" aria-disabled="true" title="Módulo pendiente de conectar a Supabase, sin posibilidad de guardar datos ficticios"><I size={16} /><span>{txt}</span></span>
           ) : (
             <NavLink key={to} to={enReal ? `/real${to}` : to} className={({ isActive }) => `espacio ${isActive ? 'on' : ''}`}>
@@ -149,7 +149,7 @@ export function Shell() {
       </main>
 
       <nav className="nav-inferior" aria-label="Espacios">
-        {ESPACIOS.map(({ to, txt, icono: I }) => enReal && to !== '/campanas' ? (
+        {ESPACIOS.map(({ to, txt, icono: I }) => enReal && to !== '/campanas' && to !== '/datos' ? (
           <span key={to} aria-disabled="true" title="Pendiente de integración"><I size={19}/><span>{txt}</span></span>
         ) : (
           <NavLink key={to} to={enReal ? `/real${to}` : to} className={({ isActive }) => (isActive ? 'on' : '')}>

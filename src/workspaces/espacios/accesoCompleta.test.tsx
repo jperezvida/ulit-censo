@@ -42,6 +42,7 @@ function montar(origen = '') {
       <Routes>
         <Route path="/espacios" element={<AccesoServidor />} />
         <Route path="/real/campanas" element={<h1>Aplicación completa con datos auténticos</h1>} />
+        <Route path="/real/datos" element={<h1>Datos reales IT1 en aplicación completa</h1>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -63,6 +64,16 @@ describe('Retorno a la aplicación COMPLETA tras iniciar sesión', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Aplicación completa con datos auténticos' })).toBeInTheDocument());
     expect(auth.inicios).toBe(1);
     expect(auth.consultas).toBeGreaterThan(0);
+  });
+
+  it('desde Datos IT1 regresa directamente a Datos tras iniciar sesión, no a Campañas', async () => {
+    montar('?volver=datos');
+    fireEvent.change(screen.getByLabelText('Correo'), { target: { value: 'responsable@example.invalid' } });
+    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'clave-de-prueba' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión' }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Datos reales IT1 en aplicación completa' })).toBeInTheDocument());
+    expect(screen.queryByRole('heading', { name: 'Aplicación completa con datos auténticos' })).toBeNull();
+    expect(auth.inicios).toBe(1);
   });
 
   it('con sesión existente regresa sin pedir contraseña', async () => {

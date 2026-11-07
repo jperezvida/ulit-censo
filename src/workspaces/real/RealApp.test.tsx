@@ -49,7 +49,7 @@ function fixture() {
   return db;
 }
 
-const montar = () => render(<MemoryRouter initialEntries={['/real/campanas']}><Routes><Route path="/real/*" element={<RealApp />} /></Routes></MemoryRouter>);
+const montar = (ruta = '/real/campanas') => render(<MemoryRouter initialEntries={[ruta]}><Routes><Route path="/real/*" element={<RealApp />} /></Routes></MemoryRouter>);
 
 beforeEach(() => {
   servidor.sesion = true;
@@ -77,6 +77,27 @@ describe('Interfaz COMPLETA con base real', () => {
     expect(servidor.llamadas).toEqual(['ulit_censo_leer']);
     fireEvent.click(screen.getAllByRole('button', { name: /Seleccionar campaña real/ })[0]);
     expect(servidor.llamadas).toEqual(['ulit_censo_leer']);
+  });
+  it('la aplicación COMPLETA abre Datos de IT1 real sin ofrecer escrituras en Supabase', async () => {
+    montar();
+    await waitFor(() => expect(screen.getAllByText('Censo Medina del Campo 2026').length).toBeGreaterThan(0));
+    fireEvent.click(screen.getAllByRole('link', { name: 'Datos' })[0]);
+    expect(screen.getByRole('heading', { name: /Incorporación de Excel · IT1/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Analizar IT1 sin guardar' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /Incorporar al espacio|Guardar IT1/i })).toBeNull();
+    expect(servidor.llamadas).toEqual(['ulit_censo_leer']);
+  });
+  it('con sesión ya iniciada abre directamente la pestaña Datos de IT1', async () => {
+    montar('/real/datos');
+    await waitFor(() => expect(screen.getByRole('heading', { name: /Incorporación de Excel · IT1/ })).toBeInTheDocument());
+    expect(screen.queryByRole('heading', { name: 'Acceso al censo real' })).toBeNull();
+    expect(servidor.llamadas).toEqual(['ulit_censo_leer']);
+  });
+  it('cuando falta sesión en Datos conserva el destino IT1 para el regreso', async () => {
+    servidor.sesion = false;
+    montar('/real/datos');
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/No hay una sesión autorizada/));
+    expect(screen.getByRole('link', { name: 'Iniciar sesión y volver a la aplicación completa' })).toHaveAttribute('href', '/espacios?volver=datos');
   });
   it('sin sesión rechaza la carga y nunca abre una demostración', async () => {
     servidor.sesion = false;

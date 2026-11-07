@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, Route, Routes } from 'react-router-dom';
+import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AlertTriangle, LockKeyhole } from 'lucide-react';
 import { Shell } from '../../components/Shell';
 import CampanasPage from '../campaigns/CampanasPage';
+import DatosRealPage from './DatosRealPage';
 import { FuenteOficinaContext } from '../../store/fuenteOficina';
 import { clienteServidor } from '../../store/clienteSupabase';
 import { AlmacenSupabase } from '../../store/almacenSupabase';
@@ -25,6 +26,7 @@ interface LecturaReal {
  * y la RPC autenticada de Supabase. Las demás áreas permanecen sin escrituras.
  */
 export default function RealApp() {
+  const rutaActual = useLocation();
   const [lectura, setLectura] = useState<LecturaReal | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -64,6 +66,19 @@ export default function RealApp() {
     return () => { vigente = false; };
   }, []);
 
+  const recargarReal = async () => {
+    const cliente = clienteServidor();
+    if (!cliente) throw new Error('Conexión a Supabase no disponible');
+    const { data, error: sesionError } = await cliente.auth.getSession();
+    if (sesionError || !data.session?.user) throw new Error('Sesión caducada: no es posible verificar el resultado');
+    const { db, info } = await new AlmacenSupabase(cliente, MEDINA_REAL).leer();
+    if (!db || info.tipo !== 'real' || info.espacioId !== MEDINA_REAL || db.meta.espacioId !== MEDINA_REAL ||
+        verificarEspacio(db, 'real').length || personaEspacio(db)?.id !== info.personaId) {
+      throw new Error('Los datos recibidos no superan la comprobación del espacio real');
+    }
+    setLectura({ db, personaId: info.personaId, rol: info.rol as Rol, version: info.version });
+  };
+
   const elegida = lectura?.db.campanas[campanaId] ? campanaId
     : Object.values(lectura?.db.campanas ?? {}).sort((a, b) => b.anio - a.anio)[0]?.id ?? '';
   const fuente = useMemo(() => lectura && elegida ? ({
@@ -73,6 +88,8 @@ export default function RealApp() {
     roles: [lectura.rol] as Rol[],
     soloLectura: true as const,
     elegirCampana: setCampanaId,
+    recargarReal,
+    versionReal: lectura.version,
     // Guardia de seguridad: NUNCA escribe ni en IndexedDB demo ni en Supabase.
     aplicar: () => false,
   }) : null, [lectura, elegida]);
@@ -83,7 +100,7 @@ export default function RealApp() {
       <h1>Acceso al censo real</h1>
       <p role="alert"><AlertTriangle size={16} /> {error ?? 'No hay campañas reales disponibles.'}</p>
       <p>Los datos simulados no sustituyen nunca a los reales cuando falla el acceso.</p>
-      <Link className="btn primario" to="/espacios?volver=real">Iniciar sesión y volver a la aplicación completa</Link>
+      <Link className="btn primario" to={rutaActual.pathname.endsWith("/datos") ? "/espacios?volver=datos" : "/espacios?volver=real"}>Iniciar sesión y volver a la aplicación completa</Link>
     </main>;
   }
   return <FuenteOficinaContext.Provider value={fuente}>
@@ -97,6 +114,7 @@ export default function RealApp() {
           </div>
           <CampanasPage />
         </>} />
+        <Route path="datos" element={<DatosRealPage />} />
         <Route path="*" element={<Navigate to="campanas" replace />} />
       </Route>
     </Routes>
