@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import type { GeoJSONSource, Map as MLMap, MapLayerMouseEvent } from 'maplibre-gl';
 import { AlertTriangle, Download, FileSpreadsheet, Info, Printer } from 'lucide-react';
 import { useContexto, useFichaLocal, useIndices } from '../../store/contexto';
+import { useFuenteOficina } from '../../store/fuenteOficina';
 import { compararCampanas, resumenCampana } from '../../domain/estadisticas';
 import { coberturaCalle, esCompletada, itinerariosDe } from '../../domain/consultas';
 import { aCSV, COLUMNAS_TRADICIONALES, descargar, filasExport } from '../../domain/exportacion';
@@ -37,6 +38,7 @@ export default function AnalisisPage() {
 }
 
 function Evolucion() {
+  const enReal = useFuenteOficina()?.soloLectura === true;
   const { db, campanas, campana } = useContexto();
   const [aId, setA] = useState<Id>(campana?.campanaReferenciaId ?? campanas[Math.max(0, campanas.length - 2)]?.id);
   const [bId, setB] = useState<Id>(campana?.campanaReferenciaId ? campana.id : campanas[campanas.length - 1]?.id);
@@ -70,7 +72,7 @@ function Evolucion() {
         <span>→</span>
         <select className="input" value={bId} onChange={(e) => setB(e.target.value)}>{campanas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
         <span className="esp" />
-        <Sim texto="Cifras sobre datos ficticios" />
+        {!enReal && <Sim texto="Cifras sobre datos ficticios" />}
       </div>
       {enCursoB && (
         <div className="t-info aviso an-ancho" style={{ margin: 0 }}>
@@ -228,6 +230,7 @@ function MiniPct({ v, n }: { v: number; n: number }) {
 }
 
 function MapaActividad() {
+  const enReal = useFuenteOficina()?.soloLectura === true;
   const { db, municipio, campana } = useContexto();
   const ix = useIndices();
   const ficha = useFichaLocal();
@@ -280,13 +283,14 @@ function MapaActividad() {
         <MapaBase centro={municipio.centro!} zoom={15} onListo={alListo} />
       </div>
       <p className="muted" style={{ fontSize: 12, padding: '8px 14px', margin: 0 }}>
-        <Info size={12} /> {fmt(n)} locales de {campana?.nombre} (o de su campaña de referencia si aún no se han visitado). Mapa de actividad independiente del mapa de cobertura territorial (Territorio → Cobertura). Posiciones ficticias.
+        <Info size={12} /> {fmt(n)} locales de {campana?.nombre} (o de su campaña de referencia si aún no se han visitado). Mapa de actividad independiente del mapa de cobertura territorial (Territorio → Cobertura). {enReal ? 'Solo se dibujan locales con coordenadas registradas.' : 'Posiciones ficticias.'}
       </p>
     </div>
   );
 }
 
 function Exportar() {
+  const enReal = useFuenteOficina()?.soloLectura === true;
   const { db, campana, municipio } = useContexto();
   const nav = useNavigate();
   const its = campana ? itinerariosDe(db, campana.id) : [];
@@ -311,7 +315,7 @@ function Exportar() {
             <optgroup label="Por calle">{callesCampana.map((c) => <option key={c.id} value={`c:${c.id}`}>{c.nombre}</option>)}</optgroup>
           </select>
           <button className="btn primario" onClick={() => descargar(nombre, aCSV(filas))} disabled={!filas.length}><Download size={15} /> Descargar CSV ({fmt(filas.length)} filas)</button>
-          <Sim texto="Contenido ficticio" />
+          {!enReal && <Sim texto="Contenido ficticio" />}
         </div>
         <p className="muted" style={{ fontSize: 12 }}>CSV con separador «;» y UTF-8, se abre directamente en Excel. Columnas provisionales hasta recibir la estructura real; las métricas digitales indican si están verificadas en esta campaña.</p>
         <div className="dat-tabla scroll-fino" style={{ maxHeight: 360 }}>
