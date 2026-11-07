@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Clock, Lock, ShieldAlert } from 'lucide-react';
-import { useStore } from '../../store/store';
+import { useAplicar, useDbOficina } from '../../store/fuenteOficina';
 import { cerrarRevisionItinerario, controlesValidacion, reabrirItinerario } from '../../domain/bloqueo';
 import { TIPO_OBS_TXT, ubicarEnCronologia } from '../../domain/campo';
 import { observacionesDeLocal, ocupacionesDeLocal } from '../../domain/consultas';
@@ -10,8 +10,8 @@ import { Modal, fmtFecha } from '../../components/ui';
 
 /** Cierre PROVISIONAL de la revisión: registra quién y cuándo; no habilita la exportación. */
 export function ModalCerrarRevision({ it, personaId, pendientes, onCerrar }: { it: Itinerario; personaId: Id; pendientes: number; onCerrar: () => void }) {
-  const db = useStore((s) => s.db!);
-  const aplicar = useStore((s) => s.aplicar);
+  const db = useDbOficina();
+  const aplicar = useAplicar();
   const ahora = new Date();
   return (
     <Modal
@@ -40,7 +40,7 @@ export function ModalCerrarRevision({ it, personaId, pendientes, onCerrar }: { i
 }
 
 export function ModalReabrir({ it, personaId, onCerrar }: { it: Itinerario; personaId: Id; onCerrar: () => void }) {
-  const aplicar = useStore((s) => s.aplicar);
+  const aplicar = useAplicar();
   const [motivo, setMotivo] = useState('');
   return (
     <Modal
@@ -63,7 +63,7 @@ export function ModalReabrir({ it, personaId, onCerrar }: { it: Itinerario; pers
 }
 
 export function ModalValidacion({ it, onCerrar }: { it: Itinerario; onCerrar: () => void }) {
-  const db = useStore((s) => s.db!);
+  const db = useDbOficina();
   const c = controlesValidacion(db, it.id);
   return (
     <Modal titulo={`Validación definitiva de ${it.codigo}`} sub="No disponible todavía." onCerrar={onCerrar} pie={<button className="btn" onClick={onCerrar}>Entendido</button>}>
@@ -79,8 +79,8 @@ export function ModalValidacion({ it, onCerrar }: { it: Itinerario; onCerrar: ()
  * evento se coloca en su lugar (puede quedar como etapa intermedia del histórico).
  */
 export function ModalCronologia({ localId, campanaId, personaId, alcance, onCerrar }: { localId: Id; campanaId: Id; personaId: Id; alcance?: Alcance; onCerrar: () => void }) {
-  const db = useStore((s) => s.db!);
-  const aplicar = useStore((s) => s.aplicar);
+  const db = useDbOficina();
+  const aplicar = useAplicar();
   const obs = observacionesDeLocal(db, localId).filter((o) => o.campanaId === campanaId);
   const inciertas = obs.filter((o) => o.cronologia === 'incierta');
   const [fechas, setFechas] = useState<Record<Id, string>>({});
