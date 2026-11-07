@@ -641,6 +641,21 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
     const readV2 = await real.leer();
     expect(readV2.info).toMatchObject({ version: 2, escrituraHabilitada: false });
     expect(Object.keys(readV2.db!.registros)).toHaveLength(889);
+    // La fuente FICTICIA C1e produce 704 locales, frente a los 696 reales.
+    // Ajustar SOLO el espacio local desechable para ejercitar exactamente
+    // la misma condición inicial de 696 locales que protege la RPC real.
+    // Sin tocar el recuento de los 889 registros originales.
+    expect(Object.keys(readV2.db!.locales)).toHaveLength(704);
+    const descartados = Object.keys(readV2.db!.locales).sort().slice(-8);
+    const idsDescartados = descartados.map((id) => "'" + id.replace(/'/g,"''") + "'").join(',');
+    sql("begin;" +
+      "update ulit_censo.entidad set valor=jsonb_set(valor,'{localId}','null'::jsonb)" +
+      " where espacio_id='" + realId + "' and coleccion in ('observaciones','vinculos')" +
+      " and valor->>'localId' in (" + idsDescartados + ");" +
+      "delete from ulit_censo.entidad where espacio_id='" + realId + "'" +
+      " and coleccion='ocupaciones' and valor->>'localId' in (" + idsDescartados + ");" +
+      "delete from ulit_censo.entidad where espacio_id='" + realId + "'" +
+      " and coleccion='locales' and id in (" + idsDescartados + ");commit;");
 
     // En producción la campaña de 2026 ya existe en v3. Simular únicamente
     // esa alta en el servidor local, sin cambiar ninguna entidad histórica.
