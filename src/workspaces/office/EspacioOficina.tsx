@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, LayoutList, Lock, LockOpen, Search, ShieldCheck, Table2, X } from 'lucide-react';
 import { useContexto } from '../../store/contexto';
+import { useFuenteOficina } from '../../store/fuenteOficina';
 import { estadoOficina } from '../../domain/bloqueo';
 import { normalizar } from '../../domain/text';
 import type { FilaOficina } from '../../domain/oficina';
@@ -19,6 +20,7 @@ import '../../styles/oficina-b2.css';
 /** Espacio de trabajo de un itinerario (o de toda la campaña, en la vista municipal). */
 export default function EspacioOficina({ municipal = false }: { municipal?: boolean }) {
   const { db, campana, municipio, prefs } = useContexto();
+  const soloLecturaReal = useFuenteOficina()?.soloLectura === true;
   const { itId } = useParams();
   const it = !municipal && itId ? db.itinerarios[itId] : undefined;
   const [params, setParams] = useSearchParams();
@@ -37,7 +39,7 @@ export default function EspacioOficina({ municipal = false }: { municipal?: bool
   const itCerrado = estado === 'revision-cerrada' || estado === 'validado';
   // Una campaña histórica o ya validada no se edita desde Oficina (evita tocar otra campaña por descuido).
   const campanaCerrada = !!campana && (campana.tipo === 'historico-importado' || campana.estados.validacion === 'terminado');
-  const bloqueado = itCerrado || campanaCerrada;
+  const bloqueado = soloLecturaReal || itCerrado || campanaCerrada;
 
   const setParam = (k: string, v: string | null) =>
     setParams((p) => {
