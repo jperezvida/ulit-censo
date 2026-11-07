@@ -656,6 +656,7 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
       "update ulit_censo.espacio set version=3 where id='" + realId + "' and version=2; commit;");
 
     const antes = (await real.leer()).db!;
+    const historicoInmutable = createHash('sha256').update(jsonCanonico(antes.registros)).digest('hex');
     expect(Object.keys(antes.locales)).toHaveLength(696);
     expect(Object.keys(antes.campanas)).toHaveLength(2);
     const personaId = 'real-p-coordinacion-sintetica';
@@ -711,8 +712,13 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
     expect(guardado.info).toMatchObject({version:4,escrituraHabilitada:false,preparacionHabilitada:false});
     expect(huella(guardado.db!)).toBe(huella(despues));
     expect(Object.keys(guardado.db!.registros)).toHaveLength(994);
+    const copiaHistoricoPosterior = Object.fromEntries(Object.entries(guardado.db!.registros)
+      .filter(([id]) => id in antes.registros));
+    expect(createHash('sha256').update(jsonCanonico(copiaHistoricoPosterior)).digest('hex')).toBe(historicoInmutable);
     expect(Object.keys(guardado.db!.itinerarios)).toHaveLength(1);
     expect(Object.keys(guardado.db!.locales)).toHaveLength(710);
+    expect(Object.values(guardado.db!.vinculos).filter((x) =>
+      x.origen.tipo === 'registro' && x.origen.id.startsWith('reg-'+impId+'-') && !x.localId)).toHaveLength(91);
     expect(sql("select version_resultante from ulit_censo.autorizacion_it1_2026 where espacio_id='" + realId + "'")).toBe('4');
     expect(sql("select count(*) from ulit_censo.lote_parte where espacio_id='" + realId + "'")).toBe('0');
 
