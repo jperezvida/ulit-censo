@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { BarChart3, Briefcase, DoorOpen, FilterX, GitCompareArrows, LayoutDashboard, ShieldCheck, ShoppingBag, UtensilsCrossed, Wifi } from 'lucide-react';
-import { useStore } from '../../store/store';
+import { useContexto } from '../../store/contexto';
 import { fmt } from '../../components/ui';
 import { ambitos, datosCampana, distribucion, filtrar, origenDatos, SECTORES, TIPO_AMBITO_TXT, type FiltrosPanel, type Sector } from '../../domain/panel';
 import type { Id, TipoAmbito } from '../../domain/types';
@@ -33,8 +33,7 @@ const PESTANAS: { v: Pestana; t: string; i: ReactNode }[] = [
  * la vista y las fuentes separadas (histórico importado, propuesta, confirmado).
  */
 export default function VisualizacionPage() {
-  const db = useStore((s) => s.db!);
-  const prefs = useStore((s) => s.prefs);
+  const { db, prefs } = useContexto();
   const lista = useMemo(() => ambitos(db), [db]);
   const [tipo, setTipo] = useState<TipoAmbito>('municipio');
   const delTipo = lista.filter((a) => a.tipo === tipo);
