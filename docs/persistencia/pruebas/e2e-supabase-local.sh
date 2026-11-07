@@ -22,7 +22,7 @@ case "$DB" in *127.0.0.1*|*localhost*) q -c "do \$\$ begin if not exists (select
 q -f "$P/pruebas/ulit_base_muestra.sql"
 ANTES=$(q -At -f "$P/sql/20261104_9101_huella_ulit_base.sql")
 q -c "select 1 from pg_namespace where nspname = 'ulit_censo'" -At | grep -q 1 && q -f "$P/sql/20261104_9000_ulit_censo_retirada.sql" >/dev/null 2>&1
-q -f "$P/sql/20261104_0001_ulit_censo_esquema.sql"; q -f "$P/sql/20261104_0002_ulit_censo_operaciones.sql"; q -f "$P/sql/20261105_0004_ulit_censo_inicializacion_real.sql"; q -f "$P/sql/20261105_0005_importacion_unica_medina_2025.sql"; q -f "$P/sql/20261106_0006_importacion_it1_medina_2026.sql"
+q -f "$P/sql/20261104_0001_ulit_censo_esquema.sql"; q -f "$P/sql/20261104_0002_ulit_censo_operaciones.sql"; q -f "$P/sql/20261105_0004_ulit_censo_inicializacion_real.sql"; q -f "$P/sql/20261105_0005_importacion_unica_medina_2025.sql"; q -f "$P/sql/20261106_0006_importacion_it1_medina_2026.sql"; q -f "$P/sql/20261107_0007_it1_c_ambigua_reintento_seguro.sql"
 [ "$(q -At -f "$P/sql/20261104_9101_huella_ulit_base.sql")" = "$ANTES" ] && echo "✓ ULIT base intacto tras aplicar 0001, 0002, 0004, 0005 y 0006"
 cd "$R"
 env -u HTTPS_PROXY -u HTTP_PROXY -u https_proxy -u http_proxy NO_PROXY=127.0.0.1,localhost \
