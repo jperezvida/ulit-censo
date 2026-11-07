@@ -5,6 +5,7 @@ import { Layers, MapPinned, PenLine, Search, Users, X } from 'lucide-react';
 import { MapaBase } from '../../components/mapa/MapaBase';
 import { useFichaLocal } from '../../store/contexto';
 import { useStore } from '../../store/store';
+import { useFuenteOficina } from '../../store/fuenteOficina';
 import { useEspacios } from '../../store/espacios';
 import { TerritorioDemo, TerritorioEnsayo, useContextoTerritorio } from './contextoTerritorio';
 import { itinerariosDe, situacionPrevia } from '../../domain/consultas';
@@ -34,6 +35,7 @@ export function TerritorioEnsayoPage({ campanaId, itinerarioId }: { campanaId: I
 }
 
 function TerritorioContenido({ itInicial }: { itInicial?: Id }) {
+  const enReal = useFuenteOficina()?.soloLectura === true;
   const { db, municipio, campana, referencia, ix, aplicar, avisar, puedeEditar, puedePlanificarEnsayo, demo, dbVigente } = useContextoTerritorio();
   const modificarEnsayo = useEspacios((s) => s.modificar);
   const ocupado = useEspacios((s) => s.ocupado);
@@ -527,7 +529,7 @@ function TerritorioContenido({ itInicial }: { itInicial?: Id }) {
           ) : (
             <span className="chip real" title={`${db.meta.detalleCallejero} · Datos © colaboradores de OpenStreetMap, licencia ODbL (openstreetmap.org/copyright)`}>Callejero real · © OSM (ODbL)</span>
           )}
-          {demo ? <Sim texto={fuenteCallejero === 'simulado' ? 'Itinerarios y locales de demostración' : 'Locales, números de portal e itinerarios ficticios'} title={fuenteCallejero === 'simulado' ? undefined : 'Las calles son reales; los locales, sus números de portal y sus ubicaciones son de demostración: no son direcciones comprobadas.'} /> : <span className="chip aviso">Espacio de ensayo · datos sintéticos</span>}
+          {demo ? <Sim texto={fuenteCallejero === 'simulado' ? 'Itinerarios y locales de demostración' : 'Locales, números de portal e itinerarios ficticios'} title={fuenteCallejero === 'simulado' ? undefined : 'Las calles son reales; los locales, sus números de portal y sus ubicaciones son de demostración: no son direcciones comprobadas.'} /> : enReal ? <span className="chip real">Censo real · consulta</span> : <span className="chip aviso">Espacio de ensayo · datos sintéticos</span>}
         </div>
 
         <Leyenda capa={capa} />
