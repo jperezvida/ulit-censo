@@ -632,4 +632,93 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
     await expect(real.importarPrimerHistorico2025(inicial, aplicado.db, copia)).rejects.toThrow(/versión 1/);
   }, 180000);
 
+  it('IT1 real sintético: reutiliza respaldo y autorización, guarda 105 filas y cierra la escritura', async () => {
+    // ÚNICAMENTE sobre Supabase local desechable. No se accede a la base auténtica.
+    const realId = 'real-medina-del-campo-2026';
+    const campId = 'real-camp-medina-2026-censo-medina-del-campo-2026';
+    const origenSha = '7a6d4230a68370cc0bb0245ce68e8c56648be4d89e76531cc0edbd9ab341da61';
+    const real = new AlmacenSupabase(coord, realId);
+    const readV2 = await real.leer();
+    expect(readV2.info).toMatchObject({ version: 2, escrituraHabilitada: false });
+    expect(Object.keys(readV2.db!.registros)).toHaveLength(889);
+
+    // En producción la campaña de 2026 ya existe en v3. Simular únicamente
+    // esa alta en el servidor local, sin cambiar ninguna entidad histórica.
+    const camp = {
+      id: campId, municipioId: 'real-mun-medina', anio: 2026,
+      nombre: 'Censo Medina del Campo 2026', tipo: 'actualizacion',
+      periodo: { inicio: '2026-01-01' }, ambitoCalleIds: [], ampliacionCalleIds: [],
+      estados: { planificacion: 'pendiente', campo: 'pendiente', revision: 'pendiente', validacion: 'pendiente' },
+      procedencia: 'manual', campanaReferenciaId: 'camp-hist-real-mun-medina-2025-9e367ca51c',
+    };
+    sql("begin; insert into ulit_censo.entidad(espacio_id,coleccion,id,valor,version,actualizado_por) values (" +
+      "'" + realId + "','campanas','" + campId + "','" + JSON.stringify(camp).replace(/'/g,"''") + "'::jsonb,3,'" + ids.coord + "');" +
+      "update ulit_censo.espacio set version=3 where id='" + realId + "' and version=2; commit;");
+
+    const antes = (await real.leer()).db!;
+    expect(Object.keys(antes.locales)).toHaveLength(696);
+    expect(Object.keys(antes.campanas)).toHaveLength(2);
+    const personaId = 'real-p-coordinacion-sintetica';
+    const { db: dbConIt, itinerarioId } = crearItinerario(antes,campId,
+      { codigo:'IT1', nombre:'IT1 sintético' }, { prefijo:'real', porId:personaId, ahora:'2026-11-07T12:00:00Z' });
+    const despues: BaseDatos = structuredClone(dbConIt);
+    despues.secuencia = (antes.secuencia ?? 0) + 1;
+    const impId = 'imp-it1-sintetico-e2e';
+    const calleId = Object.keys(antes.calles)[0];
+    expect(calleId).toBeTruthy();
+    for (let i=2;i<=106;i++) {
+      const registroId = 'reg-' + impId + '-' + i;
+      const localId = i<=15 ? 'real-loc-it1-sintetico-' + i : null;
+      if(localId) despues.locales[localId] = {
+        id:localId,municipioId:'real-mun-medina',
+        direcciones:[{calleId,numero:5000+i,desdeCampanaId:campId}],
+        estado:'activo',procedencia:'importado',
+      };
+      despues.registros[registroId] = {
+        id:registroId,importacionId:impId,itinerarioId,fila:i,
+        datos:{nombre:'COMERCIO SINTÉTICO '+i},
+        original:{},interpretacion:{celdas:{},local:localId?'ocupado':'sin-datos',redesCalculadas:{},incidencias:[]},
+        huellaFila:'sintetica',
+      } as unknown as BaseDatos['registros'][string];
+      despues.vinculos['vin-'+registroId] = {
+        id:'vin-'+registroId,origen:{tipo:'registro',id:registroId},localId,
+        confianza:localId?'probable':'sin-vinculo',
+        criterio:localId?'alta sintética':'pendiente sintético',
+      };
+    }
+    despues.importaciones[impId] = {
+      id:impId,municipioId:'real-mun-medina',campanaId:campId,tipo:'C-excel-itinerario',
+      archivo:'IT1_SINTETICO_E2E.xlsx',huella:origenSha,fecha:'2026-11-07T12:00:00Z',
+      filas:105,estado:'confirmada',procedencia:'importado',resumen:{},
+      nota:'Prueba sintética sin datos auténticos',
+      c1:{ sha256:origenSha,anio:2026,itinerario:despues.itinerarios[itinerarioId] },
+    } as unknown as BaseDatos['importaciones'][string];
+
+    // Primera preparación y reintento ANTES de guardar: misma copia, mismo permiso.
+    const parametros = {p_espacio:realId,p_sha:origenSha,p_version:3};
+    const primera = await coord.rpc('ulit_censo_preparar_it1_2026',parametros);
+    expect(primera.error).toBeNull();
+    const reintento = await coord.rpc('ulit_censo_preparar_it1_2026',parametros);
+    expect(reintento.error).toBeNull();
+    expect(reintento.data?.copia).toBe(primera.data?.copia);
+    expect(reintento.data?.reutilizada).toBe(true);
+    expect(sql("select count(*) from ulit_censo.copia where espacio_id='" + realId + "' and version=3")).toBe('1');
+
+    // Recorrido completo de la APP, incluido lote temporal, RPC transaccional,
+    // validación de 105/14/91, recarga exacta y bloqueo de reimportación.
+    expect(await real.importarIt1_2026(antes,despues,origenSha)).toBe(4);
+    const guardado = await real.leer();
+    expect(guardado.info).toMatchObject({version:4,escrituraHabilitada:false,preparacionHabilitada:false});
+    expect(huella(guardado.db!)).toBe(huella(despues));
+    expect(Object.keys(guardado.db!.registros)).toHaveLength(994);
+    expect(Object.keys(guardado.db!.itinerarios)).toHaveLength(1);
+    expect(Object.keys(guardado.db!.locales)).toHaveLength(710);
+    expect(sql("select version_resultante from ulit_censo.autorizacion_it1_2026 where espacio_id='" + realId + "'")).toBe('4');
+    expect(sql("select count(*) from ulit_censo.lote_parte where espacio_id='" + realId + "'")).toBe('0');
+
+    const segunda = await coord.rpc('ulit_censo_preparar_it1_2026',parametros);
+    expect(segunda.error?.code).toBe('42501');
+    expect(Object.keys((await real.leer()).db!.registros)).toHaveLength(994);
+  }, 180000);
+
 });
