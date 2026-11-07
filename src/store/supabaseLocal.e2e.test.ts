@@ -677,8 +677,17 @@ describe.skipIf(!URL)('ULIT Censo contra Supabase local (SINTÉTICO)', () => {
     const personaId = 'real-p-coordinacion-sintetica';
     const { db: dbConIt, itinerarioId } = crearItinerario(antes,campId,
       { codigo:'IT1', nombre:'IT1 sintético' }, { prefijo:'real', porId:personaId, ahora:'2026-11-07T12:00:00Z' });
-    const despues: BaseDatos = structuredClone(dbConIt);
-    despues.secuencia = (antes.secuencia ?? 0) + 1;
+    // El importador real reutiliza por referencia las entidades históricas:
+    // diferencia() debe enviar SOLO la raíz y los elementos nuevos de IT1,
+    // jamás reescribir los 889 registros ni los 696 locales existentes.
+    const despues: BaseDatos = {
+      ...dbConIt,
+      locales: { ...dbConIt.locales },
+      registros: { ...dbConIt.registros },
+      vinculos: { ...dbConIt.vinculos },
+      importaciones: { ...dbConIt.importaciones },
+      secuencia: (antes.secuencia ?? 0) + 1,
+    };
     const impId = 'imp-it1-sintetico-e2e';
     const calleId = Object.keys(antes.calles)[0];
     expect(calleId).toBeTruthy();
