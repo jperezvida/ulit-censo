@@ -97,14 +97,8 @@ export default function DatosRealPage() {
     analisis.totalFilas === 105 && analisis.totalPendientes === 91 &&
     informe.vinculados === 14 && fuente?.versionReal === 3;
 
-  return <div className="pagina" aria-label="Datos reales e importación de IT1">
-    <div className="pagina-cab">
-      <div className="esp">
-        <div className="rotulo sin-linea">05 · Datos e importaciones · campaña real</div>
-        <h1>Incorporación de Excel · IT1</h1>
-        <p>El mismo importador del proyecto, ahora dentro de la aplicación completa. El archivo se analiza en memoria y el servidor recibe únicamente las entidades confirmadas, no los bytes del XLSX.</p>
-      </div>
-    </div>
+  return <div className="dat-importacion-real" aria-label="IT1 de Medina 2026, en el módulo Datos original">
+    <p className="muted">Itinerario IT1 · registros auténticos de la campaña 2026.</p>
     <div className="t-info aviso" role="note">
       <LockKeyhole size={16} />
       <span><b>IT1, escritura única y controlada.</b> La operación autorizada crea primero una copia íntegra, incorpora solamente 105 filas y cierra la escritura en la misma transacción. No modifica el histórico 2025 ni habilita escritura general.</span>
