@@ -109,8 +109,8 @@ export default function CampanasPage() {
             activa={c.id === campana?.id}
             soloLectura={soloLectura}
             onAbrir={(destino) => {
-              if (soloLectura) { fuente?.elegirCampana?.(c.id); return; }
-              setPrefs({ campanaId: c.id });
+              if (soloLectura) fuente?.elegirCampana?.(c.id);
+              else setPrefs({ campanaId: c.id });
               nav(destino);
             }}
           />
@@ -126,12 +126,23 @@ function TarjetaCampana({ c, activa, soloLectura, onAbrir }: { c: Campana; activ
   const m = useMemo(() => metricasCampana(db, c), [db, c]);
   const nAmbito = c.ambitoCalleIds.length;
   const importaciones = new Set(Object.values(db.importaciones).filter((i) => i.campanaId === c.id && i.estado === 'confirmada').map((i) => i.id));
-  const filas = Object.values(db.registros).filter((r) => importaciones.has(r.importacionId)).length;
+  const registros = Object.values(db.registros).filter((r) => importaciones.has(r.importacionId));
+  const filas = registros.length;
+  const vinculados = new Map(Object.values(db.vinculos)
+    .filter((v) => v.origen.tipo === 'registro')
+    .map((v) => [v.origen.id, v.localId]));
+  const sinLocal = registros.filter((r) => !vinculados.get(r.id)).length;
+  const itinerariosSinCalles = m.its.filter((it) => it.tramos.length === 0);
   const fases: { k: keyof Campana['estados']; t: string; v: number; detalle: string }[] = [
     {
       k: 'planificacion', t: 'Planificación',
       v: c.tipo === 'historico-importado' ? 1 : nAmbito ? m.asig.completa.length / nAmbito : 0,
-      detalle: c.tipo === 'historico-importado' ? 'Sin itinerarios (censo importado)' : db.municipios[c.municipioId]?.fuenteCallejero === 'sin-geometria' ? 'Itinerarios no incluidos en la demo de volumen' : `${m.its.length} de ~${c.itinerariosPrevistos ?? m.its.length} itinerarios · ${m.asig.sinAsignar.length} calles sin asignar`,
+      detalle: c.tipo === 'historico-importado' ? 'Sin itinerarios (censo importado)'
+         : nAmbito === 0 && m.its.length > 0 && importaciones.size > 0
+           ? `${m.its.length} itinerario(s) registrados · ${importaciones.size} Excel incorporado(s) · 0 calles asignadas`
+           : db.municipios[c.municipioId]?.fuenteCallejero === 'sin-geometria'
+             ? 'Itinerarios no incluidos en la demo de volumen'
+             : `${m.its.length} de ~${c.itinerariosPrevistos ?? m.its.length} itinerarios · ${m.asig.sinAsignar.length} calles sin asignar`,
     },
     {
       k: 'campo', t: 'Trabajo de campo', v: c.estados.campo === 'terminado' ? 1 : nAmbito ? m.completadas / nAmbito : 0,
@@ -153,8 +164,9 @@ function TarjetaCampana({ c, activa, soloLectura, onAbrir }: { c: Campana; activ
         </div>
         <div className="campana-meta">
           {soloLectura && <span className="chip real">{fmt(filas)} filas reales · {importaciones.size} Excel</span>}
+          {soloLectura && sinLocal > 0 && <span className="chip aviso">{fmt(sinLocal)} filas sin local · por conciliar</span>}
           <span><CalendarRange size={14} /> {c.periodo.inicio}{c.periodo.fin ? ` → ${c.periodo.fin}` : ' → en curso'}</span>
-          <span><Route size={14} /> {fmt(nAmbito)} calles · {formatoDistancia(m.km)}</span>
+          <span><Route size={14} /> {fmt(nAmbito)} {soloLectura && c.tipo !== 'historico-importado' ? 'calles planificadas' : 'calles'} · {formatoDistancia(m.km)}</span>
           {c.ampliacionCalleIds.length > 0 && (
             <span className="chip aviso" title="Calles incorporadas respecto a la campaña anterior: en los análisis se separan de la evolución real">
               +{c.ampliacionCalleIds.length} calles por ampliación
@@ -180,25 +192,32 @@ function TarjetaCampana({ c, activa, soloLectura, onAbrir }: { c: Campana; activ
             </div>
           ))}
         </div>
+        {soloLectura && c.tipo !== 'historico-importado' && itinerariosSinCalles.length > 0 && importaciones.size > 0 && (
+          <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
+            {itinerariosSinCalles.map((it) => it.codigo).join(', ')}: Excel incorporado; calles del itinerario todavía sin asignar en Territorio.
+          </p>
+        )}
         <div className="fila" style={{ flexWrap: 'wrap', marginTop: 4 }}>
-          {soloLectura ? <button className="btn s" onClick={() => onAbrir('/real/campanas')}>Seleccionar campaña real</button> : <>
+          {soloLectura && <button className="btn s" onClick={() => onAbrir('/campanas')}>Seleccionar campaña</button>}
           {c.tipo !== 'historico-importado' && db.municipios[c.municipioId]?.fuenteCallejero !== 'sin-geometria' && (
             <button className="btn primario s" onClick={() => onAbrir('/territorio')}>
-              <Route size={14} /> Planificar territorio
+              <Route size={14} /> {soloLectura ? 'Ver territorio' : 'Planificar territorio'}
+            </button>
+          )}
+          {soloLectura && c.tipo === 'historico-importado' && (
+            <button className="btn s" onClick={() => onAbrir('/territorio')}>
+              <Route size={14} /> Ver territorio
             </button>
           )}
           <button className="btn s" onClick={() => onAbrir('/oficina')}>
-            Bandeja de oficina <ArrowRight size={14} />
+            {soloLectura ? 'Consultar oficina' : 'Bandeja de oficina'} <ArrowRight size={14} />
           </button>
-          {c.tipo === 'historico-importado' && (
+          {(soloLectura || c.tipo === 'historico-importado') && (
             <button className="btn s" onClick={() => onAbrir('/datos')}>
-              <FileSpreadsheet size={14} /> Ver importación
+              <FileSpreadsheet size={14} /> {c.tipo === 'historico-importado' ? 'Ver importación' : 'Ver importaciones'}
             </button>
           )}
-          <button className="btn s fantasma" onClick={() => onAbrir('/analisis')}>
-            Análisis
-          </button>
-          </>}
+          <button className="btn s fantasma" onClick={() => onAbrir('/analisis')}>Análisis</button>
         </div>
       </div>
     </article>
