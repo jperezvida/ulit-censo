@@ -97,9 +97,9 @@ begin
   assert (select count(*) from ulit_censo.entidad where coleccion='registros')=994;
   assert (select count(*) from ulit_censo.entidad where coleccion='vinculos' and valor->>'localId' is null)=91;
   assert (select count(*) from ulit_censo.entidad where coleccion='observaciones' and valor->>'campanaId'='real-camp-medina-2026-censo-medina-del-campo-2026')=61;
-  assert not has_function_privilege('anon','public.ulit_censo_conciliar_it1_2026(text,bigint,text,text,text,text)','EXECUTE');
-  assert not has_function_privilege('service_role','public.ulit_censo_conciliar_it1_2026(text,bigint,text,text,text,text)','EXECUTE');
-  assert has_function_privilege('authenticated','public.ulit_censo_conciliar_it1_2026(text,bigint,text,text,text,text)','EXECUTE');
+  assert not has_function_privilege('anon','public.ulit_censo_conciliar_it1_2026(text,bigint,text,text,text,text,boolean)','EXECUTE');
+  assert not has_function_privilege('service_role','public.ulit_censo_conciliar_it1_2026(text,bigint,text,text,text,text,boolean)','EXECUTE');
+  assert has_function_privilege('authenticated','public.ulit_censo_conciliar_it1_2026(text,bigint,text,text,text,text,boolean)','EXECUTE');
   assert not has_table_privilege('authenticated','ulit_censo.entidad','UPDATE');
 end $t$;
 
@@ -155,22 +155,29 @@ begin
  assert respuesta->>'version'='6';
  assert (select valor->>'localId' from ulit_censo.entidad where coleccion='vinculos' and id='vin-it1-r-3') is null;
  assert (select valor->'conciliaciones'->0->>'porId' from ulit_censo.entidad where coleccion='vinculos' and id='vin-it1-r-3')='p-revisor';
- respuesta:=public.ulit_censo_conciliar_it1_2026('real-medina-del-campo-2026',6,'it1-r-3','deshacer',null,null);
+ respuesta:=public.ulit_censo_conciliar_it1_2026('real-medina-del-campo-2026',6,'it1-r-3','deshacer',null,'Reversión documentada y comprobada');
  assert respuesta->>'version'='7';
  assert (select valor->'conciliaciones'->0 ? 'deshecha' from ulit_censo.entidad where coleccion='vinculos' and id='vin-it1-r-3');
 end $t$;
 
-\echo '07 · Deshacer vínculo histórico y conservar observación original'
+\echo '07 · Deshacer protegido: un revisor no revierte al administrador'
+select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026(
+ 'real-medina-del-campo-2026',7,'it1-r-2','deshacer',null,'Revocar sin ser autor de la decisión')$q$,'42501');
+select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026(
+ 'real-medina-del-campo-2026',7,'it1-r-2','deshacer',null,null)$q$,'22023');
+-- El administrador (autor original) revierte justificadamente el vínculo.
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000c';
 do $t$
 declare respuesta jsonb;
 begin
- respuesta:=public.ulit_censo_conciliar_it1_2026('real-medina-del-campo-2026',7,'it1-r-2','deshacer',null,null);
+ respuesta:=public.ulit_censo_conciliar_it1_2026('real-medina-del-campo-2026',7,'it1-r-2','deshacer',null,'Reversión documentada y comprobada');
  assert respuesta->>'version'='8';
  assert (select valor->>'localId' from ulit_censo.entidad where coleccion='vinculos' and id='vin-it1-r-2') is null;
  assert (select valor->>'localId' from ulit_censo.entidad where coleccion='observaciones' and id='it1-o-2') is null;
  assert (select count(*) from ulit_censo.entidad where coleccion='ocupaciones' and id='ocu-g5-it1-r-2')=0;
  assert (select count(*) from ulit_censo.entidad where coleccion='locales' and id='hist-local-3')=1;
 end $t$;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000e';
 
 \echo '08 · Local nuevo, v9, autoría, original intacto; después deshacer v10'
 do $t$
@@ -183,7 +190,7 @@ begin
  assert (select valor->'direcciones'->0->>'numero' from ulit_censo.entidad where coleccion='locales' and id='loc-g5-it1-r-4')='4';
  assert (select valor->'conciliaciones'->0->>'porId' from ulit_censo.entidad where coleccion='vinculos' and id='vin-it1-r-4')='p-revisor';
  assert (select valor->>'fila' from ulit_censo.entidad where coleccion='registros' and id='it1-r-4')='4';
- respuesta:=public.ulit_censo_conciliar_it1_2026('real-medina-del-campo-2026',9,'it1-r-4','deshacer',null,null);
+ respuesta:=public.ulit_censo_conciliar_it1_2026('real-medina-del-campo-2026',9,'it1-r-4','deshacer',null,'Reversión documentada y comprobada');
  assert respuesta->>'version'='10';
  assert (select count(*) from ulit_censo.entidad where coleccion='locales' and id='loc-g5-it1-r-4')=0;
  assert (select count(*) from ulit_censo.entidad where coleccion='ocupaciones' and id='ocu-g5-it1-r-4')=0;
@@ -261,7 +268,7 @@ update ulit_censo.entidad
  set valor=pg_catalog.jsonb_set(valor,'{estado}','"desaparecido"'::jsonb)
  where coleccion='locales' and id='loc-g5-it1-r-6';
 select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026(
- 'real-medina-del-campo-2026',12,'it1-r-6','deshacer',null,null)$q$,'42501');
+ 'real-medina-del-campo-2026',12,'it1-r-6','deshacer',null,'Reversión documentada y comprobada')$q$,'42501');
 update ulit_censo.entidad
  set valor=pg_catalog.jsonb_set(valor,'{estado}','"activo"'::jsonb)
  where coleccion='locales' and id='loc-g5-it1-r-6';
@@ -269,7 +276,7 @@ update ulit_censo.entidad
  set valor=pg_catalog.jsonb_set(valor,'{orden}','99999'::jsonb)
  where coleccion='ocupaciones' and id='ocu-g5-it1-r-6';
 select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026(
- 'real-medina-del-campo-2026',12,'it1-r-6','deshacer',null,null)$q$,'42501');
+ 'real-medina-del-campo-2026',12,'it1-r-6','deshacer',null,'Reversión documentada y comprobada')$q$,'42501');
 update ulit_censo.entidad
  set valor=pg_catalog.jsonb_set(valor,'{orden}','2003'::jsonb)
  where coleccion='ocupaciones' and id='ocu-g5-it1-r-6';
@@ -279,13 +286,13 @@ insert into ulit_censo.entidad (espacio_id,coleccion,id,valor,version)
 values ('real-medina-del-campo-2026','coberturas','cobertura-r6',
         '{"id":"cobertura-r6","localId":"loc-g5-it1-r-6","nota":"referencia posterior"}',12);
 select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026(
- 'real-medina-del-campo-2026',12,'it1-r-6','deshacer',null,null)$q$,'42501');
+ 'real-medina-del-campo-2026',12,'it1-r-6','deshacer',null,'Reversión documentada y comprobada')$q$,'42501');
 delete from ulit_censo.entidad where coleccion='coberturas' and id='cobertura-r6';
 do $t$
 declare r jsonb;
 begin
  r:=public.ulit_censo_conciliar_it1_2026('real-medina-del-campo-2026',
-   12,'it1-r-6','deshacer',null,null);
+   12,'it1-r-6','deshacer',null,'Reversión documentada y comprobada');
  assert r->>'version'='13';
  assert not exists (select 1 from ulit_censo.entidad where coleccion='locales' and id='loc-g5-it1-r-6');
  assert not exists (select 1 from ulit_censo.entidad where coleccion='ocupaciones' and id='ocu-g5-it1-r-6');
@@ -322,3 +329,65 @@ do $t$ begin
              where id='real-medina-del-campo-2026');
 end $t$;
 \echo 'ÉXITO · Identidad del negocio y estado vacío/ocupado consistentes'
+
+\echo '15 · Duplicados reales, confirmación expresa y justificación del portal compartido'
+-- La dirección 3 ya existe en histórico 2025. Sin verificación expresa: BLOQUEO.
+select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026(
+ 'real-medina-del-campo-2026',13,'it1-r-2','local-nuevo',null,
+ 'Nuevo local verificado en otro acceso al mismo portal')$q$,'42501');
+do $t$ declare r jsonb; begin
+ r:=public.ulit_censo_conciliar_it1_2026(
+  'real-medina-del-campo-2026',13,'it1-r-2','local-nuevo',null,
+  'Local distinto verificado en el portal número 3',true);
+ assert r->>'version'='14';
+ assert (select valor->'conciliaciones'->1->>'localDistintoConfirmado' from ulit_censo.entidad
+         where coleccion='vinculos' and id='vin-it1-r-2')='true';
+end $t$;
+-- La fila 3 es el MISMO negocio que la fila 2 y el mismo portal.
+-- Ni siquiera confirmar "distinto" permite duplicar ese negocio.
+select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026(
+ 'real-medina-del-campo-2026',14,'it1-r-3','local-nuevo',null,
+ 'No puede repetirse una empresa en el portal tres',true)$q$,'42501');
+do $t$ begin
+ assert (select count(*) from ulit_censo.entidad where coleccion='locales'
+        and id='loc-g5-it1-r-3')=0;
+ assert (select version from ulit_censo.espacio where id='real-medina-del-campo-2026')=14;
+end $t$;
+
+\echo '16 · Borrado de copias y conservación de histórico inmutables'
+select pg_temp.rechazado($q$delete from ulit_censo.copia
+ where espacio_id='real-medina-del-campo-2026'$q$,'42501');
+do $t$ begin
+ assert (select count(*) from ulit_censo.copia where version=4)=1;
+end $t$;
+
+\echo '17 · Reutilización de ocupación 2026 incompatible: rechazo'
+-- Otra ocupación de 2026 en local histórico, mientras su fila no está vinculada.
+-- La ocupación tiene negocio distinto del observado en la fila 3.
+insert into ulit_censo.entidad(espacio_id,coleccion,id,valor,version)
+values('real-medina-del-campo-2026','ocupaciones','ocupacion-conflictiva',
+ '{"id":"ocupacion-conflictiva","localId":"hist-local-3","negocioId":"negocio-ajeno","desdeCampanaId":"real-camp-medina-2026-censo-medina-del-campo-2026","hastaCampanaId":"real-camp-medina-2026-censo-medina-del-campo-2026"}',14);
+-- Se requiere primero levantar el duplicado de vínculo (sin borrar decisiones):
+-- otra entidad dependiente del mismo negocio, pero en local nuevo, ya existe,
+-- y esta comprobación de ocupación será la que rechace la vinculación.
+select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026(
+ 'real-medina-del-campo-2026',14,'it1-r-3','vincular','hist-local-3',
+ 'Comparar ocupación previa incongruente')$q$,'42501');
+delete from ulit_censo.entidad where coleccion='ocupaciones' and id='ocupacion-conflictiva';
+
+\echo '18 · Registros y campañas adicionales no anulan la conciliación IT1'
+insert into ulit_censo.entidad(espacio_id,coleccion,id,valor,version)
+values('real-medina-del-campo-2026','campanas','campana-2027-sintetica',
+ '{"id":"campana-2027-sintetica","tipo":"actualizacion","anio":2027}',14),
+('real-medina-del-campo-2026','registros','registro-otro-itinerario',
+ '{"id":"registro-otro-itinerario","importacionId":"futura-importacion","fila":2}',14);
+do $t$ declare r jsonb; begin
+ r:=public.ulit_censo_conciliar_it1_2026(
+  'real-medina-del-campo-2026',14,'it1-r-8','mantener-pendiente',null,
+  'Registrar revisión posterior sin añadir registros');
+ assert r->>'version'='15';
+ assert (select count(*) from ulit_censo.entidad where coleccion='registros')=995;
+ assert (select count(*) from ulit_censo.entidad where coleccion='campanas')=3;
+ assert not (select escritura_habilitada from ulit_censo.espacio where id='real-medina-del-campo-2026');
+end $t$;
+\echo 'ÉXITO · Seis hallazgos de la auditoría con pruebas adversariales'
