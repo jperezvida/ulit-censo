@@ -254,7 +254,7 @@ export default function PendientesSinLocal() {
               </select></label>}
             {propuestaActiva?.puedeCrearLocal && hayLocalEnMismoPortal && <label className="psl-check">
               <input type="checkbox" checked={distintoConfirmado} onChange={(e) => setDistintoConfirmado(e.target.checked)} />
-              He comprobado en campo que se trata de un **local físico distinto**, aunque ya existe otro local en este mismo portal.
+              He comprobado en campo que se trata de un <strong>local físico distinto</strong>, aunque ya existe otro local en este mismo portal.
             </label>}
             <label className="psl-check"><input type="checkbox" checked={confirmado} onChange={(e) => setConfirmado(e.target.checked)} /> Confirmo que he revisado la información y que esta es una decisión humana, no automática.</label>
             <div className="fila psl-botones">
