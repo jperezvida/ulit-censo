@@ -59,13 +59,18 @@ select 'real-medina-del-campo-2026','locales','local-it1-'||n,
    'direcciones',jsonb_build_array(jsonb_build_object('calleId','calle-1','numero',n))),4
 from generate_series(93,106) n;
 
+-- Negocio real de prueba para que un ocupado nunca se almacene como vacío.
+insert into ulit_censo.entidad(espacio_id,coleccion,id,valor,version)
+values ('real-medina-del-campo-2026','negocios','negocio-sintetico',
+ '{"id":"negocio-sintetico","nombre":"Negocio sintético","procedencia":"importado"}',4);
+
 -- 61 observaciones pendientes: 59 con número (2..60) y 2 sin número (61..62).
 insert into ulit_censo.entidad(espacio_id,coleccion,id,valor,version)
 select 'real-medina-del-campo-2026','observaciones','it1-o-'||n,
  jsonb_build_object('id','it1-o-'||n,'campanaId','real-camp-medina-2026-censo-medina-del-campo-2026',
    'itinerarioId','it1','registroId','it1-r-'||n,'calleId','calle-1',
    'localId',null,'datos',
-   jsonb_build_object('vacio',false,'numero',case when n>60 then 'null'::jsonb else to_jsonb(case when n=2 or n=3 then 3 else n end) end,
+   jsonb_build_object('vacio',false,'negocioId','negocio-sintetico','numero',case when n>60 then 'null'::jsonb else to_jsonb(case when n=2 or n=3 then 3 else n end) end,
    'nombre','Prueba comercio '||n)),4
 from generate_series(2,62) n;
 
@@ -290,3 +295,30 @@ end $t$;
 \echo 'ÉXITO · Defensas adicionales: doble vínculo y portal cero'
 
 \echo 'ÉXITO · Integración PostgreSQL aislada: permisos, atomicidad, auditabilidad, reversión y protección 2025'
+
+\echo '14 · Ocupado sin negocio y vacío con negocio: rechazo sin escrituras'
+update ulit_censo.entidad
+ set valor=pg_catalog.jsonb_set(valor,'{datos}',(valor->'datos')-'negocioId')
+ where coleccion='observaciones' and id='it1-o-7';
+select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026(
+ 'real-medina-del-campo-2026',13,'it1-r-7','local-nuevo',null,
+ 'Prueba de ocupado sin negocio definido')$q$,'42501');
+update ulit_censo.entidad
+ set valor=pg_catalog.jsonb_set(valor,'{datos,negocioId}','"negocio-inexistente"'::jsonb)
+ where coleccion='observaciones' and id='it1-o-7';
+select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026(
+ 'real-medina-del-campo-2026',13,'it1-r-7','local-nuevo',null,
+ 'Prueba de negocio inexistente en base')$q$,'42501');
+update ulit_censo.entidad
+ set valor=pg_catalog.jsonb_set(pg_catalog.jsonb_set(valor,'{datos,negocioId}',
+ '"negocio-sintetico"'::jsonb),'{datos,vacio}','true'::jsonb)
+ where coleccion='observaciones' and id='it1-o-7';
+select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026(
+ 'real-medina-del-campo-2026',13,'it1-r-7','local-nuevo',null,
+ 'Prueba de local vacío con negocio asignado')$q$,'42501');
+do $t$ begin
+ assert (select version from ulit_censo.espacio where id='real-medina-del-campo-2026')=13;
+ assert not (select escritura_habilitada from ulit_censo.espacio
+             where id='real-medina-del-campo-2026');
+end $t$;
+\echo 'ÉXITO · Identidad del negocio y estado vacío/ocupado consistentes'
