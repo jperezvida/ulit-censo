@@ -1,0 +1,42 @@
+name: ULIT Censo · Supabase Auth/PostgREST local IT1
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/store/conciliacionLocal.e2e.test.ts'
+      - 'src/store/conciliacionReal.ts'
+      - 'docs/persistencia/pruebas/e2e-supabase-local.sh'
+      - 'docs/persistencia/sql/20261108_0008_conciliacion_it1_supervisada.sql'
+      - '.github/workflows/ci-conciliacion-auth-local.yml'
+permissions:
+  contents: read
+concurrency:
+  group: censo-auth-it1-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Cliente PostgreSQL
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y postgresql-client
+          fi
+          psql --version
+      - name: Auth real y PostgREST usando Supabase local DESECHABLE (no producción)
+        env:
+          ULIT_CENSO_PRUEBA_CONCILIACION: '1'
+        run: bash docs/persistencia/pruebas/e2e-supabase-local.sh /tmp/ulit-censo-auth-it1
+      - name: Retirar servicios y volúmenes locales
+        if: always()
+        run: |
+          if [ -f /tmp/ulit-censo-auth-it1/supabase/config.toml ]; then
+            (cd /tmp/ulit-censo-auth-it1 && npx -y supabase@2.58.5 stop --no-backup) || true
+          fi
