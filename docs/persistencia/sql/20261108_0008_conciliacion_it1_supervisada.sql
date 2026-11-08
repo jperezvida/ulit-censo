@@ -168,7 +168,7 @@ begin
       raise exception 'ULIT Censo: no hay decisión vigente que deshacer'
          using errcode='42501';
     end if;
-    if m.rol = 'revisor' and v_ultima->>'porId' is distinct from m.persona_id then
+    if m.rol = 'revisor' and v_ultima->>'usuarioId' is distinct from auth.uid()::text then
       raise exception 'ULIT Censo: un revisor no puede deshacer decisiones ajenas'
         using errcode='42501';
     end if;
@@ -235,7 +235,7 @@ begin
     v_lista := pg_catalog.jsonb_set(v_lista,array[v_indice::text],
        v_ultima || jsonb_build_object('deshecha',
          jsonb_build_object('porId',m.persona_id,'fecha',v_ahora,
-           'motivo',v_motivo)),false);
+           'motivo',v_motivo,'usuarioId',auth.uid())),false);
     v_vin := v_vin || jsonb_build_object('localId',null,
       'confianza',v_antes->>'confianza','conciliaciones',v_lista);
     if v_antes ? 'revisadoPorId' then
@@ -512,7 +512,7 @@ begin
           using errcode='42501';
       end if;
     end if;
-    v_dec := jsonb_build_object('accion',p_accion,'porId',m.persona_id,'fecha',v_ahora,
+    v_dec := jsonb_build_object('accion',p_accion,'porId',m.persona_id,'usuarioId',auth.uid(),'fecha',v_ahora,
       'motivo',v_motivo,'campanaId',v_camp,
       'itinerarioId',v_reg->>'itinerarioId','antes',v_antes,
       'localDistintoConfirmado',case when p_accion='local-nuevo' then p_confirmar_distinto else false end,
