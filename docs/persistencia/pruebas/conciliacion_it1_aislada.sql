@@ -378,6 +378,11 @@ end $t$;
 select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026(
  'real-medina-del-campo-2026',14,'it1-r-3','local-nuevo',null,
  'No puede repetirse una empresa en el portal tres',true)$q$,'42501');
+-- También está prohibido tomar el local histórico del portal tres para
+-- el MISMO negocio: sería duplicarlo por otro camino de la RPC.
+select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026(
+ 'real-medina-del-campo-2026',14,'it1-r-3','vincular','hist-local-3',
+ 'No debe repetirse el negocio en portal tres')$q$,'42501');
 do $t$ begin
  assert (select count(*) from ulit_censo.entidad where coleccion='locales'
         and id='loc-g5-it1-r-3')=0;
@@ -391,18 +396,20 @@ do $t$ begin
  assert (select count(*) from ulit_censo.copia where version=4)=1;
 end $t$;
 
-\echo '17 · Reutilización de ocupación 2026 incompatible: rechazo'
--- Otra ocupación de 2026 en local histórico, mientras su fila no está vinculada.
--- La ocupación tiene negocio distinto del observado en la fila 3.
+\echo '17 · Ocupación 2026 incompatible: rechazo por estado/negocio'
+-- Local histórico 2025 independiente del portal tres ya utilizado.
 insert into ulit_censo.entidad(espacio_id,coleccion,id,valor,version)
-values('real-medina-del-campo-2026','ocupaciones','ocupacion-conflictiva',
- '{"id":"ocupacion-conflictiva","localId":"hist-local-3","negocioId":"negocio-ajeno","desdeCampanaId":"real-camp-medina-2026-censo-medina-del-campo-2026","hastaCampanaId":"real-camp-medina-2026-censo-medina-del-campo-2026"}',14);
--- Se requiere primero levantar el duplicado de vínculo (sin borrar decisiones):
--- otra entidad dependiente del mismo negocio, pero en local nuevo, ya existe,
--- y esta comprobación de ocupación será la que rechace la vinculación.
+values('real-medina-del-campo-2026','locales','hist-local-9',
+ '{"id":"hist-local-9","municipioId":"real-mun-medina","direcciones":[{"calleId":"calle-1","numero":9}],"estado":"activo","procedencia":"importado"}',14),
+('real-medina-del-campo-2026','observaciones','obs-hist-9',
+ '{"id":"obs-hist-9","campanaId":"camp-hist-real-mun-medina-2025-9e367ca51c","localId":"hist-local-9","calleId":"calle-1","datos":{"numero":9,"vacio":false}}',14),
+('real-medina-del-campo-2026','ocupaciones','ocupacion-conflictiva',
+ '{"id":"ocupacion-conflictiva","localId":"hist-local-9","negocioId":"negocio-ajeno","desdeCampanaId":"real-camp-medina-2026-censo-medina-del-campo-2026","hastaCampanaId":"real-camp-medina-2026-censo-medina-del-campo-2026"}',14);
+-- La ocupación de 2026 ya existente declara OTRO negocio.
+-- La RPC no puede reutilizarla ni dejar una observación contradictoria.
 select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026(
- 'real-medina-del-campo-2026',14,'it1-r-3','vincular','hist-local-3',
- 'Comparar ocupación previa incongruente')$q$,'42501');
+ 'real-medina-del-campo-2026',14,'it1-r-9','vincular','hist-local-9',
+ 'Negocio no coincide con ocupación anterior')$q$,'42501');
 delete from ulit_censo.entidad where coleccion='ocupaciones' and id='ocupacion-conflictiva';
 
 \echo '18 · Registros y campañas adicionales no anulan la conciliación IT1'
