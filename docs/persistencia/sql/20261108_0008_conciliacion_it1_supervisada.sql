@@ -280,7 +280,25 @@ begin
           or exists (select 1 from ulit_censo.entidad
              where espacio_id=p_espacio and coleccion='observaciones'
                and valor->>'campanaId'=v_camp and valor->>'localId'=p_local_id
-               and valor->>'registroId' is distinct from p_registro_id) then
+               and valor->>'registroId' is distinct from p_registro_id)
+          -- Una fila de 2026 puede tener vínculo pero NO observación. También
+          -- debe bloquear la reutilización del mismo local físico histórico.
+          or exists (
+            select 1 from ulit_censo.entidad v_exist
+            join ulit_censo.entidad r_exist on
+              r_exist.espacio_id=v_exist.espacio_id
+              and r_exist.coleccion='registros'
+              and r_exist.id=v_exist.valor->'origen'->>'id'
+            join ulit_censo.entidad i_exist on
+              i_exist.espacio_id=v_exist.espacio_id
+              and i_exist.coleccion='importaciones'
+              and i_exist.id=r_exist.valor->>'importacionId'
+            where v_exist.espacio_id=p_espacio
+              and v_exist.coleccion='vinculos'
+              and v_exist.valor->>'localId'=p_local_id
+              and v_exist.valor->'origen'->>'id' is distinct from p_registro_id
+              and i_exist.valor->>'campanaId'=v_camp
+          ) then
           raise exception 'ULIT Censo: local histórico incompatible, ya usado o de otra calle'
              using errcode='42501';
         end if;
@@ -294,6 +312,10 @@ begin
              using errcode='42501';
         end if;
         v_num := (v_obs->'datos'->>'numero')::integer;
+        if v_num < 1 then
+          raise exception 'ULIT Censo: el número 0 no identifica un portal comprobado'
+            using errcode='42501';
+        end if;
         v_sufijo := nullif(v_obs->'datos'->>'sufijo','');
         v_nuevo_id := 'loc-g5-'||p_registro_id;
         if length(v_nuevo_id)>400 or exists (select 1 from ulit_censo.entidad
