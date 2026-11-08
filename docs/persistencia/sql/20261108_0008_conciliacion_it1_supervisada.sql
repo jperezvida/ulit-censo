@@ -49,11 +49,11 @@ declare
   v_vers bigint;
   v_previa jsonb;
   v_texto text;
-  v_comprometido boolean := false;
 begin
   if p_espacio is distinct from 'real-medina-del-campo-2026'
-     or p_registro_id is null or length(p_registro_id) > 350
-     or p_accion not in ('vincular','local-nuevo','mantener-pendiente','deshacer')
+     or (p_accion is distinct from 'estado' and (p_registro_id is null or length(p_registro_id) > 350))
+     or p_accion is null
+     or p_accion not in ('estado','vincular','local-nuevo','mantener-pendiente','deshacer')
      or p_version_esperada is null then
     raise exception 'ULIT Censo: petición de conciliación no autorizada'
        using errcode = '42501';
@@ -64,6 +64,10 @@ begin
      or e.escritura_habilitada or e.preparacion_habilitada then
     raise exception 'ULIT Censo: el espacio debe estar cerrado para conciliar'
        using errcode = '42501';
+  end if;
+  if p_accion = 'estado' then
+    return jsonb_build_object('habilitada', true, 'version', e.version,
+      'permisos', 'administrador,coordinador,revisor');
   end if;
   if e.version <> p_version_esperada then
     raise exception 'ULIT Censo: otro usuario ha modificado la base; recargue antes de continuar'
@@ -166,8 +170,9 @@ begin
       if jsonb_array_length(coalesce(v_ultima->'creadas'->'locales','[]'::jsonb)) > 0 then
         if exists (select 1 from ulit_censo.entidad
           where espacio_id=p_espacio and coleccion in ('vinculos','observaciones','ocupaciones','revisiones')
-          and id <> 'vin-'||p_registro_id and id is distinct from v_obs->>'id'
-          and id <> coalesce(v_ultima->'creadas'->'ocupaciones'->>0,'')
+          and not (coleccion='vinculos' and id='vin-'||p_registro_id)
+          and not (coleccion='observaciones' and id=v_obs->>'id')
+          and not (coleccion='ocupaciones' and id=coalesce(v_ultima->'creadas'->'ocupaciones'->>0,''))
           and (valor->>'localId'=v_ultima->>'localId'
             or (coleccion='vinculos' and valor->'candidatos' @> jsonb_build_array(jsonb_build_object('localId',v_ultima->>'localId'))))) then
           raise exception 'ULIT Censo: otro registro depende del local creado; no se deshace'
@@ -199,7 +204,7 @@ begin
         jsonb_build_object('c','observaciones','id',v_obs->>'id','v',v_obs));
       if jsonb_array_length(coalesce(v_ultima->'creadas'->'ocupaciones','[]'::jsonb))=1 then
         v_ocup_id := v_ultima->'creadas'->'ocupaciones'->>0;
-        if not exists (select 1 from ulit_censo.entidad
+        if v_ocup_id is distinct from 'ocu-g5-'||p_registro_id or not exists (select 1 from ulit_censo.entidad
           where espacio_id=p_espacio and coleccion='ocupaciones'
             and id=v_ocup_id and valor->>'localId'=v_ultima->>'localId'
             and valor->>'desdeCampanaId'=v_camp) then
@@ -212,6 +217,7 @@ begin
       if jsonb_array_length(coalesce(v_ultima->'creadas'->'locales','[]'::jsonb))=1 then
         v_nuevo_id := v_ultima->'creadas'->'locales'->>0;
         if v_nuevo_id is distinct from v_ultima->>'localId'
+           or v_nuevo_id is distinct from 'loc-g5-'||p_registro_id
            or not exists (select 1 from ulit_censo.entidad
              where espacio_id=p_espacio and coleccion='locales'
                and id=v_nuevo_id and valor->>'procedencia'='importado') then
