@@ -29,6 +29,8 @@ describe('Conciliación real: contrato de seguridad del cliente', () => {
     await expect(guardarDecisionIt1(c, { versionEsperada: 4, registroId: 'r15', accion: 'vincular', motivo: 'Por comprobar en campo' })).rejects.toThrow(/Selección/);
     await expect(guardarDecisionIt1(c, { versionEsperada: 4, registroId: 'r15', accion: 'local-nuevo', localId: 'otro', motivo: 'Por comprobar en campo' })).rejects.toThrow(/Selección/);
     await expect(guardarDecisionIt1(c, { versionEsperada: 4, registroId: 'r15', accion: 'mantener-pendiente', motivo: 'duda' })).rejects.toThrow(/motivo/);
+    await expect(guardarDecisionIt1(c, { versionEsperada: 4, registroId: 'r15', accion: 'deshacer' })).rejects.toThrow(/motivo/);
+    await expect(guardarDecisionIt1(c, { versionEsperada: 4, registroId: 'r15', accion: 'vincular', localId: 'loc25', motivo: 'Confirmado en campo', localDistintoConfirmado: true })).rejects.toThrow(/Confirmación/);
     expect(rpc).not.toHaveBeenCalled();
   });
 
@@ -40,8 +42,20 @@ describe('Conciliación real: contrato de seguridad del cliente', () => {
     expect(rpc).toHaveBeenCalledWith('ulit_censo_conciliar_it1_2026', {
       p_espacio: 'real-medina-del-campo-2026', p_version_esperada: 4,
       p_registro_id: 'r15', p_accion: 'vincular', p_local_id: 'loc25',
-      p_motivo: 'Misma entrada, comprobado en campo',
+      p_motivo: 'Misma entrada, comprobado en campo', p_confirmar_distinto: false,
     });
+  });
+
+  it('anota confirmación explícita cuando se crea otro local físico', async () => {
+    const { c, rpc } = cliente({ data: { version: 5, accion: 'local-nuevo', registroId: 'r15', localId: 'loc-g5-r15' } });
+    await guardarDecisionIt1(c, { versionEsperada: 4, registroId: 'r15', accion: 'local-nuevo', motivo: 'Local independiente observado en campo', localDistintoConfirmado: true });
+    expect(rpc).toHaveBeenCalledWith('ulit_censo_conciliar_it1_2026', expect.objectContaining({ p_confirmar_distinto: true, p_motivo: 'Local independiente observado en campo' }));
+  });
+
+  it('el deshacer exige motivo firmado y lo envía al servidor', async () => {
+    const { c, rpc } = cliente({ data: { version: 5, accion: 'deshacer', registroId: 'r15', localId: null } });
+    await guardarDecisionIt1(c, { versionEsperada: 4, registroId: 'r15', accion: 'deshacer', motivo: 'Error detectado en revisión humana' });
+    expect(rpc).toHaveBeenCalledWith('ulit_censo_conciliar_it1_2026', expect.objectContaining({ p_accion: 'deshacer', p_motivo: 'Error detectado en revisión humana' }));
   });
 
   it('el conflicto de versión no desencadena reintentos automáticos', async () => {
