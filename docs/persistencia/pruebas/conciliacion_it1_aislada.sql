@@ -242,6 +242,43 @@ begin
  assert not (select escritura_habilitada from ulit_censo.espacio where id='real-medina-del-campo-2026'),
   'la guarda de escritura debe permanecer cerrada';
 end $t$;
+\echo '13 · Deshacer no borra un local/ocupación que otra operación modificó'
+-- Estado actual v11. Crear otra pareja y verificar que una modificación
+-- posterior impide deshacer y mantiene la versión intacta.
+do $t$
+declare r jsonb;
+begin
+ r:=public.ulit_censo_conciliar_it1_2026('real-medina-del-campo-2026',
+   11,'it1-r-6','local-nuevo',null,'Otro local diferenciado, verificado en campo');
+ assert r->>'version'='12';
+end $t$;
+update ulit_censo.entidad
+ set valor=pg_catalog.jsonb_set(valor,'{estado}','"desaparecido"'::jsonb)
+ where coleccion='locales' and id='loc-g5-it1-r-6';
+select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026(
+ 'real-medina-del-campo-2026',12,'it1-r-6','deshacer',null,null)$q$,'42501');
+update ulit_censo.entidad
+ set valor=pg_catalog.jsonb_set(valor,'{estado}','"activo"'::jsonb)
+ where coleccion='locales' and id='loc-g5-it1-r-6';
+update ulit_censo.entidad
+ set valor=pg_catalog.jsonb_set(valor,'{orden}','99999'::jsonb)
+ where coleccion='ocupaciones' and id='ocu-g5-it1-r-6';
+select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026(
+ 'real-medina-del-campo-2026',12,'it1-r-6','deshacer',null,null)$q$,'42501');
+update ulit_censo.entidad
+ set valor=pg_catalog.jsonb_set(valor,'{orden}','2002'::jsonb)
+ where coleccion='ocupaciones' and id='ocu-g5-it1-r-6';
+do $t$
+declare r jsonb;
+begin
+ r:=public.ulit_censo_conciliar_it1_2026('real-medina-del-campo-2026',
+   12,'it1-r-6','deshacer',null,null);
+ assert r->>'version'='13';
+ assert not exists (select 1 from ulit_censo.entidad where coleccion='locales' and id='loc-g5-it1-r-6');
+ assert not exists (select 1 from ulit_censo.entidad where coleccion='ocupaciones' and id='ocu-g5-it1-r-6');
+ assert not (select escritura_habilitada from ulit_censo.espacio where id='real-medina-del-campo-2026');
+end $t$;
+
 \echo 'ÉXITO · Defensas adicionales: doble vínculo y portal cero'
 
 \echo 'ÉXITO · Integración PostgreSQL aislada: permisos, atomicidad, auditabilidad, reversión y protección 2025'
