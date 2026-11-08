@@ -110,6 +110,9 @@ select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026('ensayo-
 select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026('real-medina-del-campo-2026',4,'hist-r-2','mantener-pendiente',null,'Otro año histórico')$q$,'42501');
 select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026('real-medina-del-campo-2026',4,'it1-r-2','inexistente',null,'Acción inválida')$q$,'42501');
 select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026('real-medina-del-campo-2026',3,'it1-r-2','mantener-pendiente',null,'Versión vieja')$q$,'PT409');
+-- Las aserciones de integridad usan rol postgres SOLO en base efímera.
+-- La identidad de petición sigue siendo la cuenta de Auth simulada.
+reset role;
 
 \echo '03 · Lectura de capacidad y prohibición de escritura general'
 do $t$
