@@ -266,6 +266,19 @@ begin
         raise exception 'ULIT Censo: no está confirmado el estado vacío/ocupado'
           using errcode='42501';
       end if;
+      -- En el modelo ULIT una ocupación con negocioId null significa
+      -- "local vacío". No permitir jamás convertir un ocupado en vacío
+      -- por falta de negocio, ni admitir un negocio en una observación vacía.
+      if (v_obs->'datos'->>'vacio' = 'false' and
+          (jsonb_typeof(v_obs->'datos'->'negocioId') is distinct from 'string'
+           or not exists (select 1 from ulit_censo.entidad b
+             where b.espacio_id=p_espacio and b.coleccion='negocios'
+               and b.id=v_obs->'datos'->>'negocioId')))
+         or (v_obs->'datos'->>'vacio' = 'true'
+             and v_obs->'datos'->>'negocioId' is not null) then
+        raise exception 'ULIT Censo: incoherencia entre local vacío/ocupado y negocio asociado'
+          using errcode='42501';
+      end if;
       if v_obs->>'localId' is not null then
         raise exception 'ULIT Censo: la observación ya tiene un local'
           using errcode='42501';
