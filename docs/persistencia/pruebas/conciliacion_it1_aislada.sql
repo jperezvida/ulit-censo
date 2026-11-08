@@ -266,7 +266,7 @@ update ulit_censo.entidad
 select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026(
  'real-medina-del-campo-2026',12,'it1-r-6','deshacer',null,null)$q$,'42501');
 update ulit_censo.entidad
- set valor=pg_catalog.jsonb_set(valor,'{orden}','2002'::jsonb)
+ set valor=pg_catalog.jsonb_set(valor,'{orden}','2003'::jsonb)
  where coleccion='ocupaciones' and id='ocu-g5-it1-r-6';
 do $t$
 declare r jsonb;
