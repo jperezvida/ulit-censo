@@ -4,6 +4,7 @@ import { ChevronLeft, Search } from 'lucide-react';
 import { useContexto } from '../../store/contexto';
 import { useFuenteOficina } from '../../store/fuenteOficina';
 import type { RegistroOrigen } from '../../domain/types';
+import { CLARIDAD_TXT, pendientesCampana, type Pendiente } from '../../domain/conciliacionPosterior';
 import { Modal } from '../../components/ui';
 import '../../styles/pendientes-sin-local.css';
 
@@ -58,6 +59,13 @@ export default function PendientesSinLocal() {
       .sort((a, b) => (a.itinerarioId ?? '').localeCompare(b.itinerarioId ?? '') || a.fila - b.fila);
   }, [db, campana]);
 
+  // Reutilizar G5: nunca se aplica una correspondencia calculada por el sistema.
+  const pendientesG5 = useMemo(() => {
+    if (!campana) return new Map<string, Pendiente>();
+    return new Map(pendientesCampana(db, campana.id).map((p) => [p.registroId, p]));
+  }, [db, campana]);
+  const conObservacion = useMemo(() => filas.filter((r) => !!pendientesG5.get(r.id)?.observacionId).length, [filas, pendientesG5]);
+
   const opcionesIt = useMemo(() => {
     const ids = [...new Set(filas.map((r) => r.itinerarioId ?? ''))];
     return ids.sort((a, b) => (db.itinerarios[a]?.codigo ?? a).localeCompare(db.itinerarios[b]?.codigo ?? b));
@@ -74,6 +82,7 @@ export default function PendientesSinLocal() {
   }, [filas, busqueda, itFiltro, db.itinerarios]);
 
   const activa = visibles.find((r) => r.id === seleccionado) ?? null;
+  const propuestaActiva = activa ? pendientesG5.get(activa.id) : undefined;
 
   if (!campana) return null;
   return (
@@ -91,6 +100,7 @@ export default function PendientesSinLocal() {
         {fuente?.soloLectura ? ' La revisión y conciliación siguen bloqueadas.' : ' La asociación requiere conciliación humana.'}
       </div>
 
+      <p className="muted psl-ayuda">{conObservacion} filas con observación para comparar con el histórico · {filas.length - conObservacion} sin observación asociada: requieren revisión previa. Las propuestas nunca vinculan por sí solas.</p>
       <div className="psl-controles">
         <div className="of-busca psl-busca">
           <Search size={15} />
@@ -108,17 +118,21 @@ export default function PendientesSinLocal() {
 
       <div className="psl-tabla-scroll">
         <table className="psl-tabla">
-          <thead><tr><th>Origen</th><th>Dirección</th><th>N.º</th><th>Establecimiento</th><th>Actividad</th><th><span className="psl-sr">Detalle</span></th></tr></thead>
+          <thead><tr><th>Origen</th><th>Dirección</th><th>N.º</th><th>Establecimiento</th><th>Actividad</th><th>Comparación 2025</th><th><span className="psl-sr">Detalle</span></th></tr></thead>
           <tbody>
             {visibles.map((r) => {
               const datos = vistaBreveRegistro(r);
               const codigo = db.itinerarios[r.itinerarioId ?? '']?.codigo ?? 'Sin itinerario';
+              const pendiente = pendientesG5.get(r.id);
               return <tr key={r.id}>
                 <td className="psl-origen">{codigo} · fila {r.fila}</td>
                 <td>{datos.calle}</td>
                 <td className="psl-num">{datos.numero}</td>
                 <td className="psl-negocio">{datos.negocio}</td>
                 <td>{datos.actividad}</td>
+                <td className="psl-propuesta">{pendiente?.observacionId ? (pendiente.candidatos.length
+                  ? `${CLARIDAD_TXT[pendiente.claridad]} · ${pendiente.candidatos.length} candidato(s)`
+                  : 'Sin candidatos en la calle') : 'Revisar calle/observación'}</td>
                 <td><button className="btn s" onClick={() => setSeleccionado(r.id)} aria-label={`Ver detalle de ${codigo} · fila ${r.fila}`}>Ver ficha</button></td>
               </tr>;
             })}
@@ -134,6 +148,18 @@ export default function PendientesSinLocal() {
         ancho
       >
         <p className="muted">Valores originales de las columnas importadas. La fila sigue pendiente de conciliación humana.</p>
+        <div className="psl-comparacion">
+          <h3>Propuestas de conciliación con 2025 (G5)</h3>
+          {!propuestaActiva?.observacionId ? <div className="t-info aviso">Esta fila no tiene observación asociada. Antes de comparar locales hay que verificar su calle y sus datos de campo. No se propondrá ningún vínculo sin esa comprobación.</div>
+            : propuestaActiva.candidatos.length === 0 ? <div className="t-info">G5 no encuentra locales candidatos en la misma calle reconocida. Revisar la dirección antes de crear o vincular un local.</div>
+            : <div className="psl-candidatos">{propuestaActiva.candidatos.map((c) => <article key={c.localId} className="tarjeta psl-candidato">
+                <div className="fila" style={{ flexWrap: 'wrap' }}><b>{c.portal}</b> <span className="chip">{c.mismoPortal ? 'Mismo portal' : 'Otra numeración'}</span>{c.yaVinculado && <span className="chip aviso">Ya vinculado en 2026</span>}</div>
+                <div className="muted">Referencia 2025: {c.referencia?.nombre ?? (c.referencia?.vacio ? 'Local vacío' : 'Sin nombre verificado')} · {c.referencia?.actividad ?? 'Sin actividad consignada'}</div>
+                <div>Coincidencia de nombre: {c.nombre} · {c.nivel}</div>
+                <ul className="muted">{c.motivos.map((motivo, i) => <li key={i}>{motivo}</li>)}</ul>
+              </article>)}</div>}
+          <p className="muted">Propuestas informativas. Ni compartir portal ni coincidir en el nombre demuestra que sea el mismo local físico. Guardado pendiente de habilitar con autorización del servidor.</p>
+        </div>
         <dl className="psl-detalle">
           {Object.entries(activa.datos).map(([columna, valor]) => (
             <div key={columna} className="psl-detalle-fila">
