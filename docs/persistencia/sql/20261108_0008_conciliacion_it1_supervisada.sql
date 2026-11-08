@@ -450,11 +450,17 @@ begin
       end if;
       -- Si ya existe una ocupación de 2026, no confiar en su estado:
       -- el negocio asociado debe coincidir y existir UNA sola ocupación.
-      select count(*), max(valor) into v_ocup_existentes, v_ocup
+      select count(*) into v_ocup_existentes
         from ulit_censo.entidad
        where espacio_id=p_espacio and coleccion='ocupaciones'
          and valor->>'localId'=v_nuevo_id
          and (valor->>'desdeCampanaId'=v_camp or valor->>'hastaCampanaId'=v_camp);
+      if v_ocup_existentes = 1 then
+        select valor into v_ocup from ulit_censo.entidad
+         where espacio_id=p_espacio and coleccion='ocupaciones'
+           and valor->>'localId'=v_nuevo_id
+           and (valor->>'desdeCampanaId'=v_camp or valor->>'hastaCampanaId'=v_camp);
+      end if;
       if v_ocup_existentes > 1 or
          (v_ocup_existentes = 1 and
            (v_ocup->>'negocioId' is distinct from v_obs->'datos'->>'negocioId'
