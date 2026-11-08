@@ -168,8 +168,11 @@ begin
            using errcode='42501';
       end if;
       if jsonb_array_length(coalesce(v_ultima->'creadas'->'locales','[]'::jsonb)) > 0 then
+        -- Revisión de TODAS las colecciones, incluidas coberturas y futuras
+        -- entidades con localId; no borrar si alguna depende del local nuevo.
         if exists (select 1 from ulit_censo.entidad
-          where espacio_id=p_espacio and coleccion in ('vinculos','observaciones','ocupaciones','revisiones')
+          where espacio_id=p_espacio
+          and not (coleccion='locales' and id=v_ultima->>'localId')
           and not (coleccion='vinculos' and id='vin-'||p_registro_id)
           and not (coleccion='observaciones' and id=v_obs->>'id')
           and not (coleccion='ocupaciones' and id=coalesce(v_ultima->'creadas'->'ocupaciones'->>0,''))
