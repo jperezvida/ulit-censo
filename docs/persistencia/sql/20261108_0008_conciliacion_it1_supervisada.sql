@@ -207,7 +207,9 @@ begin
         if v_ocup_id is distinct from 'ocu-g5-'||p_registro_id or not exists (select 1 from ulit_censo.entidad
           where espacio_id=p_espacio and coleccion='ocupaciones'
             and id=v_ocup_id and valor->>'localId'=v_ultima->>'localId'
-            and valor->>'desdeCampanaId'=v_camp) then
+            and valor->>'desdeCampanaId'=v_camp
+            and encode(pg_catalog.sha256(pg_catalog.convert_to(valor::text,'UTF8')),'hex')
+                = v_ultima->'creadas'->>'huellaOcupacion') then
           raise exception 'ULIT Censo: la ocupación creada ha cambiado; no se deshace'
             using errcode='42501';
         end if;
@@ -220,7 +222,9 @@ begin
            or v_nuevo_id is distinct from 'loc-g5-'||p_registro_id
            or not exists (select 1 from ulit_censo.entidad
              where espacio_id=p_espacio and coleccion='locales'
-               and id=v_nuevo_id and valor->>'procedencia'='importado') then
+               and id=v_nuevo_id and valor->>'procedencia'='importado'
+               and encode(pg_catalog.sha256(pg_catalog.convert_to(valor::text,'UTF8')),'hex')
+                   = v_ultima->'creadas'->>'huellaLocal') then
           raise exception 'ULIT Censo: el local creado ha cambiado; no se deshace'
             using errcode='42501';
         end if;
@@ -332,7 +336,8 @@ begin
         v_cambios := v_cambios || jsonb_build_array(
           jsonb_build_object('c','locales','id',v_nuevo_id,'v',v_loc));
         v_creadas := jsonb_build_object('locales',jsonb_build_array(v_nuevo_id),
-                                        'ocupaciones',jsonb_build_array());
+                                        'ocupaciones',jsonb_build_array(),
+                                        'huellaLocal',encode(pg_catalog.sha256(pg_catalog.convert_to(v_loc::text,'UTF8')),'hex'));
       end if;
       -- No reciclar una ocupación del histórico. Si no hay ninguna en 2026,
       -- crear una ocupación de 2026 con su observación original sin tocar 2025.
@@ -367,7 +372,8 @@ begin
           jsonb_build_object('c','ocupaciones','id',v_ocup_id,'v',v_ocup),
           jsonb_build_object('c','_raiz','id','raiz','v',
             v_raiz || jsonb_build_object('secuencia',v_orden)));
-        v_creadas := v_creadas || jsonb_build_object('ocupaciones',jsonb_build_array(v_ocup_id));
+        v_creadas := v_creadas || jsonb_build_object('ocupaciones',jsonb_build_array(v_ocup_id),
+          'huellaOcupacion',encode(pg_catalog.sha256(pg_catalog.convert_to(v_ocup::text,'UTF8')),'hex'));
       end if;
       v_obs := v_obs || jsonb_build_object('localId',v_nuevo_id);
       v_cambios := v_cambios || jsonb_build_array(
