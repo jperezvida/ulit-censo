@@ -65,7 +65,9 @@ function sembrar(ids: {admin:string;revisor:string;lector:string;investigador:st
    ('${ESPACIO}','locales','hist-1',
     '{"id":"hist-1","municipioId":"real-mun-medina","direcciones":[{"calleId":"calle1","numero":2}],"estado":"activo","procedencia":"importado"}',4),
    ('${ESPACIO}','observaciones','obs25',
-    '{"id":"obs25","campanaId":"${CAMP25}","localId":"hist-1","calleId":"calle1","datos":{"numero":2,"vacio":false,"nombre":"Tienda sintética"}}',4);
+    '{"id":"obs25","campanaId":"${CAMP25}","localId":"hist-1","calleId":"calle1","datos":{"numero":2,"vacio":false,"nombre":"Tienda sintética"}}',4),
+   ('${ESPACIO}','negocios','negocio-sintetico',
+    '{"id":"negocio-sintetico","nombre":"Negocio sintético","procedencia":"importado"}',4);
   insert into ulit_censo.entidad(espacio_id,coleccion,id,valor,version)
     select '${ESPACIO}','registros','r25-'||n,
       jsonb_build_object('id','r25-'||n,'importacionId','imp25','fila',n),4 from generate_series(1,889) n;
@@ -85,7 +87,7 @@ function sembrar(ids: {admin:string;revisor:string;lector:string;investigador:st
        'itinerarioId','it1','registroId','r26-'||n,
        'localId',null,'calleId','calle1',
        'datos',jsonb_build_object('numero',case when n>60 then null else n end,
-          'vacio',false,'nombre','Sintética '||n)),4 from generate_series(2,62) n;
+          'vacio',false,'negocioId','negocio-sintetico','nombre','Sintética '||n)),4 from generate_series(2,62) n;
   `);
 }
 describe.skipIf(!URL)('IT1 RPC con Supabase Auth + PostgREST (solo datos sintéticos locales)', () => {
@@ -140,6 +142,13 @@ describe.skipIf(!URL)('IT1 RPC con Supabase Auth + PostgREST (solo datos sintét
     });
     expect(reverse.version).toBe(6);
     expect(sql("select valor->>'localId' from ulit_censo.entidad where coleccion='vinculos' and id='vin-r26-2'")).toBe('');
+    expect(sql(`select version||':'||escritura_habilitada from ulit_censo.espacio where id='${ESPACIO}'`)).toBe('6:false');
+    // Integración negativa real PostgREST: un ocupado sin negocio válido
+    // no puede crear un local/ocupación ni variar la versión del espacio.
+    sql("update ulit_censo.entidad set valor=jsonb_set(valor,'{datos}',(valor->'datos')-'negocioId') where coleccion='observaciones' and id='obs26-3'");
+    await expect(guardarDecisionIt1(clients.revisor,{
+      versionEsperada:6,registroId:'r26-3',accion:'local-nuevo',
+      motivo:'Prueba de ocupación sin negocio existente'})).rejects.toThrow(/incoherencia/);
     expect(sql(`select version||':'||escritura_habilitada from ulit_censo.espacio where id='${ESPACIO}'`)).toBe('6:false');
   });
 });
