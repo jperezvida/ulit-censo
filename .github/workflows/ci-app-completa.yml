@@ -1,0 +1,33 @@
+name: ULIT Censo · aplicación completa (PR a main)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ci-app-completa.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-completa-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  comprobaciones:
+    name: TypeScript, pruebas y compilación sin producción
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run comprobar-datos
+      - run: npm run build
