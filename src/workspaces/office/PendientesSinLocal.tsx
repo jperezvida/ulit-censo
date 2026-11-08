@@ -53,6 +53,7 @@ export default function PendientesSinLocal() {
   const [motivo, setMotivo] = useState('');
   const [destino, setDestino] = useState('');
   const [confirmado, setConfirmado] = useState(false);
+  const [distintoConfirmado, setDistintoConfirmado] = useState(false);
   const [errorDecision, setErrorDecision] = useState<string | null>(null);
   const [resultadoDecision, setResultadoDecision] = useState<string | null>(null);
 
@@ -116,11 +117,12 @@ export default function PendientesSinLocal() {
 
   const activa = visibles.find((r) => r.id === seleccionado) ?? null;
   const propuestaActiva = activa ? pendientesG5.get(activa.id) : undefined;
+  const hayLocalEnMismoPortal = !!propuestaActiva?.candidatos.some((c) => c.mismoPortal);
   const decisionActiva = activa ? db.vinculos[`vin-${activa.id}`]?.conciliaciones?.filter((d) =>
     !d.deshecha && d.campanaId === campana?.id).at(-1) : undefined;
 
   const abrirFicha = (id: string) => {
-    setSeleccionado(id); setMotivo(''); setDestino(''); setConfirmado(false);
+    setSeleccionado(id); setMotivo(''); setDestino(''); setConfirmado(false); setDistintoConfirmado(false);
     setErrorDecision(null); setResultadoDecision(null);
   };
 
@@ -133,12 +135,13 @@ export default function PendientesSinLocal() {
     try {
       const respuesta = await guardarDecisionIt1(cliente, {
         versionEsperada: fuente.versionReal, registroId: activa.id, accion,
-        ...(localId ? { localId } : {}), ...(accion !== 'deshacer' ? { motivo } : {}),
+        ...(localId ? { localId } : {}), motivo,
+        ...(accion === 'local-nuevo' ? { localDistintoConfirmado: distintoConfirmado } : {}),
       });
       // No se presupone éxito hasta tener versión de servidor y releer el espacio.
       await fuente.recargarReal();
       setResultadoDecision(`Decisión guardada y datos recargados · versión ${respuesta.version}.`);
-      setSeleccionado(null); setConfirmado(false); setMotivo(''); setDestino('');
+      setSeleccionado(null); setConfirmado(false); setDistintoConfirmado(false); setMotivo(''); setDestino('');
       if (accion === 'vincular' || accion === 'local-nuevo') setVista('resueltos');
       if (accion === 'deshacer') setVista('pendientes');
     } catch (error) {
@@ -233,8 +236,13 @@ export default function PendientesSinLocal() {
           <h3>Decisión supervisada · IT1</h3>
           {decisionActiva ? <>
             <p>La decisión registrada puede deshacerse si ningún dato posterior depende de ella. El servidor comprobará todas las dependencias.</p>
+            <label className="campo"><span>Motivo obligatorio para deshacer (mínimo 8 caracteres)</span>
+              <textarea className="input" rows={3} value={motivo} maxLength={600}
+                onChange={(e) => setMotivo(e.target.value)}
+                placeholder="Explique por qué revierte la decisión y qué ha verificado" /></label>
+            <p className="muted">Un revisor solo puede deshacer sus propias decisiones. Administración y coordinación pueden revertir decisiones ajenas.</p>
             <label className="psl-check"><input type="checkbox" checked={confirmado} onChange={(e) => setConfirmado(e.target.checked)} /> Confirmo que quiero deshacer esta decisión.</label>
-            <button className="btn" disabled={guardando || !confirmado} onClick={() => void ejecutar('deshacer')}>Deshacer la última decisión</button>
+            <button className="btn" disabled={guardando || !confirmado || motivo.trim().length < 8} onClick={() => void ejecutar('deshacer')}>Deshacer la última decisión</button>
           </> : <>
             <p>Revise las celdas originales y los candidatos de 2025. Coincidir en dirección o nombre no garantiza identidad física.</p>
             <label className="campo"><span>Justificación obligatoria (mínimo 8 caracteres)</span>
@@ -244,10 +252,14 @@ export default function PendientesSinLocal() {
                 <option value="">Seleccione el local comprobado…</option>
                 {propuestaActiva.candidatos.filter((c) => c.referencia && !c.yaVinculado).map((c) => <option key={c.localId} value={c.localId}>{c.portal} · {c.referencia?.nombre ?? (c.referencia?.vacio ? 'Vacío' : 'Sin nombre')} · {c.mismoPortal ? 'Mismo portal' : 'Otra numeración'}</option>)}
               </select></label>}
+            {propuestaActiva?.puedeCrearLocal && hayLocalEnMismoPortal && <label className="psl-check">
+              <input type="checkbox" checked={distintoConfirmado} onChange={(e) => setDistintoConfirmado(e.target.checked)} />
+              He comprobado en campo que se trata de un **local físico distinto**, aunque ya existe otro local en este mismo portal.
+            </label>}
             <label className="psl-check"><input type="checkbox" checked={confirmado} onChange={(e) => setConfirmado(e.target.checked)} /> Confirmo que he revisado la información y que esta es una decisión humana, no automática.</label>
             <div className="fila psl-botones">
               {destino && <button className="btn primario" disabled={guardando || !confirmado || motivo.trim().length < 8} onClick={() => void ejecutar('vincular', destino)}>Confirmar mismo local físico</button>}
-              {propuestaActiva?.puedeCrearLocal && <button className="btn" disabled={guardando || !confirmado || motivo.trim().length < 8} onClick={() => void ejecutar('local-nuevo')}>Crear local físico distinto</button>}
+              {propuestaActiva?.puedeCrearLocal && <button className="btn" disabled={guardando || !confirmado || motivo.trim().length < 8 || (hayLocalEnMismoPortal && !distintoConfirmado)} onClick={() => void ejecutar('local-nuevo')}>Crear local físico distinto</button>}
               <button className="btn" disabled={guardando || !confirmado || motivo.trim().length < 8} onClick={() => void ejecutar('mantener-pendiente')}>Mantener pendiente con motivo</button>
             </div>
           </>}
