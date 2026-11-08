@@ -146,6 +146,33 @@ end $t$;
 select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026('real-medina-del-campo-2026',4,'it1-r-2','vincular','hist-local-3','No repetir misma vinculación')$q$,'PT409');
 select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026('real-medina-del-campo-2026',5,'it1-r-3','vincular','hist-local-3','El mismo local ya vinculado')$q$,'42501');
 
+\echo '05b · Dependencias de Oficina impiden deshacer vínculo con local histórico'
+-- Administrador autor original de it1-r-2, todavía vinculado en versión 5.
+insert into ulit_censo.entidad(espacio_id,coleccion,id,valor,version)
+values ('real-medina-del-campo-2026','revisiones','revision-it1-prueba',
+ '{"campanaId":"real-camp-medina-2026-censo-medina-del-campo-2026","localId":"hist-local-3","validacion":"aprobada"}',5);
+select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026(
+ 'real-medina-del-campo-2026',5,'it1-r-2','deshacer',null,
+ 'Deshacer estando aprobado trabajo de Oficina')$q$,'42501');
+delete from ulit_censo.entidad where coleccion='revisiones' and id='revision-it1-prueba';
+insert into ulit_censo.entidad(espacio_id,coleccion,id,valor,version)
+values ('real-medina-del-campo-2026','digital','dato-it1-prueba',
+ '{"campanaId":"real-camp-medina-2026-censo-medina-del-campo-2026","negocioId":"negocio-sintetico","estado":"verificada"}',5),
+('real-medina-del-campo-2026','clasificaciones','clase-it1-prueba',
+ '{"campanaId":"real-camp-medina-2026-censo-medina-del-campo-2026","negocioId":"negocio-sintetico","actividadId":"a1"}',5),
+('real-medina-del-campo-2026','franquicias','franquicia-it1-prueba',
+ '{"campanaId":"real-camp-medina-2026-censo-medina-del-campo-2026","negocioId":"negocio-sintetico","respuesta":"no"}',5);
+select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026(
+ 'real-medina-del-campo-2026',5,'it1-r-2','deshacer',null,
+ 'Deshacer mientras hay clasificación digital')$q$,'42501');
+delete from ulit_censo.entidad where coleccion in ('digital','clasificaciones','franquicias')
+ and id in ('dato-it1-prueba','clase-it1-prueba','franquicia-it1-prueba');
+do $t$ begin
+ assert (select version from ulit_censo.espacio where id='real-medina-del-campo-2026')=5;
+ assert (select valor->>'localId' from ulit_censo.entidad where coleccion='vinculos'
+         and id='vin-it1-r-2')='hist-local-3';
+end $t$;
+
 \echo '06 · Mantener pendiente con motivo y deshacer sin cambiar estado'
 set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000e';
 do $t$
@@ -158,6 +185,9 @@ begin
  respuesta:=public.ulit_censo_conciliar_it1_2026('real-medina-del-campo-2026',6,'it1-r-3','deshacer',null,'Reversión documentada y comprobada');
  assert respuesta->>'version'='7';
  assert (select valor->'conciliaciones'->0 ? 'deshecha' from ulit_censo.entidad where coleccion='vinculos' and id='vin-it1-r-3');
+ assert (select valor->'conciliaciones'->0->'deshecha'->>'motivo'
+   from ulit_censo.entidad where coleccion='vinculos' and id='vin-it1-r-3')
+   ='Reversión documentada y comprobada';
 end $t$;
 
 \echo '07 · Deshacer protegido: un revisor no revierte al administrador'
