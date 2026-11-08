@@ -214,4 +214,34 @@ begin
  assert (select count(*) from ulit_censo.entidad where coleccion='observaciones'
          and valor->>'campanaId'='camp-hist-real-mun-medina-2025-9e367ca51c')=1;
 end $t$;
+
+\\echo '12 · Ataques de duplicado sin observación y portal 0'
+-- Las 14 filas vinculadas de IT1 pueden carecer de observación en algunas
+-- importaciones. La RPC NO debe asignar el mismo local histórico a otra fila.
+update ulit_censo.entidad
+  set valor=pg_catalog.jsonb_set(valor,'{localId}',to_jsonb('hist-local-3'::text))
+  where espacio_id='real-medina-del-campo-2026'
+    and coleccion='vinculos' and id='vin-it1-r-93';
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000e';
+select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026(
+  'real-medina-del-campo-2026',11,'it1-r-3','vincular','hist-local-3',
+  'Otro vínculo de IT1 ya apunta al mismo local')$q$,'42501');
+
+-- Un campo numérico 0 no es un número de portal comprobado.
+update ulit_censo.entidad
+  set valor=pg_catalog.jsonb_set(valor,'{datos,numero}','0'::jsonb)
+  where espacio_id='real-medina-del-campo-2026'
+    and coleccion='observaciones' and id='it1-o-5';
+select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026(
+  'real-medina-del-campo-2026',11,'it1-r-5','local-nuevo',null,
+  'Validación de portal cero no permitida')$q$,'42501');
+do $t$
+begin
+ assert (select version from ulit_censo.espacio where id='real-medina-del-campo-2026')=11,
+  'un intento rechazado no incrementa versión';
+ assert not (select escritura_habilitada from ulit_censo.espacio where id='real-medina-del-campo-2026'),
+  'la guarda de escritura debe permanecer cerrada';
+end $t$;
+\\echo 'ÉXITO · Defensas adicionales: doble vínculo y portal cero'
+
 \echo 'ÉXITO · Integración PostgreSQL aislada: permisos, atomicidad, auditabilidad, reversión y protección 2025'
