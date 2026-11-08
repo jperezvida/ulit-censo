@@ -138,7 +138,7 @@ describe.skipIf(!URL)('IT1 RPC con Supabase Auth + PostgREST (solo datos sintét
     });
     expect(forbidden.error?.code).toBe('42501');
     const reverse=await guardarDecisionIt1(clients.revisor,{
-      versionEsperada:5,registroId:'r26-2',accion:'deshacer',
+      versionEsperada:5,registroId:'r26-2',accion:'deshacer',motivo:'Revertir vinculación comprobada',
     });
     expect(reverse.version).toBe(6);
     expect(sql("select valor->>'localId' from ulit_censo.entidad where coleccion='vinculos' and id='vin-r26-2'")).toBe('');
