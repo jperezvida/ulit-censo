@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, ArrowRight, BadgeCheck, Clock, Globe, Lock, Map, Store, Tags } from 'lucide-react';
 import { useContexto } from '../../store/contexto';
+import { useFuenteOficina } from '../../store/fuenteOficina';
 import { ESTADO_OFICINA_TXT } from '../../domain/bloqueo';
 import type { Contador, ResumenItinerario } from '../../domain/oficina';
 import { Sim, fmt, fmtFecha } from '../../components/ui';
@@ -12,6 +13,12 @@ export default function PanelItinerarios() {
   const { db, campana, municipio } = useContexto();
   const resumenes = useResumenes();
   const nav = useNavigate();
+  const fuente = useFuenteOficina();
+  const sinLocal = campana ? (() => {
+    const ids = new Set(Object.values(db.importaciones).filter((i) => i.campanaId === campana.id && i.estado === 'confirmada').map((i) => i.id));
+    const asociados = new Set(Object.values(db.vinculos).filter((v) => v.origen.tipo === 'registro' && v.localId).map((v) => v.origen.id));
+    return Object.values(db.registros).filter((r) => ids.has(r.importacionId) && !asociados.has(r.id) && !r.exclusion).length;
+  })() : 0;
   if (!campana) return null;
   const its = resumenes.filter((r) => r.itinerarioId);
   const fuera = resumenes.find((r) => !r.itinerarioId);
@@ -25,6 +32,11 @@ export default function PanelItinerarios() {
         </div>
         <span className="esp" />
         {campana.procedencia === 'simulado' && <Sim texto={`${municipio.nombre}: datos ficticios`} />}
+        {fuente?.soloLectura && sinLocal > 0 && (
+          <button className="btn primario" onClick={() => nav('/oficina/sin-local')}>
+            <AlertTriangle size={15} /> Ver {fmt(sinLocal)} filas sin local
+          </button>
+        )}
         <button className="btn" onClick={() => nav('/oficina/municipal')} title="Todos los registros de la campaña, sin separar por itinerario">
           <Map size={15} /> Vista general municipal
         </button>
