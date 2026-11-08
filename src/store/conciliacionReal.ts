@@ -14,6 +14,8 @@ export interface DecisionIt1 {
   accion: AccionReal;
   localId?: string | null;
   motivo?: string;
+  /** Decisión humana explícita si ya existe otro local en el mismo portal. */
+  localDistintoConfirmado?: boolean;
 }
 export interface ResultadoDecision {
   version: number;
@@ -53,8 +55,11 @@ export async function guardarDecisionIt1(
   if (d.accion === 'vincular' ? !d.localId : !!d.localId) {
     throw new Error('Selección de local incompatible con la decisión.');
   }
-  if (d.accion !== 'deshacer' && (d.motivo?.trim().length ?? 0) < 8) {
+  if ((d.motivo?.trim().length ?? 0) < 8) {
     throw new Error('Escriba un motivo concreto de al menos ocho caracteres.');
+  }
+  if (d.accion !== 'local-nuevo' && d.localDistintoConfirmado) {
+    throw new Error('Confirmación de local distinto incompatible con la acción.');
   }
   const { data, error } = await cliente.rpc(RPC, {
     p_espacio: ESPACIO_REAL,
@@ -62,7 +67,8 @@ export async function guardarDecisionIt1(
     p_registro_id: d.registroId,
     p_accion: d.accion,
     p_local_id: d.accion === 'vincular' ? d.localId : null,
-    p_motivo: d.accion === 'deshacer' ? null : d.motivo!.trim(),
+    p_motivo: d.motivo!.trim(),
+    p_confirmar_distinto: d.accion === 'local-nuevo' && d.localDistintoConfirmado === true,
   });
   if (error) {
     if (error.code === 'PT409') throw new Error('Otra pestaña o persona guardó antes. Recargue los datos: no se ha sobrescrito nada.');
