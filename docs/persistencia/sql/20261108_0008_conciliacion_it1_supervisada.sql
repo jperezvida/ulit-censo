@@ -370,6 +370,40 @@ begin
           raise exception 'ULIT Censo: local histórico incompatible, ya usado o de otra calle'
              using errcode='42501';
         end if;
+        -- El camino "vincular" tampoco puede repartir el mismo negocio
+        -- entre locales DIFERENTES del mismo portal durante 2026.
+        if v_obs->'datos'->>'negocioId' is not null and (
+          exists (select 1 from ulit_censo.entidad otra
+            join ulit_censo.entidad otro_local on
+              otro_local.espacio_id=otra.espacio_id
+              and otro_local.coleccion='locales'
+              and otro_local.id=otra.valor->>'localId'
+            where otra.espacio_id=p_espacio and otra.coleccion='observaciones'
+              and otra.id is distinct from v_obs->>'id'
+              and otra.valor->>'campanaId'=v_camp
+              and otra.valor->'datos'->>'negocioId'=v_obs->'datos'->>'negocioId'
+              and otra.valor->>'localId' is distinct from p_local_id
+              and otro_local.valor->'direcciones'->-1->>'calleId'=v_local->'direcciones'->-1->>'calleId'
+              and otro_local.valor->'direcciones'->-1->>'numero'=v_local->'direcciones'->-1->>'numero'
+              and coalesce(otro_local.valor->'direcciones'->-1->>'sufijo','')=
+                  coalesce(v_local->'direcciones'->-1->>'sufijo',''))
+          or exists (select 1 from ulit_censo.entidad otra
+            join ulit_censo.entidad otro_local on
+              otro_local.espacio_id=otra.espacio_id
+              and otro_local.coleccion='locales'
+              and otro_local.id=otra.valor->>'localId'
+            where otra.espacio_id=p_espacio and otra.coleccion='ocupaciones'
+              and otra.valor->>'localId' is distinct from p_local_id
+              and (otra.valor->>'desdeCampanaId'=v_camp or otra.valor->>'hastaCampanaId'=v_camp)
+              and otra.valor->>'negocioId'=v_obs->'datos'->>'negocioId'
+              and otro_local.valor->'direcciones'->-1->>'calleId'=v_local->'direcciones'->-1->>'calleId'
+              and otro_local.valor->'direcciones'->-1->>'numero'=v_local->'direcciones'->-1->>'numero'
+              and coalesce(otro_local.valor->'direcciones'->-1->>'sufijo','')=
+                  coalesce(v_local->'direcciones'->-1->>'sufijo',''))
+        ) then
+          raise exception 'ULIT Censo: el negocio ya consta en otro local 2026 del mismo portal'
+             using errcode='42501';
+        end if;
         v_nuevo_id := p_local_id;
       else
         -- Crear otro local requiere número de portal ORIGINAL reconocible.
