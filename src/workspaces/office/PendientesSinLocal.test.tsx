@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { baseVacia } from '../../domain/db';
 import { FuenteOficinaContext } from '../../store/fuenteOficina';
 import type { BaseDatos } from '../../domain/db';
-import PendientesSinLocal from './PendientesSinLocal';
+import PendientesSinLocal, { vistaBreveRegistro } from './PendientesSinLocal';
 
 function escenario(): BaseDatos {
   const db = baseVacia();
@@ -28,7 +28,7 @@ function escenario(): BaseDatos {
   db.registros.historico = { id: 'historico', importacionId: 'imp-c25', fila: 1, datos: { Negocio: 'Histórico' } };
   for (let i = 1; i <= 105; i++) {
     const id = 'fila-' + i;
-    db.registros[id] = { id, importacionId: 'imp-c26', itinerarioId: 'it1', fila: i, datos: { Negocio: 'Negocio ' + i } };
+    db.registros[id] = { id, importacionId: 'imp-c26', itinerarioId: 'it1', fila: i, datos: { 'Dirección': 'Calle Prueba', Num: String(i), 'Nombre del negocio': 'Negocio ' + i, Actividad: 'Peluquería' } };
     db.vinculos['v-' + i] = {
       id: 'v-' + i, origen: { tipo: 'registro', id }, localId: i <= 14 ? 'local-' + i : null,
       confianza: i <= 14 ? 'confirmada' : 'sin-vinculo', criterio: 'Prueba',
@@ -56,10 +56,20 @@ describe('Oficina real: registros originales sin local', () => {
     expect(screen.queryByText('Histórico')).not.toBeInTheDocument();
     expect(screen.queryByText('IT1 · fila 1')).not.toBeInTheDocument();
     expect(screen.getByText('IT1 · fila 15')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('IT1 · fila 15'));
+    fireEvent.click(screen.getByRole('button', { name: 'Ver detalle de IT1 · fila 15' }));
     expect(screen.getByText('Detalle de la fila 15')).toBeInTheDocument();
-    expect(screen.getByText('Negocio 15')).toBeInTheDocument();
+    expect(screen.getAllByText('Negocio 15').length).toBeGreaterThan(0);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getAllByText('Calle Prueba').length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: /conciliar|guardar|vincular/i })).not.toBeInTheDocument();
+  });
+
+  it('identifica calle, negocio y actividad por cabecera, no por las primeras columnas CP o municipio', () => {
+    const r = {
+      id: 'r', importacionId: 'imp', fila: 1,
+      datos: { CP: '47400', Num: '3', Municipio: 'Medina del Campo', 'Dirección': 'Calle Mayor', 'Nombre del negocio': 'Comercio X', Actividad: 'Moda' },
+    };
+    expect(vistaBreveRegistro(r)).toEqual({ calle: 'Calle Mayor', numero: '3', negocio: 'Comercio X', actividad: 'Moda' });
   });
 
   it('no mezcla registros de otras campañas', () => {
