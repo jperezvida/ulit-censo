@@ -1,0 +1,58 @@
+name: ULIT Censo · conciliación IT1 SQL aislada
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/persistencia/sql/20261108_0008_conciliacion_it1_supervisada.sql'
+      - 'docs/persistencia/pruebas/conciliacion_it1_aislada.sql'
+      - '.github/workflows/ci-conciliacion-it1.yml'
+permissions:
+  contents: read
+concurrency:
+  group: conciliacion-it1-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  postgres:
+    name: PostgreSQL 17 · migraciones y 22 invariantes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      db:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 3s --health-retries 12
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar cliente PostgreSQL
+        run: |
+          if ! command -v psql >/dev/null; then sudo apt-get update -qq && sudo apt-get install -y postgresql-client; fi
+          psql --version
+      - name: Instalar migraciones únicamente en base local efímera
+        run: |
+          set -euo pipefail
+          TEST=docs/persistencia/pruebas
+          SQL=docs/persistencia/sql
+          for F in \
+            "$TEST/emulacion_supabase.sql" \
+            "$SQL/20261104_0001_ulit_censo_esquema.sql" \
+            "$SQL/20261104_0002_ulit_censo_operaciones.sql" \
+            "$SQL/20261105_0004_ulit_censo_inicializacion_real.sql" \
+            "$SQL/20261105_0005_importacion_unica_medina_2025.sql" \
+            "$SQL/20261106_0006_importacion_it1_medina_2026.sql" \
+            "$SQL/20261107_0007_it1_c_ambigua_reintento_seguro.sql" \
+            "$SQL/20261108_0008_conciliacion_it1_supervisada.sql"; do
+            echo "Aplicando en PostgreSQL desechable: $F"
+            psql -v ON_ERROR_STOP=1 -q -f "$F"
+          done
+      - name: Probar contrato transaccional y permisos con datos sintéticos
+        run: psql -v ON_ERROR_STOP=1 -f docs/persistencia/pruebas/conciliacion_it1_aislada.sql
