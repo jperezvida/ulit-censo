@@ -215,7 +215,7 @@ begin
          and valor->>'campanaId'='camp-hist-real-mun-medina-2025-9e367ca51c')=1;
 end $t$;
 
-\\echo '12 · Ataques de duplicado sin observación y portal 0'
+\echo '12 · Ataques de duplicado sin observación y portal 0'
 -- Las 14 filas vinculadas de IT1 pueden carecer de observación en algunas
 -- importaciones. La RPC NO debe asignar el mismo local histórico a otra fila.
 update ulit_censo.entidad
@@ -242,6 +242,6 @@ begin
  assert not (select escritura_habilitada from ulit_censo.espacio where id='real-medina-del-campo-2026'),
   'la guarda de escritura debe permanecer cerrada';
 end $t$;
-\\echo 'ÉXITO · Defensas adicionales: doble vínculo y portal cero'
+\echo 'ÉXITO · Defensas adicionales: doble vínculo y portal cero'
 
 \echo 'ÉXITO · Integración PostgreSQL aislada: permisos, atomicidad, auditabilidad, reversión y protección 2025'
