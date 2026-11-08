@@ -7,13 +7,19 @@
 -- la escritura general se abre y se cierra DENTRO de la misma transacción bloqueada.
 begin;
 
+-- La migración 0001 impide UPDATE de copia, pero no DELETE.
+-- Reforzar el historial de respaldos antes de ofrecer una RPC con escritura.
+create trigger copia_no_borrar before delete on ulit_censo.copia
+  for each row execute function ulit_censo.impedir_cambio();
+
 create function public.ulit_censo_conciliar_it1_2026(
   p_espacio text,
   p_version_esperada bigint,
   p_registro_id text,
   p_accion text,
   p_local_id text default null,
-  p_motivo text default null
+  p_motivo text default null,
+  p_confirmar_distinto boolean default false
 )
 returns jsonb
 language plpgsql security definer set search_path = ''
@@ -47,6 +53,9 @@ declare
   v_indice integer;
   v_orden bigint;
   v_vers bigint;
+  v_registros_antes bigint;
+  v_campanas_antes bigint;
+  v_ocup_existentes integer;
   v_previa jsonb;
   v_texto text;
 begin
@@ -59,7 +68,11 @@ begin
        using errcode = '42501';
   end if;
   m := ulit_censo.exigir(p_espacio, array['administrador','coordinador','revisor']);
-  select * into e from ulit_censo.espacio where id=p_espacio for update;
+  if p_accion = 'estado' then
+    select * into e from ulit_censo.espacio where id=p_espacio;
+  else
+    select * into e from ulit_censo.espacio where id=p_espacio for update;
+  end if;
   if not found or e.tipo <> 'real' or e.version < 4
      or e.escritura_habilitada or e.preparacion_habilitada then
     raise exception 'ULIT Censo: el espacio debe estar cerrado para conciliar'
@@ -147,9 +160,17 @@ begin
     order by ordinalidad desc limit 1;
 
   if p_accion = 'deshacer' then
+    if v_motivo is null or length(v_motivo) < 8 then
+      raise exception 'ULIT Censo: deshacer requiere justificar por escrito'
+        using errcode='22023';
+    end if;
     if v_ultima is null or v_ultima->>'campanaId' <> v_camp then
       raise exception 'ULIT Censo: no hay decisión vigente que deshacer'
          using errcode='42501';
+    end if;
+    if m.rol = 'revisor' and v_ultima->>'porId' is distinct from m.persona_id then
+      raise exception 'ULIT Censo: un revisor no puede deshacer decisiones ajenas'
+        using errcode='42501';
     end if;
     if v_ultima->>'accion' <> 'mantener-pendiente' then
       if v_vin->>'localId' is distinct from v_ultima->>'localId'
@@ -166,6 +187,28 @@ begin
             where x->>'localId'=v_ultima->>'localId' and not x ? 'retirada')) then
          raise exception 'ULIT Censo: hay una resolución de estado dependiente; no se deshace'
            using errcode='42501';
+      end if;
+      -- Un vínculo con local histórico puede adquirir revisiones y trabajo
+      -- de Oficina ANTES de deshacerse; no dejar entidades huérfanas.
+      -- También afecta a locales nuevos, además de sus referencias genéricas.
+      if exists (select 1 from ulit_censo.entidad dep
+        where dep.espacio_id=p_espacio
+          and (
+            (dep.coleccion='revisiones' and dep.valor->>'campanaId'=v_camp
+               and dep.valor->>'localId'=v_ultima->>'localId')
+            or
+            (dep.coleccion='ocupaciones'
+               and dep.valor->>'localId'=v_ultima->>'localId'
+               and (dep.valor->>'desdeCampanaId'=v_camp or dep.valor->>'hastaCampanaId'=v_camp)
+               and dep.id <> coalesce(v_ultima->'creadas'->'ocupaciones'->>0,''))
+            or
+            (dep.coleccion in ('clasificaciones','digital','franquicias')
+               and dep.valor->>'campanaId'=v_camp
+               and dep.valor->>'negocioId'=v_obs->'datos'->>'negocioId'
+               and v_obs->'datos'->>'negocioId' is not null)
+          )) then
+        raise exception 'ULIT Censo: hay trabajo de Oficina u ocupación dependiente; no se deshace'
+          using errcode='42501';
       end if;
       if jsonb_array_length(coalesce(v_ultima->'creadas'->'locales','[]'::jsonb)) > 0 then
         -- Revisión de TODAS las colecciones, incluidas coberturas y futuras
@@ -191,7 +234,8 @@ begin
     end if;
     v_lista := pg_catalog.jsonb_set(v_lista,array[v_indice::text],
        v_ultima || jsonb_build_object('deshecha',
-         jsonb_build_object('porId',m.persona_id,'fecha',v_ahora)),false);
+         jsonb_build_object('porId',m.persona_id,'fecha',v_ahora,
+           'motivo',v_motivo)),false);
     v_vin := v_vin || jsonb_build_object('localId',null,
       'confianza',v_antes->>'confianza','conciliaciones',v_lista);
     if v_antes ? 'revisadoPorId' then
@@ -205,6 +249,10 @@ begin
       v_obs := v_obs || jsonb_build_object('localId',v_antes->'observacionLocalId');
       v_cambios := v_cambios || jsonb_build_array(
         jsonb_build_object('c','observaciones','id',v_obs->>'id','v',v_obs));
+      if v_ultima->'creadas' ? 'ocupacionReutilizadaId' then
+        raise exception 'ULIT Censo: una ocupación reutilizada impide deshacer sin validación'
+          using errcode='42501';
+      end if;
       if jsonb_array_length(coalesce(v_ultima->'creadas'->'ocupaciones','[]'::jsonb))=1 then
         v_ocup_id := v_ultima->'creadas'->'ocupaciones'->>0;
         if v_ocup_id is distinct from 'ocu-g5-'||p_registro_id or not exists (select 1 from ulit_censo.entidad
@@ -337,6 +385,51 @@ begin
             using errcode='42501';
         end if;
         v_sufijo := nullif(v_obs->'datos'->>'sufijo','');
+        -- Otro local en el mismo portal requiere una comprobación expresa
+        -- del responsable, nunca inferida de una coincidencia G5.
+        if exists (select 1 from ulit_censo.entidad local_previo
+          where local_previo.espacio_id=p_espacio and local_previo.coleccion='locales'
+            and local_previo.valor->>'municipioId'='real-mun-medina'
+            and jsonb_typeof(local_previo.valor->'direcciones')='array'
+            and local_previo.valor->'direcciones'->-1->>'calleId'=v_obs->>'calleId'
+            and local_previo.valor->'direcciones'->-1->>'numero'=v_num::text
+            and coalesce(local_previo.valor->'direcciones'->-1->>'sufijo','')=coalesce(v_sufijo,''))
+          and p_confirmar_distinto is not true then
+          raise exception 'ULIT Censo: otro local comparte el portal; confirme local físicamente distinto'
+            using errcode='42501';
+        end if;
+        -- La misma empresa en dos locales del mismo portal, ambos censados
+        -- en 2026, no puede duplicarse por decisiones separadas de IT1.
+        if exists (select 1 from ulit_censo.entidad otra
+          where otra.espacio_id=p_espacio and otra.coleccion='observaciones'
+            and otra.id is distinct from v_obs->>'id'
+            and otra.valor->>'campanaId'=v_camp
+            and otra.valor->>'calleId'=v_obs->>'calleId'
+            and otra.valor->'datos'->>'numero'=v_num::text
+            and coalesce(otra.valor->'datos'->>'sufijo','')=coalesce(v_sufijo,'')
+            and otra.valor->'datos'->>'negocioId' is not null
+            and otra.valor->'datos'->>'negocioId'=v_obs->'datos'->>'negocioId'
+            and otra.valor->>'localId' is not null) then
+          raise exception 'ULIT Censo: negocio duplicado en otro local 2026 del mismo portal'
+            using errcode='42501';
+        end if;
+        if exists (select 1 from ulit_censo.entidad ocup_previa
+           join ulit_censo.entidad local_previo on
+             local_previo.espacio_id=ocup_previa.espacio_id
+             and local_previo.coleccion='locales'
+             and local_previo.id=ocup_previa.valor->>'localId'
+           where ocup_previa.espacio_id=p_espacio
+             and ocup_previa.coleccion='ocupaciones'
+             and (ocup_previa.valor->>'desdeCampanaId'=v_camp
+                or ocup_previa.valor->>'hastaCampanaId'=v_camp)
+             and ocup_previa.valor->>'negocioId' is not null
+             and ocup_previa.valor->>'negocioId'=v_obs->'datos'->>'negocioId'
+             and local_previo.valor->'direcciones'->-1->>'calleId'=v_obs->>'calleId'
+             and local_previo.valor->'direcciones'->-1->>'numero'=v_num::text
+             and coalesce(local_previo.valor->'direcciones'->-1->>'sufijo','')=coalesce(v_sufijo,'')) then
+           raise exception 'ULIT Censo: el negocio ya ocupa un local en este portal en 2026'
+             using errcode='42501';
+        end if;
         v_nuevo_id := 'loc-g5-'||p_registro_id;
         if length(v_nuevo_id)>400 or exists (select 1 from ulit_censo.entidad
              where espacio_id=p_espacio and coleccion='locales' and id=v_nuevo_id) then
@@ -355,12 +448,25 @@ begin
                                         'ocupaciones',jsonb_build_array(),
                                         'huellaLocal',encode(pg_catalog.sha256(pg_catalog.convert_to(v_loc::text,'UTF8')),'hex'));
       end if;
-      -- No reciclar una ocupación del histórico. Si no hay ninguna en 2026,
-      -- crear una ocupación de 2026 con su observación original sin tocar 2025.
-      if not exists (select 1 from ulit_censo.entidad
-         where espacio_id=p_espacio and coleccion='ocupaciones'
-           and valor->>'localId'=v_nuevo_id
-           and (valor->>'desdeCampanaId'=v_camp or valor->>'hastaCampanaId'=v_camp)) then
+      -- Si ya existe una ocupación de 2026, no confiar en su estado:
+      -- el negocio asociado debe coincidir y existir UNA sola ocupación.
+      select count(*), max(valor) into v_ocup_existentes, v_ocup
+        from ulit_censo.entidad
+       where espacio_id=p_espacio and coleccion='ocupaciones'
+         and valor->>'localId'=v_nuevo_id
+         and (valor->>'desdeCampanaId'=v_camp or valor->>'hastaCampanaId'=v_camp);
+      if v_ocup_existentes > 1 or
+         (v_ocup_existentes = 1 and
+           (v_ocup->>'negocioId' is distinct from v_obs->'datos'->>'negocioId'
+            or ((v_ocup->>'negocioId' is null) is distinct from
+                (v_obs->'datos'->>'vacio' = 'true')))) then
+        raise exception 'ULIT Censo: ocupación 2026 incompatible o duplicada'
+          using errcode='42501';
+      end if;
+      if v_ocup_existentes = 1 then
+        v_creadas := v_creadas || jsonb_build_object('ocupacionReutilizadaId',v_ocup->>'id');
+      end if;
+      if v_ocup_existentes = 0 then
         v_ocup_id := 'ocu-g5-'||p_registro_id;
         if exists(select 1 from ulit_censo.entidad
           where espacio_id=p_espacio and coleccion='ocupaciones' and id=v_ocup_id) then
@@ -402,7 +508,9 @@ begin
     end if;
     v_dec := jsonb_build_object('accion',p_accion,'porId',m.persona_id,'fecha',v_ahora,
       'motivo',v_motivo,'campanaId',v_camp,
-      'itinerarioId',v_reg->>'itinerarioId','antes',v_antes,'creadas',v_creadas);
+      'itinerarioId',v_reg->>'itinerarioId','antes',v_antes,
+      'localDistintoConfirmado',case when p_accion='local-nuevo' then p_confirmar_distinto else false end,
+      'creadas',v_creadas);
     if v_nuevo_id is not null then
       v_dec := v_dec || jsonb_build_object('localId',v_nuevo_id);
       v_vin := v_vin || jsonb_build_object('localId',v_nuevo_id,
@@ -417,6 +525,13 @@ begin
     raise exception 'ULIT Censo: número de entidades fuera de la operación limitada'
        using errcode='42501';
   end if;
+
+  -- Ninguna decisión sobre IT1 añade ni elimina registros o campañas:
+  -- comparar cifras de ESTA transacción, no el número congelado en 2026.
+  select count(*) into v_registros_antes from ulit_censo.entidad
+    where espacio_id=p_espacio and coleccion='registros';
+  select count(*) into v_campanas_antes from ulit_censo.entidad
+    where espacio_id=p_espacio and coleccion='campanas';
 
   -- Primera conciliación real: copia INTEGRA v4 antes de aplicar cambios,
   -- guardada en la MISMA transacción. Las sucesivas conservan el historial.
@@ -442,9 +557,9 @@ begin
   update ulit_censo.espacio set escritura_habilitada=false
     where id=p_espacio and version=v_vers;
   if not found or (select count(*) from ulit_censo.entidad
-     where espacio_id=p_espacio and coleccion='registros')<>994
+     where espacio_id=p_espacio and coleccion='registros')<>v_registros_antes
      or (select count(*) from ulit_censo.entidad
-     where espacio_id=p_espacio and coleccion='campanas')<>2 then
+     where espacio_id=p_espacio and coleccion='campanas')<>v_campanas_antes then
     raise exception 'ULIT Censo: verificación final fallida; operación revertida'
       using errcode='42501';
   end if;
@@ -456,7 +571,7 @@ $conciliar$;
 -- Todas las comprobaciones anteriores son de servidor; los datos sólo se
 -- exponen al miembro autenticado que supera ulit_censo.exigir.
 revoke all on function public.ulit_censo_conciliar_it1_2026(
-  text,bigint,text,text,text,text) from public,anon,authenticated,service_role;
+  text,bigint,text,text,text,text,boolean) from public,anon,authenticated,service_role;
 grant execute on function public.ulit_censo_conciliar_it1_2026(
-  text,bigint,text,text,text,text) to authenticated;
+  text,bigint,text,text,text,text,boolean) to authenticated;
 commit;
