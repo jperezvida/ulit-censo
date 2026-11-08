@@ -75,3 +75,14 @@
 .psl-candidato { padding: 12px; background: #fff; }
 .psl-candidato ul { margin: 8px 0 0; padding-left: 20px; }
 .psl-candidato li { margin: 4px 0; }
+
+.psl-vistas { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.psl-vistas .btn { white-space: nowrap; }
+.psl-acciones { margin: 16px 0; padding: 16px; border: 1px solid #d8e0eb; border-radius: 10px; }
+.psl-acciones h3 { margin: 0 0 10px; font-size: 16px; }
+.psl-acciones .campo { display: block; margin: 12px 0; }
+.psl-acciones textarea { width: 100%; max-width: 100%; resize: vertical; }
+.psl-acciones select { width: 100%; }
+.psl-check { display: flex; align-items: flex-start; gap: 10px; margin: 12px 0; line-height: 1.4; }
+.psl-check input { margin-top: 3px; }
+.psl-botones { flex-wrap: wrap; gap: 8px; }
