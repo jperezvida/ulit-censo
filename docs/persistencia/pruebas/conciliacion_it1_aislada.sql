@@ -268,6 +268,14 @@ select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026(
 update ulit_censo.entidad
  set valor=pg_catalog.jsonb_set(valor,'{orden}','2003'::jsonb)
  where coleccion='ocupaciones' and id='ocu-g5-it1-r-6';
+-- Cobertura adicional que hace referencia al nuevo local: bloquea el borrado
+-- incluso si no está entre las cuatro colecciones habituales de G5.
+insert into ulit_censo.entidad (espacio_id,coleccion,id,valor,version)
+values ('real-medina-del-campo-2026','coberturas','cobertura-r6',
+        '{"id":"cobertura-r6","localId":"loc-g5-it1-r-6","nota":"referencia posterior"}',12);
+select pg_temp.rechazado($q$select public.ulit_censo_conciliar_it1_2026(
+ 'real-medina-del-campo-2026',12,'it1-r-6','deshacer',null,null)$q$,'42501');
+delete from ulit_censo.entidad where coleccion='coberturas' and id='cobertura-r6';
 do $t$
 declare r jsonb;
 begin
