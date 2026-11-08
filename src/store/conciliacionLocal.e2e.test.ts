@@ -38,13 +38,14 @@ async function registrar(tipo: string) {
   if (login.error || !login.data.user) throw new Error(`Supabase Auth no inició sesión: ${login.error?.message}`);
   return {id:j.id,client};
 }
-function sembrar(ids: {admin:string;revisor:string;lector:string;investigador:string}) {
+function sembrar(ids: {admin:string;revisor:string;otroRevisor:string;lector:string;investigador:string}) {
   sql(`
   insert into ulit_censo.espacio (id,tipo,nombre,version,escritura_habilitada,preparacion_habilitada)
   values ('${ESPACIO}','real','Medina local desechable',4,false,false);
   insert into ulit_censo.miembro(espacio_id,usuario_id,rol,persona_id) values
    ('${ESPACIO}','${ids.admin}','administrador','local-admin'),
    ('${ESPACIO}','${ids.revisor}','revisor','local-revisor'),
+   ('${ESPACIO}','${ids.otroRevisor}','revisor','local-revisor'),
    ('${ESPACIO}','${ids.lector}','lector','local-lector'),
    ('${ESPACIO}','${ids.investigador}','investigador','local-investigador');
   insert into ulit_censo.entidad(espacio_id,coleccion,id,valor,version) values
@@ -94,10 +95,10 @@ describe.skipIf(!URL)('IT1 RPC con Supabase Auth + PostgREST (solo datos sintét
   const clients: Record<string, SupabaseClient> = {};
   beforeAll(async () => {
     if (!local(URL) || !local(DB) || !PUB || !SEC) throw new Error('Auth E2E: se exige Supabase LOCAL con claves locales');
-    const entries = await Promise.all(['admin','revisor','lector','investigador','noMiembro'].map(async k => [k,await registrar(k)] as const));
+    const entries = await Promise.all(['admin','revisor','otroRevisor','lector','investigador','noMiembro'].map(async k => [k,await registrar(k)] as const));
     const ids: Record<string,string> = {};
     for (const [k,obj] of entries) { ids[k]=obj.id; clients[k]=obj.client; }
-    sembrar({admin:ids.admin,revisor:ids.revisor,lector:ids.lector,investigador:ids.investigador});
+    sembrar({admin:ids.admin,revisor:ids.revisor,otroRevisor:ids.otroRevisor,lector:ids.lector,investigador:ids.investigador});
   },90000);
 
   it('autorización real: solo miembros revisor/coordinador/admin tienen RPC; anónimo y lector no', async () => {
@@ -137,6 +138,11 @@ describe.skipIf(!URL)('IT1 RPC con Supabase Auth + PostgREST (solo datos sintét
       p_cambios:[{c:'registros',id:'r26-2',v:null}],
     });
     expect(forbidden.error?.code).toBe('42501');
+    // Otra cuenta con el MISMO persona_id no puede deshacer lo hecho por el revisor.
+    await expect(guardarDecisionIt1(clients.otroRevisor, {
+      versionEsperada:5, registroId:'r26-2', accion:'deshacer',
+      motivo:'Otro usuario no puede revertir la decisión',
+    })).rejects.toThrow(/un revisor no puede deshacer/);
     const reverse=await guardarDecisionIt1(clients.revisor,{
       versionEsperada:5,registroId:'r26-2',accion:'deshacer',motivo:'Revertir vinculación comprobada',
     });
