@@ -46,7 +46,7 @@ declare
  v_root jsonb; v_root_old jsonb;
  v_importaciones_previas integer;
  v_registros integer; v_vinculos integer; v_locales integer;
- v_cambios integer; v_col text; v_nombres text;
+ v_cambios integer; v_col text; v_nombres text; v_no_validos integer;
 begin
  if p_espacio is distinct from 'real-medina-del-campo-2026'
   or p_codigo is null or p_codigo !~ '^IT[1-9][0-9]{0,2}$'
@@ -289,7 +289,7 @@ begin
  end if;
  -- Fuente autorizada, no decisiones, revisiones ni verificación fabricadas.
  -- Esta RPC solo IMPORTA borradores: cualquier supervisión se realiza después en Oficina/G5.
- if exists (select 1 from pg_temp._it_excel_c x where
+ select count(*) into v_no_validos from pg_temp._it_excel_c x where
    (x.c='registros' and (x.v ? 'exclusion'
      or x.v->'interpretacion'->'clasificacion'->>'confirmada'='true'))
    or (x.c='vinculos' and (
@@ -338,8 +338,8 @@ begin
      or x.v->>'estado' is distinct from 'activo'))
    or (x.c='importaciones' and (
      x.v->'c1'->'decisiones' is distinct from '{}'::jsonb
-     and x.v->'c1' ? 'decisiones'))
- ) then
+     and x.v->'c1' ? 'decisiones'));
+ if v_no_validos>0 then
    raise exception 'ULIT Censo: el Excel intenta incorporar decisiones o datos ya verificados'
      using errcode='42501';
  end if;
