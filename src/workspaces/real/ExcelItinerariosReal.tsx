@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { AlertTriangle, CheckCircle2, FileSpreadsheet, Search, ShieldCheck } from 'lucide-react';
 import { useContexto } from '../../store/contexto';
 import { useFuenteOficina } from '../../store/fuenteOficina';
@@ -6,11 +7,14 @@ import { codigoItinerarioExcel, filaPreviaExcel, prepararExcelReal, validarDesti
 import { LIMITES_XLSX } from '../../domain/xlsx/lector';
 import { leerBytes } from '../espacios/leerArchivo';
 import { fmt } from '../../components/ui';
+import { descargar } from '../../domain/exportacion';
+import { clienteServidor } from '../../store/clienteSupabase';
+import { consultarCapacidadExcel, descargarCopiaPreviaExcel, guardarExcelReal, type CapacidadExcelReal, type GuardadoExcelReal } from '../../store/importacionExcelReal';
 
 /**
- * Misma aplicación completa, MISMO importador C1/G4 de IT1.
- * En esta etapa no habilita escritura: los bytes solo viven en la memoria
- * de esta pestaña y NO pasan a Supabase, IndexedDB, logs ni repositorio.
+ * Mismo importador de IT1. El Excel se procesa en memoria; únicamente las
+ * ENTIDADES confirmadas viajan por la RPC acotada, tras respaldo externo.
+ * Si 0009 no está instalada, solo se permite analizar: no se intenta guardar.
  */
 export default function ExcelItinerariosReal() {
   const { db, campana } = useContexto();
@@ -23,6 +27,11 @@ export default function ExcelItinerariosReal() {
   const [error, setError] = useState<string | null>(null);
   const [busqueda, setBusqueda] = useState('');
   const [verTodas, setVerTodas] = useState(false);
+  const [capacidad, setCapacidad] = useState<CapacidadExcelReal | null>(null);
+  const [respaldo, setRespaldo] = useState<{id:string;version:number}|null>(null);
+  const [respaldoConfirmado, setRespaldoConfirmado] = useState(false);
+  const [confirmado, setConfirmado] = useState(false);
+  const [guardado, setGuardado] = useState<GuardadoExcelReal | null>(null);
 
   const valida = useMemo(() => campana
     ? validarDestinoExcel(db, campana.id, codigo, parte)
@@ -45,15 +54,57 @@ export default function ExcelItinerariosReal() {
   async function analizar() {
     if (!permitir || !campana || !fuente || !archivo || !!valida.error || ocupado) return;
     setOcupado(true); setError(null); setAnalisis(null); setVerTodas(false); setBusqueda('');
+    setCapacidad(null); setRespaldo(null); setRespaldoConfirmado(false); setConfirmado(false); setGuardado(null);
     try {
       if (archivo.size === 0 || archivo.size > LIMITES_XLSX.maxBytesArchivo)
         throw new Error(`Archivo vacío o demasiado grande. Límite: ${fmt(LIMITES_XLSX.maxBytesArchivo / 1048576)} MB.`);
       const bytes = await leerBytes(archivo);
       const res = await prepararExcelReal(db, campana.id, fuente.personaId, archivo.name, bytes, codigo, parte);
       setAnalisis(res);
+      if (res.lote.aplicable) {
+        const cliente = clienteServidor();
+        if (cliente) setCapacidad(await consultarCapacidadExcel(cliente));
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally { setOcupado(false); }
+  }
+
+
+  async function prepararRespaldo() {
+    if (!analisis?.lote.aplicable || !capacidad?.habilitada || !fuente?.versionReal ||
+      capacidad.version !== fuente.versionReal || ocupado) return;
+    const cliente=clienteServidor();
+    if(!cliente) return setError('No hay conexión segura con Supabase.');
+    setOcupado(true);setError(null);setRespaldo(null);setRespaldoConfirmado(false);setConfirmado(false);
+    try {
+      const b=await descargarCopiaPreviaExcel(cliente,db,fuente.versionReal,analisis.codigo);
+      descargar(b.nombre,b.contenido,'application/json');
+      setRespaldo({id:b.id,version:fuente.versionReal});
+    }catch(e){setError(e instanceof Error?e.message:String(e));}
+    finally{setOcupado(false);}
+  }
+
+  async function guardar() {
+    if(!analisis?.lote.aplicable || !analisis.lote.dbResultado || !informe ||
+      !capacidad?.habilitada || !fuente?.recargarReal || !fuente.versionReal ||
+      capacidad.version!==fuente.versionReal ||
+      !respaldo || respaldo.version!==fuente.versionReal ||
+      !respaldoConfirmado || !confirmado || ocupado) return;
+    const cliente=clienteServidor();
+    if(!cliente) return setError('No hay conexión segura con Supabase.');
+    setOcupado(true);setError(null);
+    try {
+      const r=await guardarExcelReal(cliente,db,analisis.lote.dbResultado,
+        fuente.versionReal,analisis.codigo,informe.sha256,parte);
+      await fuente.recargarReal();
+      setGuardado(r);
+      setArchivo(null);setAnalisis(null);setRespaldo(null);
+      setCapacidad(null);setConfirmado(false);setRespaldoConfirmado(false);
+    }catch(e){
+      setError((e instanceof Error?e.message:String(e))+
+        ' No repita la importación sin consultar primero el estado del servidor y sus registros.');
+    }finally{setOcupado(false);}
   }
 
   if (!permitir) return null;
@@ -63,7 +114,7 @@ export default function ExcelItinerariosReal() {
       <p>Seleccione el Excel de IT2, IT3 o cualquier otro itinerario de esta campaña. Se utilizará el mismo importador de IT1, sin crear otra aplicación.</p>
       <div className="t-info aviso" role="status">
         <ShieldCheck size={17} />
-        <span><b>Preparación en esta pestaña, sin guardar.</b> Esta pantalla permite revisar ahora el archivo y sus filas. La incorporación definitiva se habilitará después de validar la operación segura del servidor. No se enviarán los bytes del Excel a Supabase.</span>
+        <span><b>Análisis local y guardado supervisado.</b> El Excel se analiza en esta pestaña; nunca se envían sus bytes al servidor. Solo podrán guardarse las entidades revisadas si la migración 0009 está instalada y el servidor autoriza expresamente la operación.</span>
       </div>
       <div className="col" style={{ gap: 12, marginTop: 16 }}>
         <label className="campo">
@@ -75,6 +126,7 @@ export default function ExcelItinerariosReal() {
               setArchivo(elegido);
               setCodigo(elegido ? (codigoItinerarioExcel(elegido.name) ?? '') : '');
               setParte(false); setAnalisis(null); setError(null); setBusqueda(''); setVerTodas(false);
+              setCapacidad(null);setRespaldo(null);setRespaldoConfirmado(false);setConfirmado(false);setGuardado(null);
               e.target.value = '';
             }} />
         </label>
@@ -84,14 +136,14 @@ export default function ExcelItinerariosReal() {
             <span>Itinerario al que pertenece (confírmelo)</span>
             <input className="input" value={codigo} maxLength={5} placeholder="IT2"
               aria-label="Código del itinerario"
-              onChange={(e) => { setCodigo(e.target.value.toUpperCase().replace(/\s/g, '')); setAnalisis(null); }} />
+              onChange={(e) => { setCodigo(e.target.value.toUpperCase().replace(/\s/g, '')); setAnalisis(null);setRespaldo(null);setCapacidad(null); }} />
           </label>
           <div className="t-info">
             {valida.itinerarioId ? `Se utilizará el itinerario ${valida.codigo} existente en la campaña.`
               : `Se preparará ${valida.codigo || 'el itinerario elegido'} como itinerario nuevo. No se creará en el servidor hasta confirmar una importación autorizada.`}
           </div>
           <label className="fila" style={{ gap: 10, alignItems: 'flex-start' }}>
-            <input type="checkbox" checked={parte} onChange={(e) => { setParte(e.target.checked); setAnalisis(null); }}
+            <input type="checkbox" checked={parte} onChange={(e) => { setParte(e.target.checked); setAnalisis(null);setCapacidad(null);setRespaldo(null); }}
               aria-label="Parte adicional de un itinerario ya importado" />
             <span>Este archivo es una <b>parte adicional</b> de un itinerario ya incorporado (por ejemplo, IT5 parte 2). No marcar para sustituir o corregir el archivo original.</span>
           </label>
@@ -104,6 +156,9 @@ export default function ExcelItinerariosReal() {
         </>}
         {error && <div className="t-info error" role="alert"><AlertTriangle size={15} />{error}</div>}
       </div>
+      {guardado && <div className="t-info ok" role="status"><CheckCircle2 size={16} />
+        <span><b>{guardado.itinerario} guardado y verificado.</b> {fmt(guardado.filas)} filas nuevas, versión {guardado.version}. La escritura general vuelve a estar bloqueada. <Link to="/oficina/sin-local">Abrir los registros pendientes en Oficina</Link> · <Link to="/oficina">Ir a Oficina</Link>.</span>
+      </div>}
       {analisis && informe && <div className="col" style={{ gap: 14, marginTop: 18 }} aria-label="Resultado de análisis de itinerario">
         <div className={`t-info ${analisis.lote.aplicable ? 'ok' : 'aviso'}`} role="status">
           {analisis.lote.aplicable ? <CheckCircle2 size={17} /> : <AlertTriangle size={17} />}
@@ -145,10 +200,33 @@ export default function ExcelItinerariosReal() {
           <p className="muted">{fmt(registros.length)} filas coinciden con la búsqueda; mostrando {fmt(visibles.length)}. Los registros originales no se modifican ni se asocian automáticamente a 2025.</p>
           {registros.length > 50 && !verTodas && <button className="btn s" onClick={() => setVerTodas(true)}>Mostrar todas las filas del resultado</button>}
         </>}
-        <div className="t-info aviso">
+        {!capacidad?.habilitada ? <div className="t-info aviso" role="status">
           <ShieldCheck size={17} />
-          <span><b>Siguiente etapa: incorporación autorizada a Supabase y trabajo directo en Oficina.</b> Todavía no existe una función general de guardado para IT2 y siguientes. Esta vista previa no debe interpretarse como una importación realizada.</span>
-        </div>
+          <span><b>Guardado todavía no disponible en este servidor.</b> La migración 0009 no está activada, el usuario carece de permisos o la base cambió. Puede revisar el Excel, pero no se creará ningún registro hasta completar las pruebas y autorizar la activación.</span>
+        </div> : <section className="tarjeta inc-bloque" aria-label="Confirmar incorporación real" style={{padding:16}}>
+          <h3 style={{marginTop:0}}>Incorporar {analisis.codigo} a la única aplicación</h3>
+          <p>Esta operación añadirá {fmt(analisis.lote.totalFilas)} filas de origen, con {fmt(analisis.lote.totalPendientes)} pendientes de conciliación. Las entidades existentes y el histórico de 2025 no se alterarán.</p>
+          <button className="btn s" disabled={ocupado} onClick={() => void prepararRespaldo()}>
+            {ocupado ? 'Comprobando…' : respaldo ? 'Descargar de nuevo respaldo previo' : '1. Descargar respaldo previo y comprobarlo'}
+          </button>
+          {respaldo && <div className="col" style={{gap:10,marginTop:12}}>
+            <p className="muted" style={{margin:0}}>Copia previa identificada: <code>{respaldo.id}</code> · versión {respaldo.version}. Confirme que el archivo JSON se ha descargado y está guardado fuera de Supabase.</p>
+            <label className="fila" style={{gap:8,alignItems:'flex-start'}}>
+              <input type="checkbox" checked={respaldoConfirmado} onChange={(e)=>setRespaldoConfirmado(e.target.checked)}
+                aria-label="He guardado el respaldo externo" />
+              He comprobado que conservo el respaldo previo fuera de Supabase.
+            </label>
+            <label className="fila" style={{gap:8,alignItems:'flex-start'}}>
+              <input type="checkbox" checked={confirmado} onChange={(e)=>setConfirmado(e.target.checked)}
+                aria-label="Autorizo incorporación del Excel" />
+              He revisado el archivo y autorizo esta incorporación de {analisis.codigo}.
+            </label>
+            <button className="btn primario" disabled={ocupado || !confirmado || !respaldoConfirmado}
+              onClick={() => void guardar()}>
+              {ocupado ? 'Guardando y verificando…' : `2. Guardar Excel ${analisis.codigo} en Supabase`}
+            </button>
+          </div>}
+        </section>}
       </div>}
     </section>
   );
