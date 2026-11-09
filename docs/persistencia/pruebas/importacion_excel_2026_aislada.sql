@@ -215,4 +215,40 @@ do $t$ begin
  assert (select count(*) from ulit_censo.entidad where coleccion='registros'
   and id='hist-r-1')=1;
 end $t$;
+
+\echo '08 · ENSAYO de recuperación: exportar JSON fuera de la base, importar y reconstruir clon'
+-- Ruta local solo del runner Ubuntu; nunca se exportan datos reales.
+\copy (select contenido::text from ulit_censo.copia where espacio_id='real-medina-del-campo-2026' and version=4 order by creada_en desc limit 1) to '/tmp/ulit-censo-it2-copia-sintetica.json'
+create temporary table _respaldo_externo(texto text) on commit preserve rows;
+\copy _respaldo_externo(texto) from '/tmp/ulit-censo-it2-copia-sintetica.json'
+do $t$
+declare instantanea jsonb;
+begin
+ assert (select count(*) from pg_temp._respaldo_externo)=1, 'La copia exportada debe contener un único JSON';
+ select texto::jsonb into instantanea from pg_temp._respaldo_externo;
+ assert instantanea->>'espacioId'='real-medina-del-campo-2026';
+ assert instantanea->>'version'='4';
+ assert jsonb_typeof(instantanea->'entidades')='object';
+ assert (select sha256 from ulit_censo.copia where version=4 limit 1)
+  = encode(pg_catalog.sha256(pg_catalog.convert_to(instantanea::text,'UTF8')),'hex');
+ -- El clon es OTRO espacio, sin credenciales ni escritura en producción.
+ insert into ulit_censo.espacio
+   (id,tipo,nombre,version,escritura_habilitada)
+ values('ensayo-recuperacion-it2','ensayo','Recuperación aislada de IT2',4,true);
+ insert into ulit_censo.entidad(espacio_id,coleccion,id,valor,version)
+ select 'ensayo-recuperacion-it2',coleccion.key,registro.key,registro.value,4
+   from jsonb_each(instantanea->'entidades') as coleccion
+   cross join lateral jsonb_each(coleccion.value) as registro;
+ assert ulit_censo.contenido('ensayo-recuperacion-it2')=instantanea->'entidades',
+   'La restauración en el clon debe coincidir byte-a-byte como JSONB';
+ assert (select count(*) from ulit_censo.entidad
+   where espacio_id='ensayo-recuperacion-it2' and coleccion='registros')=1;
+ assert (select count(*) from ulit_censo.entidad
+   where espacio_id='ensayo-recuperacion-it2' and coleccion='importaciones')=1;
+ assert (select version from ulit_censo.espacio where id='real-medina-del-campo-2026')=6;
+ assert not (select escritura_habilitada from ulit_censo.espacio
+   where id='real-medina-del-campo-2026');
+end $t$;
+\echo 'ÉXITO · JSON externo con SHA-256 verificado y clon recuperado sin alterar espacio de origen'
+
 \echo 'ÉXITO: IT2, parte adicional, permisos, versión, integridad, copias e histórico.';
