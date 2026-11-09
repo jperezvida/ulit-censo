@@ -1,0 +1,111 @@
+name: ULIT Censo · compatibilidad IT1 G5 e importación IT2
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/persistencia/sql/20261109_0009_importacion_excel_itinerarios_2026.sql'
+      - 'docs/persistencia/pruebas/importacion_excel_2026_aislada.sql'
+      - '.github/workflows/ci-excel-itinerarios-compat.yml'
+permissions:
+  contents: read
+concurrency:
+  group: censo-it1-it2-compat-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    services:
+      db:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 3s --health-retries 12
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cliente PostgreSQL
+        run: |
+          if ! command -v psql >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y postgresql-client
+          fi
+      - name: Obtener 0008 revisada del mismo repositorio, sin mezclar ramas
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin refs/heads/feat/conciliacion-it1-g5-real
+          git show FETCH_HEAD:docs/persistencia/sql/20261108_0008_conciliacion_it1_supervisada.sql > /tmp/ulit-0008.sql
+          test -s /tmp/ulit-0008.sql
+          echo "0008 aislada de PR #21; no se aplican migraciones reales"
+      - name: Instalar 0008 y 0009 juntas en PostgreSQL desechable
+        run: |
+          set -euo pipefail
+          SQL=docs/persistencia/sql
+          psql -v ON_ERROR_STOP=1 -q -f docs/persistencia/pruebas/emulacion_supabase.sql
+          for F in \
+            "$SQL/20261104_0001_ulit_censo_esquema.sql" \
+            "$SQL/20261104_0002_ulit_censo_operaciones.sql" \
+            "$SQL/20261105_0004_ulit_censo_inicializacion_real.sql" \
+            "$SQL/20261105_0005_importacion_unica_medina_2025.sql" \
+            "$SQL/20261106_0006_importacion_it1_medina_2026.sql" \
+            "$SQL/20261107_0007_it1_c_ambigua_reintento_seguro.sql"; do
+            psql -v ON_ERROR_STOP=1 -q -f "$F"
+          done
+          psql -v ON_ERROR_STOP=1 -q -f /tmp/ulit-0008.sql
+          psql -v ON_ERROR_STOP=1 -q -f "$SQL/20261109_0009_importacion_excel_itinerarios_2026.sql"
+          psql -v ON_ERROR_STOP=1 -f docs/persistencia/pruebas/importacion_excel_2026_aislada.sql
+      - name: Conciliar IT1 después de importar IT2 sin recuentos fijos
+        run: |
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          update ulit_censo.entidad
+            set valor=valor||jsonb_build_object(
+                'campanaReferenciaId','camp-hist-real-mun-medina-2025-9e367ca51c')
+            where espacio_id='real-medina-del-campo-2026'
+              and coleccion='campanas'
+              and id='real-camp-medina-2026-censo-medina-del-campo-2026';
+          insert into ulit_censo.entidad(espacio_id,coleccion,id,valor,version)
+          values
+          ('real-medina-del-campo-2026','importaciones','imp-it1-compatible',
+           jsonb_build_object('id','imp-it1-compatible',
+             'campanaId','real-camp-medina-2026-censo-medina-del-campo-2026',
+             'tipo','C-excel-itinerario','estado','confirmada',
+             'huella','7a6d4230a68370cc0bb0245ce68e8c56648be4d89e76531cc0edbd9ab341da61'),6),
+          ('real-medina-del-campo-2026','registros','it1-r-compat',
+           jsonb_build_object('id','it1-r-compat','importacionId','imp-it1-compatible',
+             'itinerarioId','real-it-it1','fila',2,'datos',jsonb_build_object('Num','1')),6),
+          ('real-medina-del-campo-2026','vinculos','vin-it1-r-compat',
+           jsonb_build_object('id','vin-it1-r-compat','origen',
+              jsonb_build_object('tipo','registro','id','it1-r-compat'),
+              'localId',null,'confianza','sin-vinculo','criterio','pendiente'),6);
+          set role authenticated;
+          set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000c';
+          do $verificar$
+          declare respuesta jsonb;
+          begin
+            respuesta:=public.ulit_censo_conciliar_it1_2026(
+              'real-medina-del-campo-2026',6,'it1-r-compat',
+              'mantener-pendiente',null,'Se revisará sin alterar la importación');
+            assert respuesta->>'version'='7';
+          end $verificar$;
+          reset role;
+          do $final$
+          begin
+            assert (select version from ulit_censo.espacio
+              where id='real-medina-del-campo-2026')=7;
+            assert not (select escritura_habilitada from ulit_censo.espacio
+              where id='real-medina-del-campo-2026');
+            assert (select count(*) from ulit_censo.entidad
+              where coleccion='importaciones' and id like 'imp-it2%')=2;
+            assert (select valor->'conciliaciones'->0->>'accion'
+              from ulit_censo.entidad where coleccion='vinculos'
+                and id='vin-it1-r-compat')='mantener-pendiente';
+          end $final$;
+          SQL
