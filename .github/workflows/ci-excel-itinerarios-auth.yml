@@ -1,0 +1,42 @@
+name: ULIT Censo · Excel IT2+ Auth/PostgREST local
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/store/importacionExcelLocal.e2e.test.ts'
+      - 'src/store/importacionExcelReal.ts'
+      - 'docs/persistencia/pruebas/e2e-supabase-local.sh'
+      - 'docs/persistencia/sql/20261109_0009_importacion_excel_itinerarios_2026.sql'
+      - '.github/workflows/ci-excel-itinerarios-auth.yml'
+permissions:
+  contents: read
+concurrency:
+  group: censo-excel-auth-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Cliente PostgreSQL
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y postgresql-client
+          fi
+          psql --version
+      - name: Usuarios Auth y RPC sobre Supabase local desechable
+        env:
+          ULIT_CENSO_E2E_EXCEL: '1'
+        run: bash docs/persistencia/pruebas/e2e-supabase-local.sh /tmp/ulit-censo-excel-auth
+      - name: Detener Supabase y eliminar volúmenes locales
+        if: always()
+        run: |
+          if [ -f /tmp/ulit-censo-excel-auth/supabase/config.toml ]; then
+            (cd /tmp/ulit-censo-excel-auth && npx -y supabase@2.58.5 stop --no-backup) || true
+          fi
