@@ -95,7 +95,8 @@ begin
  exception when others then
   recibido:=sqlstate;
   if recibido<>esperado then
-   raise exception 'Esperado error %, recibido %: %', esperado, recibido, sqlerrm;
+   raise notice 'Esperado error %, recibido %, detalle: %', esperado, recibido, sqlerrm;
+   raise;
   end if;
   return;
  end;
