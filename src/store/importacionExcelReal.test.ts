@@ -85,7 +85,7 @@ describe('Guardado de Excel real · control client-side sin tocar Supabase',()=>
   it('detecta exceso de entidades aunque no supere el tamaño del JSON', () => {
     const d=fixture();
     const extras=Object.fromEntries(Array.from({length:1500},(_,i)=>[
-      'vin-extra-'+i, {id:'vin-extra-'+i,origen:{tipo:'registro',id:'r26'},localId:null,confianza:'sin-vinculo',criterio:'prueba'},
+      'vin-extra-'+i, {id:'vin-extra-'+i,origen:{tipo:'registro',id:'r26'},localId:null,confianza:'sin-vinculo',criterio:'prueba'} as VinculoHistorico,
     ]));
     d.despues.vinculos={...d.despues.vinculos,...extras};
     const diagnostico=diagnosticarTamanoExcel(d.antes,d.despues);
