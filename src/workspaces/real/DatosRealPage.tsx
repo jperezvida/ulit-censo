@@ -9,6 +9,7 @@ import { leerBytes } from '../espacios/leerArchivo';
 import { fmt } from '../../components/ui';
 import { clienteServidor } from '../../store/clienteSupabase';
 import { AlmacenSupabase } from '../../store/almacenSupabase';
+import ExcelItinerariosReal from './ExcelItinerariosReal';
 
 /**
  * Reutiliza el intérprete G4 en la interfaz COMPLETA. El cliente prepara IT1
@@ -172,6 +173,7 @@ export default function DatosRealPage() {
         {guardado && <div className="t-info ok" role="status"><CheckCircle2 size={16}/>{guardado}</div>}
         {error && <div className="t-info error" role="alert"><AlertTriangle size={16}/>{error}</div>}
       </section>}
+      <ExcelItinerariosReal />
       </div>}
   </div>;
 }
