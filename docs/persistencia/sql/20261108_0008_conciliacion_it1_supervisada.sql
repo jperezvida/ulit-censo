@@ -9,8 +9,19 @@ begin;
 
 -- La migración 0001 impide UPDATE de copia, pero no DELETE.
 -- Reforzar el historial de respaldos antes de ofrecer una RPC con escritura.
-create trigger copia_no_borrar before delete on ulit_censo.copia
-  for each row execute function ulit_censo.impedir_cambio();
+do $proteccion$
+begin
+  -- 0009 puede haber instalado primero la misma protección. La aplicación
+  -- de 0008 no debe fallar por un disparador ya existente.
+  if not exists (
+    select 1 from pg_catalog.pg_trigger
+    where tgrelid = 'ulit_censo.copia'::regclass
+      and tgname = 'copia_no_borrar' and not tgisinternal
+  ) then
+    create trigger copia_no_borrar before delete on ulit_censo.copia
+      for each row execute function ulit_censo.impedir_cambio();
+  end if;
+end $proteccion$;
 
 create function public.ulit_censo_conciliar_it1_2026(
   p_espacio text,
