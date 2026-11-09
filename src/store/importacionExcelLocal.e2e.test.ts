@@ -29,8 +29,8 @@ const cambios=[
   {c:'itinerarios',id:'real-it-it2',v:{id:'real-it-it2',campanaId:CAMP,codigo:'IT2',origen:'excel'}},
   {c:'importaciones',id:'imp-it2',v:{id:'imp-it2',campanaId:CAMP,municipioId:'real-mun-medina',
     tipo:'C-excel-itinerario',estado:'confirmada',huella:SHA,filas:2,c1:{sha256:SHA,anio:2026,itinerario:{id:'real-it-it2',codigo:'IT2'}}}},
-  {c:'registros',id:'r26-2',v:{id:'r26-2',fila:2,importacionId:'imp-it2',itinerarioId:'real-it-it2',datos:{'Dirección':'Calle ficticia'}}},
-  {c:'registros',id:'r26-3',v:{id:'r26-3',fila:3,importacionId:'imp-it2',itinerarioId:'real-it-it2',datos:{'Dirección':'Calle ficticia'}}},
+  {c:'registros',id:'r26-2',v:{id:'r26-2',fila:2,importacionId:'imp-it2',itinerarioId:'real-it-it2',datos:{'Dirección':'Calle ficticia','Número':'9','Negocio':'Panadería de prueba'}}},
+  {c:'registros',id:'r26-3',v:{id:'r26-3',fila:3,importacionId:'imp-it2',itinerarioId:'real-it-it2',datos:{'Dirección':'Calle ficticia','Número':'11','Negocio':'Librería de prueba'}}},
   {c:'vinculos',id:'vin-r26-2',v:{id:'vin-r26-2',origen:{tipo:'registro',id:'r26-2'},localId:null,confianza:'sin-vinculo',criterio:'Sin correspondencia automática'}},
   {c:'vinculos',id:'vin-r26-3',v:{id:'vin-r26-3',origen:{tipo:'registro',id:'r26-3'},localId:null,confianza:'sin-vinculo',criterio:'Sin correspondencia automática'}},
 ];
