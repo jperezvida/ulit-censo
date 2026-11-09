@@ -132,6 +132,26 @@ select pg_temp.rechazado($q$select public.ulit_censo_aplicar(
  'real-medina-del-campo-2026',4,'vía general',
  '[{"c":"registros","id":"atajo-no-autorizado","v":{"id":"atajo-no-autorizado"}}]'::jsonb)$q$,'42501');
 
+\echo '03b · Ataques: vínculo falso, negocio inexistente y ocupación discrepante'
+-- No hay ninguna copia ni nueva versión después de las tres operaciones rechazadas.
+select pg_temp.rechazado($q$select public.ulit_censo_importar_excel_2026(
+ 'real-medina-del-campo-2026',4,'IT2',repeat('a',64),false,
+ jsonb_set(pg_temp.plan_it2(),'{5,v,localId}','null'::jsonb))$q$,'42501');
+select pg_temp.rechazado($q$select public.ulit_censo_importar_excel_2026(
+ 'real-medina-del-campo-2026',4,'IT2',repeat('a',64),false,
+ jsonb_set(pg_temp.plan_it2(),'{9,v,datos,negocioId}','"negocio-falso"'::jsonb))$q$,'42501');
+select pg_temp.rechazado($q$select public.ulit_censo_importar_excel_2026(
+ 'real-medina-del-campo-2026',4,'IT2',repeat('a',64),false,
+ jsonb_set(pg_temp.plan_it2(),'{10,v,negocioId}','null'::jsonb))$q$,'42501');
+reset role;
+do $t$ begin
+ assert (select version from ulit_censo.espacio where id='real-medina-del-campo-2026')=4;
+ assert (select count(*) from ulit_censo.copia)=0;
+ assert not (select escritura_habilitada from ulit_censo.espacio
+    where id='real-medina-del-campo-2026');
+end $t$;
+set role authenticated;
+
 \echo '04 · Primer IT2: copia anterior, 2 filas, 1 local, 1 pendiente'
 do $t$
 declare r jsonb;
