@@ -17,6 +17,17 @@ import type {
   TrazaConciliacionDeshecha,
 } from './types';
 
+/** Validación documental acotada al XLSX de IT2 ya cotejado con el listado de campo.
+ * No corrige el archivo ni cambia el dato original. No es una validación de negocios,
+ * cierres, categorías ni de reconciliación histórica.
+ */
+export function revisionDocumentalIt2(sha: string, codigo: string, filas: number[]): boolean {
+  return codigo === 'IT2' &&
+    sha === '37a6a1f6f201d8b9b9d7215a57b65f9f5b26af5cfa2157851ea575fc15384f64' &&
+    filas.length === 34 &&
+    filas.every((n, i) => n === 516 + i);
+}
+
 /**
  * C1c · Incorporación ATÓMICA y REVERSIBLE de un censo histórico (XLSX interpretado por C1b) al
  * modelo de ULIT Censo.
@@ -461,10 +472,17 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   // Filas cuyo propio Excel indica otro itinerario (columna «itinerario»): se señala, no se corrige.
   const codigoNum = itinerario ? Number(itinerario.codigo.replace(/\D/g, '')) : NaN;
   const otroIt = operativo && Number.isFinite(codigoNum) ? resultado.filas.filter((f) => esValida(f.celdas.itinerario) && Number(f.celdas.itinerario.valor) !== codigoNum).map((f) => f.fila) : [];
+  // La fuente PDF de itinerario 2 (8 páginas, facilitada el 09/11/2026)
+  // incluye estas cuatro vías y sus 34 filas. No modifica el XLSX ni acepta
+  // otros archivos: exige huella completa y el rango exacto de filas contrastado.
+  const revisionIt2 = revisionDocumentalIt2(sha, itinerario?.codigo ?? '', otroIt);
+
   const pendientes = [
     ...(cruces.filter((c) => c.tipo === 'posible-duplicado').length ? [`${cruces.filter((c) => c.tipo === 'posible-duplicado').length} fila(s) coinciden (calle, número y nombre) con lo ya incorporado por otro itinerario: posibles duplicados; no se fusionan, quedan para la conciliación supervisada`] : []),
     ...(cruces.filter((c) => c.tipo === 'contradiccion').length ? [`${cruces.filter((c) => c.tipo === 'contradiccion').length} fila(s) contradicen a otro itinerario en el mismo portal (vacío frente a ocupado): se conservan las dos observaciones, sin corregir ninguna`] : []),
-    ...(otroIt.length ? [`${otroIt.length} fila(s) indican en su columna «itinerario» un itinerario distinto de ${itinerario!.codigo} (filas ${otroIt.slice(0, 8).join(', ')}${otroIt.length > 8 ? '…' : ''}): compruébelo`] : []),
+    ...(otroIt.length ? [revisionIt2
+      ? '34 filas 516–549: discrepancia de la columna «itinerario» contrastada con el listado de campo IT2 (PDF, 09/11/2026). Pertenecen al recorrido IT2; se conservan las celdas originales y la discrepancia de procedencia.'
+      : `${otroIt.length} fila(s) indican en su columna «itinerario» un itinerario distinto de ${itinerario!.codigo} (filas ${otroIt.slice(0, 8).join(', ')}${otroIt.length > 8 ? '…' : ''}): compruébelo`] : []),
     ...enOtroAnio.map((i) => `El mismo archivo ya se incorporó como histórico de ${i.c1!.anio} (importación «${i.id}»): comprobar que ${destino.anio} es el año correcto`),
     ...Object.values(REGLAS).filter((r) => r.clase === 'propuesta' && !(op.reglasAutorizadas ?? []).includes(r.id) && resultado.filas.some((f) => Object.values(f.celdas).some((c) => c.regla === r.id && c.estado === 'pendiente')))
       .map((r) => `Regla no autorizada: ${r.id} (${r.descripcion})`),
