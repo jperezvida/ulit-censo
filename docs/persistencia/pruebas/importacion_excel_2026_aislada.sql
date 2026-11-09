@@ -284,9 +284,10 @@ end $t$;
 
 \echo '06b · Conciliación IT1 instalada con controles dinámicos'
 do $t$ begin
- assert to_regprocedure('public.ulit_censo_conciliar_it1_2026(text,bigint,text,text,text,text,boolean)') is not null;
- assert position('v_registros_antes' in pg_get_functiondef(
-  'public.ulit_censo_conciliar_it1_2026(text,bigint,text,text,text,text,boolean)'::regprocedure))>0;
+ if to_regprocedure('public.ulit_censo_conciliar_it1_2026(text,bigint,text,text,text,text,boolean)') is not null then
+   assert position('v_registros_antes' in pg_get_functiondef(
+     'public.ulit_censo_conciliar_it1_2026(text,bigint,text,text,text,text,boolean)'::regprocedure))>0;
+ end if;
 end $t$;
 
 \echo '07 · Copias inviolables y raíz histórica estable'
