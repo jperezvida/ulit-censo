@@ -3,7 +3,7 @@ import type { BaseDatos } from '../domain/db';
 import { AlmacenSupabase, ConflictoRemoto, diferencia, jsonCanonico, reconstruir, type Cambio } from './almacenSupabase';
 
 export const ESPACIO_EXCEL_REAL = 'real-medina-del-campo-2026';
-export const MAX_CAMBIOS_EXCEL_REAL = { entidades: 1500, bytes: 1800000, filas: 500 } as const;
+export const MAX_CAMBIOS_EXCEL_REAL = { entidades: 3000, bytes: 3800000, filas: 700 } as const;
 
 /** Solo métricas agregadas; nunca transmite ni registra los textos del Excel. */
 export interface DiagnosticoTamanoExcel {
@@ -51,6 +51,7 @@ export interface CapacidadExcelReal {
   rol: string;
   maxBytesCambios: number;
   maxEntidades: number;
+  maxFilas: number;
 }
 
 export interface GuardadoExcelReal {
@@ -67,7 +68,10 @@ export async function consultarCapacidadExcel(cliente: SupabaseClient): Promise<
   if (error || !data || typeof data !== 'object') return null;
   const x = data as Partial<CapacidadExcelReal>;
   if (x.habilitada !== true || !Number.isSafeInteger(x.version) ||
-      !['coordinador', 'administrador'].includes(x.rol ?? '')) return null;
+      !['coordinador', 'administrador'].includes(x.rol ?? '') ||
+      x.maxBytesCambios !== MAX_CAMBIOS_EXCEL_REAL.bytes ||
+      x.maxEntidades !== MAX_CAMBIOS_EXCEL_REAL.entidades ||
+      x.maxFilas !== MAX_CAMBIOS_EXCEL_REAL.filas) return null;
   return x as CapacidadExcelReal;
 }
 

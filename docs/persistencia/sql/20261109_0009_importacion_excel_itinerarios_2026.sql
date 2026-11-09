@@ -29,7 +29,7 @@ begin
         and id='real-camp-medina-2026-censo-medina-del-campo-2026'
         and valor->>'tipo'='actualizacion' and valor->>'anio'='2026'),
    'version',e.version,'rol',m.rol,
-   'maxBytesCambios',1800000,'maxEntidades',1500);
+   'maxBytesCambios',3800000,'maxEntidades',3000,'maxFilas',700);
 end $fn$;
 
 create function public.ulit_censo_importar_excel_2026(
@@ -54,12 +54,12 @@ begin
   or p_parte_adicional is null
   or p_version_esperada is null or p_version_esperada<4
   or jsonb_typeof(p_cambios) is distinct from 'array'
-  or octet_length(p_cambios::text)>1800000 then
+  or octet_length(p_cambios::text)>3800000 then
    raise exception 'ULIT Censo: parámetros de Excel 2026 no válidos'
      using errcode='22023';
  end if;
  v_cambios := jsonb_array_length(p_cambios);
- if v_cambios<3 or v_cambios>1500 then
+ if v_cambios<3 or v_cambios>3000 then
    raise exception 'ULIT Censo: el Excel excede los límites de esta operación segura'
      using errcode='22023';
  end if;
@@ -160,7 +160,7 @@ begin
  select count(*) into v_registros from pg_temp._it_excel_c where c='registros';
  select count(*) into v_vinculos from pg_temp._it_excel_c where c='vinculos';
  select count(*) into v_locales from pg_temp._it_excel_c where c='locales';
- if v_registros<1 or v_registros>500 or v_vinculos<>v_registros
+ if v_registros<1 or v_registros>700 or v_vinculos<>v_registros
    or v_imp_json->>'id' is distinct from v_imp
    or v_imp_json->>'tipo' is distinct from 'C-excel-itinerario'
    or v_imp_json->>'campanaId' is distinct from v_camp

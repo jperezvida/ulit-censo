@@ -5,6 +5,7 @@ on:
     paths:
       - 'docs/persistencia/sql/20261109_0009_importacion_excel_itinerarios_2026.sql'
       - 'docs/persistencia/pruebas/importacion_excel_2026_aislada.sql'
+      - 'docs/persistencia/pruebas/importacion_excel_548_filas_aislada.sql'
       - '.github/workflows/ci-excel-itinerarios-sql.yml'
 permissions:
   contents: read

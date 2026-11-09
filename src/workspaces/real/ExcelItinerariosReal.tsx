@@ -9,7 +9,7 @@ import { leerBytes } from '../espacios/leerArchivo';
 import { fmt } from '../../components/ui';
 import { descargar } from '../../domain/exportacion';
 import { clienteServidor } from '../../store/clienteSupabase';
-import { consultarCapacidadExcel, descargarCopiaPreviaExcel, guardarExcelReal, prepararCambiosExcel, diagnosticarTamanoExcel, type DiagnosticoTamanoExcel, type CapacidadExcelReal, type GuardadoExcelReal } from '../../store/importacionExcelReal';
+import { consultarCapacidadExcel, descargarCopiaPreviaExcel, guardarExcelReal, prepararCambiosExcel, diagnosticarTamanoExcel, MAX_CAMBIOS_EXCEL_REAL, type DiagnosticoTamanoExcel, type CapacidadExcelReal, type GuardadoExcelReal } from '../../store/importacionExcelReal';
 
 /**
  * Mismo importador de IT1. El Excel se procesa en memoria; únicamente las
@@ -131,7 +131,7 @@ export default function ExcelItinerariosReal() {
       <details className="dat-reglas">
         <summary>Seguridad y límites de esta operación</summary>
         <p>Los bytes del XLSX permanecen en esta pestaña. El servidor solo puede recibir las entidades revisadas y confirmadas si la migración 0009 está autorizada y activa.</p>
-        <p>Máximo 1.500 entidades y 1,8 MB de cambios por operación; el número de filas admisibles depende de los locales y negocios detectados.</p>
+        <p>Máximo {fmt(MAX_CAMBIOS_EXCEL_REAL.entidades)} entidades, {(MAX_CAMBIOS_EXCEL_REAL.bytes/1048576).toFixed(2)} MiB y {fmt(MAX_CAMBIOS_EXCEL_REAL.filas)} filas por operación. IT2 se analiza y se guarda íntegro solo si sus relaciones y el servidor superan todas las validaciones.</p>
       </details>
       <div className="dat-subida-form">
         <label className="campo dat-archivo-input">

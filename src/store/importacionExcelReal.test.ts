@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { baseVacia, type BaseDatos } from '../domain/db';
 import type { Campana, Importacion, Itinerario, RegistroOrigen, VinculoHistorico } from '../domain/types';
-import { diagnosticarTamanoExcel, prepararCambiosExcel } from './importacionExcelReal';
+import { MAX_CAMBIOS_EXCEL_REAL, diagnosticarTamanoExcel, prepararCambiosExcel } from './importacionExcelReal';
 
 const SHA='a'.repeat(64);
 const CAMP26='real-camp-medina-2026-censo-medina-del-campo-2026';
@@ -74,7 +74,7 @@ describe('Guardado de Excel real · control client-side sin tocar Supabase',()=>
     expect(normal.colecciones.some(c=>c.nombre==='registros'&&c.cantidad===1)).toBe(true);
     const grande=fixture();
     grande.despues.registros.r26={...grande.despues.registros.r26,
-      datos:{Dirección:'Calle ficticia', observaciones:'x'.repeat(1900000)} };
+      datos:{Dirección:'Calle ficticia', observaciones:'x'.repeat(MAX_CAMBIOS_EXCEL_REAL.bytes+1)} };
     const diagnostico=diagnosticarTamanoExcel(grande.antes,grande.despues);
     expect(diagnostico.excedeBytes).toBe(true);
     expect(diagnostico.excedeEntidades).toBe(false);
@@ -84,14 +84,35 @@ describe('Guardado de Excel real · control client-side sin tocar Supabase',()=>
   });
   it('detecta exceso de entidades aunque no supere el tamaño del JSON', () => {
     const d=fixture();
-    const extras=Object.fromEntries(Array.from({length:1500},(_,i)=>[
+    const extras=Object.fromEntries(Array.from({length:MAX_CAMBIOS_EXCEL_REAL.entidades},(_,i)=>[
       'vin-extra-'+i, {id:'vin-extra-'+i,origen:{tipo:'registro',id:'r26'},localId:null,confianza:'sin-vinculo',criterio:'prueba'} as VinculoHistorico,
     ]));
     d.despues.vinculos={...d.despues.vinculos,...extras};
     const diagnostico=diagnosticarTamanoExcel(d.antes,d.despues);
     expect(diagnostico.excedeEntidades).toBe(true);
     expect(()=>prepararCambiosExcel(d.antes,d.despues,'IT2',SHA,false))
-      .toThrow(/entidades \(máximo 1500\)/);
+      .toThrow(/entidades \(máximo 3000\)/);
+  });
+  it('admite 548 filas y 2383 entidades dentro de la nueva ventana segura',()=>{
+    const d=fixture();
+    const extraRows=Object.fromEntries(Array.from({length:547},(_,i)=>[
+      'r-'+i,{id:'r-'+i,importacionId:'imp-it2',itinerarioId:'real-it-it2',
+        fila:i+3,datos:{Dirección:'Calle de ensayo',Num:String(1000+i)} } as RegistroOrigen,
+    ]));
+    const extraVinculos=Object.fromEntries(Array.from({length:547},(_,i)=>[
+      'v-'+i,{id:'v-'+i,origen:{tipo:'registro',id:'r-'+i},localId:null,confianza:'sin-vinculo'} as VinculoHistorico,
+    ]));
+    // Contadores estructurales sin alterar datos anteriores ni forzar locales.
+    d.despues.registros={...d.despues.registros,...extraRows};
+    d.despues.vinculos={...d.despues.vinculos,...extraVinculos};
+    d.despues.importaciones['imp-it2']={...d.despues.importaciones['imp-it2'],filas:548};
+    const diag=diagnosticarTamanoExcel(d.antes,d.despues);
+    expect(diag.filas).toBe(548);
+    expect(diag.excedeFilas).toBe(false);
+    expect(diag.excedeEntidades).toBe(false);
+    expect(MAX_CAMBIOS_EXCEL_REAL.entidades).toBeGreaterThan(2383);
+    expect(MAX_CAMBIOS_EXCEL_REAL.bytes).toBeGreaterThan(2.66*1048576);
+    expect(prepararCambiosExcel(d.antes,d.despues,'IT2',SHA,false).length).toBe(diag.entidades);
   });
   it('impide borrar un registro o modificar la raíz fuera de la secuencia',()=>{
     const d=fixture();
