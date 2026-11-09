@@ -21,8 +21,8 @@ with elementos as (
   select jsonb_build_object('c','registros','id','it3-r-'||n,'v',
     jsonb_build_object('id','it3-r-'||n,'importacionId','imp-it3-carga',
       'itinerarioId','real-it-it3','fila',n+1,'datos',
-      jsonb_build_object('Dirección','Calle de ensayo','Num',(1000+n)::text,
-        'Nombre del negocio','Comercio ficticio '||n,
+      jsonb_build_object('Dirección','Calle de ensayo','Num',case when n>=547 then 'misma-puerta' else (1000+n)::text end,
+        'Nombre del negocio',case when n>=547 then 'Origen repetido sin local' else 'Comercio ficticio '||n end,
         'Descripción',repeat('dato-de-prueba-',315)))) from generate_series(1,548) g(n)
   union all
   select jsonb_build_object('c','vinculos','id','it3-v-'||n,'v',

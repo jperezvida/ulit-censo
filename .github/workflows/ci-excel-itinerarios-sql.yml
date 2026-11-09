@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - 'docs/persistencia/sql/20261109_0009_importacion_excel_itinerarios_2026.sql'
+      - 'docs/persistencia/sql/20261109_0010_duplicados_origen_sin_local.sql'
       - 'docs/persistencia/pruebas/importacion_excel_2026_aislada.sql'
       - 'docs/persistencia/pruebas/importacion_excel_548_filas_aislada.sql'
       - '.github/workflows/ci-excel-itinerarios-sql.yml'
@@ -52,7 +53,8 @@ jobs:
             "$SQL/20261105_0005_importacion_unica_medina_2025.sql" \
             "$SQL/20261106_0006_importacion_it1_medina_2026.sql" \
             "$SQL/20261107_0007_it1_c_ambigua_reintento_seguro.sql" \
-            "$SQL/20261109_0009_importacion_excel_itinerarios_2026.sql"; do
+            "$SQL/20261109_0009_importacion_excel_itinerarios_2026.sql" \
+            "$SQL/20261109_0010_duplicados_origen_sin_local.sql"; do
             echo "Migración sobre PostgreSQL efímero: $F"
             psql -v ON_ERROR_STOP=1 -q -f "$F"
           done
