@@ -28,6 +28,30 @@ export function revisionDocumentalIt2(sha: string, codigo: string, filas: number
     filas.every((n, i) => n === 516 + i);
 }
 
+/** Evita altas automáticas de locales que no son físicamente identificables.
+ * A igualdad de calle, número y sufijo, varias filas NO demuestran varios locales:
+ * las filas se conservan y su correspondencia se resuelve en Oficina.
+ * Se aplica solo a itinerarios operativos; el histórico importado es inmutable.
+ */
+export function portalesPendientesOperativos(
+  filas: ReadonlyArray<{ fila: number; clave?: string }>,
+  existentes: ReadonlyMap<string, readonly Id[]>,
+): Map<number, { motivo: MotivoSinLocal; candidatos?: Id[] }> {
+  const cantidades = new Map<string, number>();
+  for (const f of filas) if (f.clave) cantidades.set(f.clave, (cantidades.get(f.clave) ?? 0) + 1);
+  const resultado = new Map<number, { motivo: MotivoSinLocal; candidatos?: Id[] }>();
+  for (const f of filas) {
+    if (!f.clave) continue;
+    const previos = existentes.get(f.clave);
+    if (previos?.length) {
+      resultado.set(f.fila, { motivo: 'local-existente-en-direccion', candidatos: [...new Set(previos)] });
+    } else if ((cantidades.get(f.clave) ?? 0) > 1) {
+      resultado.set(f.fila, { motivo: 'direccion-repetida-en-archivo' });
+    }
+  }
+  return resultado;
+}
+
 /**
  * C1c · Incorporación ATÓMICA y REVERSIBLE de un censo histórico (XLSX interpretado por C1b) al
  * modelo de ULIT Censo.
@@ -133,10 +157,9 @@ export type MotivoSinLocal =
   | 'sin-numero'
   /** Solo hay dirección completa y no se ha separado en calle y número (regla no autorizada o forma no separable). */
   | 'direccion-sin-separar'
-  /**
-   * Ya NO se produce (corrección C1c-1): varias filas con la misma calle y número en una campaña son
-   * locales físicos distintos. Se conserva en el tipo para leer planes y trazas anteriores.
-   */
+  /** En itinerarios operativos, varias filas en un mismo portal se conservan como
+   * observaciones pendientes: sin identificador de puerta no se crean locales por inferencia.
+   * Las trazas históricas conservan su interpretación anterior. */
   | 'direccion-repetida-en-archivo'
   | 'local-existente-en-direccion'
   | 'estado-local-desconocido';
@@ -389,14 +412,18 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   const porClave = new Map<string, Id[]>();
   // G3: solo las vías vigentes del municipio (un alta manual cuenta una vez validada).
   for (const c of callesVigentes(db, destino.municipioId)) porClave.set(claveCalle(c.nombre), [...(porClave.get(claveCalle(c.nombre)) ?? []), c.id]);
-  // Locales existentes por dirección exacta (calle|número|sufijo).
+  // Portales conocidos por calle|número|sufijo. En campaña operativa se
+  // comparan TODAS las direcciones registradas, como hace la RPC del servidor:
+  // fijarse solo en la dirección vigente deja pasar falsos locales nuevos.
   const existentes = new Map<string, Id[]>();
   for (const l of Object.values(db.locales)) {
     if (l.municipioId !== destino.municipioId) continue;
-    const d = direccionVigente(l);
-    if (d.numero === null) continue;
-    const k = `${d.calleId}|${d.numero}|${(d.sufijo ?? '').toUpperCase()}`;
-    existentes.set(k, [...(existentes.get(k) ?? []), l.id]);
+    const direcciones = operativo ? l.direcciones : [direccionVigente(l)];
+    for (const d of direcciones) {
+      if (d.numero === null) continue;
+      const k = `${d.calleId}|${d.numero}|${(d.sufijo ?? '').trim().toUpperCase()}`;
+      existentes.set(k, [...(existentes.get(k) ?? []), l.id]);
+    }
   }
 
   const excluidas = new Map((decisiones.exclusiones ?? []).map((e) => [e.fila, e]));
@@ -419,6 +446,12 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
     return { fi, claves, calleId, portal, kDir, calleDecidida: !!conciliada, sinSeparar: loc.origen === 'sin-separar' };
   });
 
+  // Los 27 «con local propuesto» de un Excel pueden compartir portal entre sí
+  // o con el histórico: no se presupone que correspondan a locales distintos.
+  const portalesPendientes = operativo
+    ? portalesPendientesOperativos(previo.map(({ fi, kDir }) => ({ fila: fi.fila, clave: kDir })), existentes)
+    : new Map<number, { motivo: MotivoSinLocal; candidatos?: Id[] }>();
+
   const filas: PlanFila[] = previo.map(({ fi, claves, calleId, portal, kDir, calleDecidida, sinSeparar }) => {
     const base = { fila: fi.fila, local: fi.local, incidencias: incPorFila.get(fi.fila) ?? 0, calleId, ...(calleDecidida ? { calleDecidida } : {}) };
     if (excluidas.has(fi.fila)) return { ...base, correspondencia: 'excluida', localNuevo: false, negocio: false, observacion: false, ocupacion: false };
@@ -440,10 +473,13 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
     if (!portal) return sinLocal('sin-vinculo', 'numero-desconocido');
     if (portal.tipo === 'sin-numero') return sinLocal('ambigua', 'sin-numero');
     if (fi.local === 'desconocido') return sinLocal('ambigua', 'estado-local-desconocido', existentes.get(kDir!));
+    const cautela = portalesPendientes.get(fi.fila);
+    if (cautela) return sinLocal('ambigua', cautela.motivo, cautela.candidatos);
     const previos = existentes.get(kDir!);
     if (previos?.length) return sinLocal('ambigua', 'local-existente-en-direccion', previos);
-    // C1c-1: otra fila del archivo con la misma calle y número es OTRO local físico del mismo portal
-    // (bajos, locales interiores…): cada fila crea su propio local, sin fusionarlos ni marcar ambigüedad.
+    // En el histórico C1c se mantiene la interpretación original (no se
+    // reescriben 2025/IT1). En los nuevos itinerarios operativos solo hay alta
+    // automática cuando el portal es único y no existe ya en la base.
     return ocupacion(`loc-${importacionId}-${fi.fila}`, true);
   });
 
