@@ -315,7 +315,7 @@ begin
         where jsonb_typeof(d.dato) is distinct from 'object'
            or d.dato->>'origen' is distinct from 'importado'
            or d.dato ? 'porId'
-           or (d.dato - array['respuesta','valor','origen','fecha']) <> '{}'::jsonb))))
+           or (d.dato - array['respuesta','valor','origen','fecha']) <> '{}'::jsonb)))
    or (x.c='clasificaciones' and (
      (x.v - array['negocioId','campanaId','actividadId','descripcion','catalogoId','origen','confirmada','fecha']) <> '{}'::jsonb
      or x.v->>'origen' is distinct from 'importado'
@@ -329,7 +329,7 @@ begin
      or exists(select 1 from jsonb_array_elements(x.v->'historial') d(item)
         where d.item->>'origen' is distinct from 'importado'
           or d.item ? 'porId'
-          or (d.item - array['respuesta','origen','fecha']) <> '{}'::jsonb))))
+          or (d.item - array['respuesta','origen','fecha']) <> '{}'::jsonb)))
    or (x.c='negocios' and (
      (x.v - array['id','nombre','procedencia']) <> '{}'::jsonb
      or x.v->>'procedencia' is distinct from 'importado'))
