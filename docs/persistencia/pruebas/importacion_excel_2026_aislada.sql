@@ -152,6 +152,60 @@ do $t$ begin
 end $t$;
 set role authenticated;
 
+\echo '03c · Auditoría externa: decisiones, verificación y Oficina fabricadas'
+select pg_temp.rechazado($q$select public.ulit_censo_importar_excel_2026(
+ 'real-medina-del-campo-2026',4,'IT2',repeat('a',64),false,
+ jsonb_set(pg_temp.plan_it2(),'{5,v,conciliaciones}',
+ '[{"accion":"vincular","porId":"otra-persona","campanaId":"campana-falsa"}]'::jsonb))$q$,'42501');
+select pg_temp.rechazado($q$select public.ulit_censo_importar_excel_2026(
+ 'real-medina-del-campo-2026',4,'IT2',repeat('a',64),false,
+ jsonb_set(pg_temp.plan_it2(),'{5,v,confianza}','"confirmada"'::jsonb))$q$,'42501');
+select pg_temp.rechazado($q$select public.ulit_censo_importar_excel_2026(
+ 'real-medina-del-campo-2026',4,'IT2',repeat('a',64),false,
+ jsonb_set(pg_temp.plan_it2(),'{9,v,verificacion}','"verificada"'::jsonb))$q$,'42501');
+select pg_temp.rechazado($q$select public.ulit_censo_importar_excel_2026(
+ 'real-medina-del-campo-2026',4,'IT2',repeat('a',64),false,
+ jsonb_set(pg_temp.plan_it2(),'{2,v,c1,decisiones}',
+ '{"correspondencias":[{"porId":"otro-usuario","accion":"local-existente"}]}'::jsonb))$q$,'42501');
+\echo '03d · Claves y atribuciones digitales o de clasificación falsas'
+select pg_temp.rechazado($q$select public.ulit_censo_importar_excel_2026(
+ 'real-medina-del-campo-2026',4,'IT2',repeat('a',64),false,
+ pg_temp.plan_it2()||jsonb_build_array(jsonb_build_object(
+ 'c','digital','id','negocio-historico|real-camp-medina-2026-censo-medina-del-campo-2026',
+ 'v',jsonb_build_object('negocioId','neg-it2','campanaId',
+ 'real-camp-medina-2026-censo-medina-del-campo-2026','datos','{}'::jsonb,
+ 'estado','borrador','historial','[]'::jsonb))))$q$,'42501');
+select pg_temp.rechazado($q$select public.ulit_censo_importar_excel_2026(
+ 'real-medina-del-campo-2026',4,'IT2',repeat('a',64),false,
+ pg_temp.plan_it2()||jsonb_build_array(jsonb_build_object(
+ 'c','digital','id','neg-it2|real-camp-medina-2026-censo-medina-del-campo-2026',
+ 'v',jsonb_build_object('negocioId','neg-it2','campanaId',
+ 'real-camp-medina-2026-censo-medina-del-campo-2026','datos',
+ '{"instagram":{"origen":"manual","respuesta":"si","porId":"otro"}}'::jsonb,
+ 'estado','verificada','historial','[]'::jsonb))))$q$,'42501');
+select pg_temp.rechazado($q$select public.ulit_censo_importar_excel_2026(
+ 'real-medina-del-campo-2026',4,'IT2',repeat('a',64),false,
+ pg_temp.plan_it2()||jsonb_build_array(jsonb_build_object(
+ 'c','clasificaciones','id','neg-it2|real-camp-medina-2026-censo-medina-del-campo-2026',
+ 'v',jsonb_build_object('negocioId','neg-it2','campanaId',
+ 'real-camp-medina-2026-censo-medina-del-campo-2026','actividadId','a1',
+ 'origen','manual','confirmada',true,'porId','tercero'))))$q$,'42501');
+\echo '03e · Dos observaciones contradictorias para una fila'
+select pg_temp.rechazado($q$select public.ulit_censo_importar_excel_2026(
+ 'real-medina-del-campo-2026',4,'IT2',repeat('a',64),false,
+ pg_temp.plan_it2()||jsonb_build_array(jsonb_build_object(
+ 'c','observaciones','id','obs-duplicada',
+ 'v',jsonb_set(jsonb_set(pg_temp.plan_it2()->9->'v','{id}','"obs-duplicada"'::jsonb),
+  '{datos,vacio}','true'::jsonb))))$q$,'42501');
+reset role;
+do $t$ begin
+ assert (select version from ulit_censo.espacio where id='real-medina-del-campo-2026')=4;
+ assert (select count(*) from ulit_censo.copia)=0;
+ assert not (select escritura_habilitada from ulit_censo.espacio
+    where id='real-medina-del-campo-2026');
+end $t$;
+set role authenticated;
+
 \echo '04 · Primer IT2: copia anterior, 2 filas, 1 local, 1 pendiente'
 do $t$
 declare r jsonb;
@@ -187,6 +241,11 @@ select pg_temp.rechazado($q$select public.ulit_censo_importar_excel_2026(
  'real-medina-del-campo-2026',4,'IT2',repeat('a',64),false,pg_temp.plan_it2())$q$,'PT409');
 select pg_temp.rechazado($q$select public.ulit_censo_importar_excel_2026(
  'real-medina-del-campo-2026',5,'IT2',repeat('a',64),false,pg_temp.plan_it2())$q$,'42501');
+
+\echo '05b · No duplicar las mismas celdas XLSX como parte adicional'
+select pg_temp.rechazado($q$select public.ulit_censo_importar_excel_2026(
+ 'real-medina-del-campo-2026',5,'IT2',repeat('b',64),true,
+ jsonb_set(pg_temp.plan_parte(),'{2,v,datos}',pg_temp.plan_it2()->3->'v'->'datos'))$q$,'42501');
 
 \echo '06 · Parte adicional de IT2 requiere confirmación expresa'
 select pg_temp.rechazado($q$select public.ulit_censo_importar_excel_2026(
