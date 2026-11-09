@@ -51,7 +51,7 @@ export function prepararCambiosExcel(
     secuencia: antes.secuencia, colaSync: antes.colaSync, meta: antes.meta };
   const raizDespues = { version: despues.version, generado: despues.generado,
     secuencia: despues.secuencia, colaSync: despues.colaSync, meta: despues.meta };
-  if (raizDespues.secuencia <= raizAntes.secuencia ||
+  if (raizDespues.secuencia < raizAntes.secuencia ||
       jsonCanonico({...raizAntes,secuencia:raizDespues.secuencia}) !== jsonCanonico(raizDespues))
     throw new Error('El plan intenta cambiar la configuración real, no solo la secuencia.');
   if (cambios.some((x) => x.c === '_raiz'
