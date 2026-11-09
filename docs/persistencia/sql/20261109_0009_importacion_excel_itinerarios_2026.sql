@@ -242,6 +242,51 @@ begin
    raise exception 'ULIT Censo: hay relaciones no verificables o ajenas a 2026'
      using errcode='42501';
  end if;
+ -- Coherencia de vínculo / observación / negocio / ocupación.
+ if exists (
+   select 1 from pg_temp._it_excel_c obs
+   left join pg_temp._it_excel_c vin on vin.c='vinculos'
+     and vin.v->'origen'->>'id'=obs.v->>'registroId'
+   where obs.c='observaciones' and (
+     vin.id is null
+     or obs.v->>'localId' is distinct from vin.v->>'localId'
+     or jsonb_typeof(obs.v->'datos') is distinct from 'object'
+     or (obs.v->'datos'->>'negocioId' is not null
+       and not exists (select 1 from pg_temp._it_excel_c n
+           where n.c='negocios' and n.id=obs.v->'datos'->>'negocioId')
+       and not exists (select 1 from ulit_censo.entidad n
+           where n.espacio_id=p_espacio and n.coleccion='negocios'
+             and n.id=obs.v->'datos'->>'negocioId'))
+   )
+ ) or exists (
+   select 1 from pg_temp._it_excel_c ocu
+   left join pg_temp._it_excel_c obs on obs.c='observaciones'
+     and obs.id=ocu.v->>'desdeObservacionId'
+   where ocu.c='ocupaciones' and (
+     obs.id is null
+     or ocu.v->>'localId' is distinct from obs.v->>'localId'
+     or ocu.v->>'negocioId' is distinct from obs.v->'datos'->>'negocioId'
+     or obs.v->'datos'->>'vacio' not in ('true','false')
+     or (obs.v->'datos'->>'vacio'='true' and ocu.v->>'negocioId' is not null)
+     or (obs.v->'datos'->>'vacio'='false' and ocu.v->>'negocioId' is null)
+   )
+ ) or exists (
+   select 1 from pg_temp._it_excel_c l where l.c='locales'
+   and not exists (select 1 from pg_temp._it_excel_c vin
+       where vin.c='vinculos' and vin.v->>'localId'=l.id)
+ ) or exists (
+   select 1 from pg_temp._it_excel_c vin
+   where vin.c='vinculos' and vin.v->>'localId' is not null
+     and not exists (select 1 from pg_temp._it_excel_c obs
+       where obs.c='observaciones' and obs.v->>'registroId'=vin.v->'origen'->>'id'
+       and obs.v->>'localId'=vin.v->>'localId')
+ ) or exists (
+   select 1 from pg_temp._it_excel_c ocu where ocu.c='ocupaciones'
+   group by ocu.v->>'localId' having count(*)>1
+ ) then
+   raise exception 'ULIT Censo: incoherencia entre vínculo, observación, ocupación y negocio'
+     using errcode='42501';
+ end if;
  -- No duplicar portales: para estas altas automáticas, cualquier portal
  -- ya conocido se resuelve por conciliación supervisada, nunca por creación.
  if exists(select 1 from pg_temp._it_excel_c l where l.c='locales'
