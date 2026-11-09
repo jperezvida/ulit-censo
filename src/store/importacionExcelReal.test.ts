@@ -62,6 +62,7 @@ describe('Guardado de Excel real · control client-side sin tocar Supabase',()=>
     expect(()=>prepararCambiosExcel(d.antes,d.despues,'IT3',SHA,false)).toThrow(/un único Excel/);
     expect(()=>prepararCambiosExcel(d.antes,d.despues,'IT2','f'.repeat(64),false)).toThrow(/un único Excel/);
     d.antes.importaciones['importado']={id:'importado',campanaId:CAMP26,huella:SHA,estado:'confirmada'} as Importacion;
+    d.despues.importaciones['importado']=d.antes.importaciones['importado'];
     expect(()=>prepararCambiosExcel(d.antes,d.despues,'IT2',SHA,false)).toThrow(/ya se encuentra incorporado/);
   });
   it('impide borrar un registro o modificar la raíz fuera de la secuencia',()=>{
