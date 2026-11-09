@@ -58,3 +58,5 @@ jobs:
           done
       - name: IT2 sintético, permisos, integridad, copias, partes
         run: psql -v ON_ERROR_STOP=1 -f docs/persistencia/pruebas/importacion_excel_2026_aislada.sql
+      - name: Carga sintética IT2 completa 548 filas, 2383 entidades, 2.66+ MiB
+        run: psql -v ON_ERROR_STOP=1 -f docs/persistencia/pruebas/importacion_excel_548_filas_aislada.sql

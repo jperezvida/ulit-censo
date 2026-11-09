@@ -336,4 +336,3 @@ end $t$;
 
 \echo 'ÉXITO: IT2, parte adicional, permisos, versión, integridad, copias e histórico.';
 
-\i docs/persistencia/pruebas/importacion_excel_548_filas_aislada.sql
