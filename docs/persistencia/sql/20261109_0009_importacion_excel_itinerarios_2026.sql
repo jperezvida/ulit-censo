@@ -351,7 +351,7 @@ begin
       or x.v->>'campanaId' is distinct from v_camp
       or not exists(select 1 from pg_temp._it_excel_c negocio
           where negocio.c='negocios' and negocio.id=x.v->>'negocioId')))
- ) then
+ then
    raise exception 'ULIT Censo: identidad de actividad, franquicia o digital no coincide con el negocio importado'
      using errcode='42501';
  end if;
@@ -400,7 +400,7 @@ begin
       join pg_temp._it_excel_c b on a.c='registros' and b.c='registros'
         and a.id<b.id
       where a.v->'datos'=b.v->'datos')
- ) then
+ then
    raise exception 'ULIT Censo: fila duplicada en este itinerario; no se incorporó la parte'
      using errcode='42501';
  end if;
