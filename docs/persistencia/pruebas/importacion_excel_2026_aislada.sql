@@ -51,7 +51,7 @@ select jsonb_build_array(
  jsonb_build_object('c','locales','id','loc-it2-9','v',jsonb_build_object('id','loc-it2-9',
    'municipioId','real-mun-medina','procedencia','importado','estado','activo',
    'direcciones',jsonb_build_array(jsonb_build_object('calleId','calle-2','numero',9)))),
- jsonb_build_object('c','negocios','id','neg-it2','v',jsonb_build_object('id','neg-it2','nombre','Negocio ficticio IT2')),
+ jsonb_build_object('c','negocios','id','neg-it2','v',jsonb_build_object('id','neg-it2','nombre','Negocio ficticio IT2','procedencia','importado')),
  jsonb_build_object('c','observaciones','id','obs-it2-2','v',jsonb_build_object(
    'id','obs-it2-2','campanaId','real-camp-medina-2026-censo-medina-del-campo-2026',
    'itinerarioId','real-it-it2','registroId','it2-r2','localId','loc-it2-9',
