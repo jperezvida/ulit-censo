@@ -29,8 +29,8 @@ function escenario(): BaseDatos {
   for (let i = 1; i <= 105; i++) {
     const id = 'fila-' + i;
     db.registros[id] = { id, importacionId: 'imp-c26', itinerarioId: 'it1', fila: i, datos: { 'Dirección': 'Calle Prueba', Num: String(i), 'Nombre del negocio': 'Negocio ' + i, Actividad: 'Peluquería' } };
-    db.vinculos['v-' + i] = {
-      id: 'v-' + i, origen: { tipo: 'registro', id }, localId: i <= 14 ? 'local-' + i : null,
+    db.vinculos['vin-' + id] = {
+      id: 'vin-' + id, origen: { tipo: 'registro', id }, localId: i <= 14 ? 'local-' + i : null,
       confianza: i <= 14 ? 'confirmada' : 'sin-vinculo', criterio: 'Prueba',
     };
   }
@@ -38,10 +38,25 @@ function escenario(): BaseDatos {
 }
 
 const db = escenario();
-function Vista({ campanaId }: { campanaId: string }) {
+
+function conG5(): BaseDatos {
+  const copia = escenario();
+  const imp = copia.importaciones['imp-c26'];
+  copia.importaciones['imp-c26'] = { ...imp, c1: {} as NonNullable<typeof imp.c1> };
+  copia.calles['calle'] = { id: 'calle', municipioId: 'medina', nombre: 'Calle Prueba', tipoVia: 'calle', segmentos: [], longitudM: 100, procedencia: 'osm', refsFuente: [] };
+  copia.locales['local-antiguo'] = { id: 'local-antiguo', municipioId: 'medina', estado: 'activo', procedencia: 'importado', direcciones: [{ calleId: 'calle', numero: 15 }] };
+  copia.observaciones['ref25'] = { id: 'ref25', campanaId: 'c25', localId: 'local-antiguo', calleId: 'calle', tipo: 'confirmado', fuente: 'importacion', datos: { numero: 15, nombre: 'Negocio 15', vacio: false }, verificacion: 'pendiente' };
+  copia.campanas['c26'] = { ...copia.campanas['c26'], campanaReferenciaId: 'c25' };
+  for (let i = 15; i <= 75; i++) {
+    const id = 'fila-' + i;
+    copia.observaciones['obs-' + id] = { id: 'obs-' + id, campanaId: 'c26', registroId: id, itinerarioId: 'it1', localId: null, calleId: 'calle', tipo: 'dudoso', fuente: 'importacion', datos: { numero: i, nombre: 'Negocio ' + i, vacio: false }, verificacion: 'pendiente' };
+  }
+  return copia;
+}
+function Vista({ campanaId, base = db }: { campanaId: string; base?: BaseDatos }) {
   return (
     <FuenteOficinaContext.Provider value={{
-      db, campanaId, personaId: 'operador', roles: ['administrador'], soloLectura: true, aplicar: () => false,
+      db: base, campanaId, personaId: 'operador', roles: ['administrador'], soloLectura: true, aplicar: () => false,
     }}>
       <MemoryRouter><PendientesSinLocal /></MemoryRouter>
     </FuenteOficinaContext.Provider>
@@ -70,6 +85,17 @@ describe('Oficina real: registros originales sin local', () => {
       datos: { CP: '47400', Num: '3', Municipio: 'Medina del Campo', 'Dirección': 'Calle Mayor', 'Nombre del negocio': 'Comercio X', Actividad: 'Moda' },
     };
     expect(vistaBreveRegistro(r)).toEqual({ calle: 'Calle Mayor', numero: '3', negocio: 'Comercio X', actividad: 'Moda' });
+  });
+
+  it('reutiliza G5 sin vincular, distingue 61 observaciones y 30 filas sin ellas', () => {
+    render(<Vista campanaId="c26" base={conG5()} />);
+    expect(screen.getByText(/61 filas con observación para comparar/)).toBeInTheDocument();
+    expect(screen.getByText(/30 sin observación asociada/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Ver detalle de IT1 · fila 15' }));
+    expect(screen.getByText(/Propuestas de conciliación con 2025/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Calle Prueba, 15/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Mismo portal/).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /confirmar vínculo|guardar conciliación/i })).not.toBeInTheDocument();
   });
 
   it('no mezcla registros de otras campañas', () => {
