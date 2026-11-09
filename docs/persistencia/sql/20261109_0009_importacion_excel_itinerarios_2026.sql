@@ -101,18 +101,20 @@ begin
    raise exception 'ULIT Censo: la operación contiene duplicados, borrados o entidades preexistentes'
      using errcode='42501';
  end if;
- if (select count(*) from pg_temp._it_excel_c where c='_raiz' and id='raiz')<>1
-  or (select count(*) from pg_temp._it_excel_c where c='_raiz')<>1 then
-   raise exception 'ULIT Censo: falta la secuencia controlada'
+ if (select count(*) from pg_temp._it_excel_c where c='_raiz' and id='raiz')
+        is distinct from (select count(*) from pg_temp._it_excel_c where c='_raiz')
+    or (select count(*) from pg_temp._it_excel_c where c='_raiz')>1 then
+   raise exception 'ULIT Censo: modificación no válida de la raíz'
      using errcode='42501';
  end if;
  select v into v_root from pg_temp._it_excel_c where c='_raiz';
  select valor into v_root_old from ulit_censo.entidad
   where espacio_id=p_espacio and coleccion='_raiz' and id='raiz';
  if v_root_old is null or
-    (v_root - 'secuencia') is distinct from (v_root_old - 'secuencia')
-    or coalesce(v_root->>'secuencia','') !~ '^[0-9]{1,12}$'
-    or (v_root->>'secuencia')::bigint <= coalesce((v_root_old->>'secuencia')::bigint,0) then
+    (v_root is not null and (
+      (v_root - 'secuencia') is distinct from (v_root_old - 'secuencia')
+      or coalesce(v_root->>'secuencia','') !~ '^[0-9]{1,12}$'
+      or (v_root->>'secuencia')::bigint <= coalesce((v_root_old->>'secuencia')::bigint,0))) then
     raise exception 'ULIT Censo: la raíz contiene cambios ajenos a la secuencia'
       using errcode='42501';
  end if;
