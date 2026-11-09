@@ -31,8 +31,8 @@ const cambios=[
     tipo:'C-excel-itinerario',estado:'confirmada',huella:SHA,filas:2,c1:{sha256:SHA,anio:2026,itinerario:{id:'real-it-it2',codigo:'IT2'}}}},
   {c:'registros',id:'r26-2',v:{id:'r26-2',fila:2,importacionId:'imp-it2',itinerarioId:'real-it-it2',datos:{'Dirección':'Calle ficticia'}}},
   {c:'registros',id:'r26-3',v:{id:'r26-3',fila:3,importacionId:'imp-it2',itinerarioId:'real-it-it2',datos:{'Dirección':'Calle ficticia'}}},
-  {c:'vinculos',id:'vin-r26-2',v:{id:'vin-r26-2',origen:{tipo:'registro',id:'r26-2'},localId:null}},
-  {c:'vinculos',id:'vin-r26-3',v:{id:'vin-r26-3',origen:{tipo:'registro',id:'r26-3'},localId:null}},
+  {c:'vinculos',id:'vin-r26-2',v:{id:'vin-r26-2',origen:{tipo:'registro',id:'r26-2'},localId:null,confianza:'sin-vinculo',criterio:'Sin correspondencia automática'}},
+  {c:'vinculos',id:'vin-r26-3',v:{id:'vin-r26-3',origen:{tipo:'registro',id:'r26-3'},localId:null,confianza:'sin-vinculo',criterio:'Sin correspondencia automática'}},
 ];
 describe.skipIf(!URL)('IT2 con Supabase Auth y PostgREST LOCALES',()=>{
   const users:Record<string,SupabaseClient>={};
