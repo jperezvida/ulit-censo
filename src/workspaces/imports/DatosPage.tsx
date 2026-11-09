@@ -13,6 +13,7 @@ import { aplicarResultadosPapel, importarCensoHistorico } from '../../domain/apl
 import { itinerariosDe } from '../../domain/consultas';
 import { csvEjemploHistorico, csvEjemploItinerario } from '../../data/ejemplos';
 import type { Importacion } from '../../domain/types';
+import { columnasVistaImportacion, notaVisibleImportacion, resumenVinculosImportacion } from '../../domain/detalleImportacion';
 import { Modal, Sim, fmt, fmtFecha } from '../../components/ui';
 import '../../styles/datos.css';
 
@@ -51,7 +52,7 @@ export default function DatosPage() {
         <div className="esp">
           <div className="rotulo sin-linea">05 · Datos e importaciones</div>
           <h1>Procedencia de los datos</h1>
-          <p>Todo lo que entra se revisa antes de incorporarse. Los archivos originales se conservan fila a fila; una fila que desaparece nunca se interpreta como un cierre.</p>
+          <p>Antes de guardar, el Excel se analiza y se comprueba. Se conservan sus filas y celdas de origen, pero no los bytes del archivo XLSX. Una fila que desaparece nunca se interpreta automáticamente como un cierre.</p>
         </div>
         {!soloReal && <button className="btn" onClick={() => setInspector(true)}><FileSearch size={16} /> Inspeccionar estructura de Excel</button>}
         {!soloReal && <button className="btn primario" onClick={() => setAnalisis(true)} title="Lector XLSX de C1a: solo lectura, para los Excel de la Cátedra"><FileScan size={16} /> Análisis previo de importación</button>}
@@ -95,13 +96,20 @@ function DetalleImportacion({ imp }: { imp: Importacion }) {
   const soloReal = useFuenteOficina()?.soloLectura === true;
   const [deshacer, setDeshacer] = useState(false);
   const registros = useMemo(() => Object.values(db.registros).filter((r) => r.importacionId === imp.id).sort((a, b) => a.fila - b.fila), [db.registros, imp.id]);
-  const vincPorReg = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const v of Object.values(db.vinculos)) if (v.origen.tipo === 'registro') m.set(v.origen.id, v.confianza);
-    return m;
-  }, [db.vinculos]);
-  const columnas = registros[0] ? Object.keys(registros[0].datos).slice(0, 9) : [];
-  const sinVinculo = registros.filter((r) => vincPorReg.get(r.id) !== 'confirmada').length;
+  const [todasLasColumnas, setTodasLasColumnas] = useState(false);
+  const [todasLasFilas, setTodasLasFilas] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
+  const resumen = useMemo(() => resumenVinculosImportacion(registros, Object.values(db.vinculos)),
+    [registros, db.vinculos]);
+  const columnas = useMemo(() => columnasVistaImportacion(registros, todasLasColumnas),
+    [registros, todasLasColumnas]);
+  const filtrados = useMemo(() => {
+    const q = busqueda.trim().toLocaleLowerCase('es');
+    return q ? registros.filter((r) =>
+      Object.values(r.datos).some((v) => String(v).toLocaleLowerCase('es').includes(q))
+      || String(r.fila).includes(q)) : registros;
+  }, [registros, busqueda]);
+  const visibles = todasLasFilas ? filtrados : filtrados.slice(0, 80);
   return (
     <div className="dat-detalle tarjeta">
       <div className="fila" style={{ flexWrap: 'wrap' }}>
@@ -109,7 +117,7 @@ function DetalleImportacion({ imp }: { imp: Importacion }) {
         <span className="chip mono" title="Huella del archivo original">#{imp.huella}</span>
         <span className="chip ok">{imp.estado}</span>
       </div>
-      {imp.nota && <p className="muted" style={{ fontSize: 13, margin: '6px 0 0' }}>{imp.nota}</p>}
+      {notaVisibleImportacion(imp) && <p className="muted" style={{ fontSize: 13, margin: '6px 0 0' }}>{notaVisibleImportacion(imp)}</p>}
       {imp.c1 && (
         <div className="dat-c1" aria-label="Traza de la incorporación">
           <span className="chip">Perfil {imp.c1.perfil.id} v{imp.c1.perfil.version}</span>
@@ -125,27 +133,56 @@ function DetalleImportacion({ imp }: { imp: Importacion }) {
       <div className="dat-cifras">
         <div><b className="num">{fmt(imp.filas)}</b><span>filas del archivo</span></div>
         <div><b className="num">{fmt(registros.length)}</b><span>registros de origen conservados</span></div>
-        <div><b className="num">{fmt(sinVinculo)}</b><span>pendientes de relacionar</span></div>
+        <div><b className="num">{fmt(resumen.sinLocal)}</b><span>sin local · pendientes de conciliación</span></div>
+        <div><b className="num">{fmt(resumen.conLocal)}</b><span>con local vinculado</span></div>
       </div>
+      {resumen.noConfirmados > 0 && <p className="muted" style={{ fontSize: 12 }}>
+        {fmt(resumen.noConfirmados)} vínculos sin confirmación definitiva: un local vinculado provisionalmente no equivale a una revisión de Oficina.
+      </p>}
       {registros.length === 0 ? (
         <p className="muted">Las filas originales de esta importación no se incluyen en la demo de volumen.</p>
       ) : (
-        <div className="dat-tabla scroll-fino">
-          <table className="tabla">
-            <thead>
-              <tr><th>Fila</th>{columnas.map((c) => <th key={c}>{c}</th>)}<th>Vínculo</th></tr>
-            </thead>
-            <tbody>
-              {registros.slice(0, 80).map((r) => (
-                <tr key={r.id} className={vincPorReg.get(r.id) !== 'confirmada' ? 'dat-pend' : ''}>
-                  <td className="mono muted">{r.fila}</td>
-                  {columnas.map((c) => <td key={c}>{r.datos[c]}</td>)}
-                  <td><span className={`chip ${vincPorReg.get(r.id) === 'confirmada' ? 'ok' : 'error'}`}>{vincPorReg.get(r.id) ?? '—'}</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {registros.length > 80 && <p className="muted" style={{ fontSize: 12 }}>Mostrando 80 de {fmt(registros.length)} filas.</p>}
+        <div>
+          <div className="fila" style={{ flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+            <label className="esp">
+              <span className="muted" style={{ fontSize: 12, display: 'block' }}>Buscar por calle, negocio, fila o actividad</span>
+              <input className="input" type="search" aria-label="Buscar filas del Excel importado"
+                value={busqueda} onChange={(e) => { setBusqueda(e.target.value); setTodasLasFilas(false); }}
+                placeholder="Buscar en los registros…" />
+            </label>
+            <button className="btn s" type="button" aria-pressed={todasLasColumnas}
+              onClick={() => setTodasLasColumnas((v) => !v)}>
+              {todasLasColumnas ? 'Ver columnas principales' : `Ver todas las columnas originales (${Object.keys(registros[0]?.datos ?? {}).length})`}
+            </button>
+          </div>
+          <div className="dat-tabla scroll-fino">
+            <table className="tabla">
+              <thead>
+                <tr><th>Fila</th>{columnas.map((c) => <th key={c}>{c}</th>)}<th>Estado del vínculo</th></tr>
+              </thead>
+              <tbody>
+                {visibles.map((r) => {
+                  const v = resumen.porRegistro.get(r.id);
+                  const tieneLocal = Boolean(v?.localId);
+                  const confirmado = tieneLocal && v?.confianza === 'confirmada';
+                  return <tr key={r.id} className={!tieneLocal ? 'dat-pend' : ''}>
+                    <td className="mono muted">{r.fila}</td>
+                    {columnas.map((c) => <td key={c}>{r.datos[c]}</td>)}
+                    <td><span className={`chip ${confirmado ? 'ok' : tieneLocal ? 'azul' : 'aviso'}`}>
+                      {v ? `${v.confianza} · ${tieneLocal ? 'con local' : 'sin local'}` : 'sin vínculo registrado'}
+                    </span></td>
+                  </tr>;
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="muted" style={{ fontSize: 12 }}>
+            Mostrando {fmt(visibles.length)} de {fmt(filtrados.length)} filas coincidentes.
+          </p>
+          {filtrados.length > 80 && <button className="btn s" type="button"
+            onClick={() => setTodasLasFilas((v) => !v)}>
+            {todasLasFilas ? 'Mostrar solo las primeras 80' : `Mostrar las ${fmt(filtrados.length)} filas`}
+          </button>}
         </div>
       )}
     </div>

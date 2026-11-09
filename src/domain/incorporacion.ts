@@ -776,7 +776,7 @@ export function aplicarIncorporacion(
     id: importacionId, municipioId: destino.municipioId, campanaId, tipo: operativo ? 'C-excel-itinerario' : 'A-censo-historico', archivo: plan.archivo.nombre, huella: plan.archivo.sha256, fecha: ahora,
     filas: capa.filas.length, estado: 'confirmada', procedencia: 'importado',
     resumen: { ...resumen, 'registros de origen': creadas.registros.length, 'locales creados': creadas.locales.length, 'negocios creados': creadas.negocios.length, 'observaciones': creadas.observaciones.length, 'ocupaciones': creadas.ocupaciones.length },
-    nota: 'C1c · Censo histórico incorporado como referencia: nada queda revisado, verificado ni validado. Los bytes del archivo no se guardan.',
+    nota: operativo ? 'Excel de itinerario incorporado en la campaña operativa. Se conservan sus filas y celdas de origen, sin guardar los bytes del XLSX. La revisión de Oficina queda pendiente.' : 'C1c · Censo histórico incorporado como referencia: nada queda revisado, verificado ni validado. Los bytes del archivo no se guardan.',
     c1: traza,
   };
   db.importaciones[importacionId] = imp;
