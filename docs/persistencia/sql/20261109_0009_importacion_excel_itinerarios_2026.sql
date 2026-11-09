@@ -287,6 +287,123 @@ begin
    raise exception 'ULIT Censo: incoherencia entre vínculo, observación, ocupación y negocio'
      using errcode='42501';
  end if;
+ -- Fuente autorizada, no decisiones, revisiones ni verificación fabricadas.
+ -- Esta RPC solo IMPORTA borradores: cualquier supervisión se realiza después en Oficina/G5.
+ if exists (select 1 from pg_temp._it_excel_c x where
+   (x.c='registros' and (x.v ? 'exclusion'
+     or x.v->'interpretacion'->'clasificacion'->>'confirmada'='true'))
+   or (x.c='vinculos' and (
+     (x.v - array['id','origen','localId','confianza','criterio','candidatos']) <> '{}'::jsonb
+     or x.v->>'confianza' not in ('probable','dudosa','sin-vinculo')
+     or x.v->>'confianza' is null
+     or (x.v->>'localId' is not null and x.v->>'confianza'<>'probable')
+     or (x.v->>'localId' is null and x.v->>'confianza'='probable')))
+   or (x.c='observaciones' and (
+     (x.v - array['id','campanaId','localId','calleId','fecha','registrado',
+       'fuente','tipo','itinerarioId','registroId','datos','orden','nota','verificacion']) <> '{}'::jsonb
+     or x.v->>'verificacion' is distinct from 'pendiente'
+     or x.v->>'fuente' is distinct from 'importacion'
+     or x.v->>'tipo' not in ('confirmado','vacio')
+     or (x.v->'datos' - array['numero','sufijo','nombre','negocioId','vacio','metrosFachada']) <> '{}'::jsonb
+     or jsonb_typeof(x.v->'datos'->'vacio') is distinct from 'boolean'))
+   or (x.c='digital' and (
+     (x.v - array['negocioId','campanaId','datos','estado','historial']) <> '{}'::jsonb
+     or x.v->>'estado' is distinct from 'borrador'
+     or x.v->'historial' is distinct from '[]'::jsonb
+     or jsonb_typeof(x.v->'datos') is distinct from 'object'
+     or exists(select 1 from jsonb_each(x.v->'datos') d(k,dato)
+        where jsonb_typeof(d.dato) is distinct from 'object'
+           or d.dato->>'origen' is distinct from 'importado'
+           or d.dato ? 'porId'
+           or (d.dato - array['respuesta','valor','origen','fecha']) <> '{}'::jsonb)))
+   or (x.c='clasificaciones' and (
+     (x.v - array['negocioId','campanaId','actividadId','descripcion','catalogoId','origen','confirmada','fecha']) <> '{}'::jsonb
+     or x.v->>'origen' is distinct from 'importado'
+     or x.v->'confirmada' is distinct from 'false'::jsonb
+     or coalesce(x.v->>'actividadId','')=''))
+   or (x.c='franquicias' and (
+     (x.v - array['negocioId','campanaId','respuesta','origen','fecha','historial']) <> '{}'::jsonb
+     or x.v->>'origen' is distinct from 'importado'
+     or x.v->>'respuesta' not in ('si','no','sin-info','pendiente')
+     or jsonb_typeof(x.v->'historial') is distinct from 'array'
+     or exists(select 1 from jsonb_array_elements(x.v->'historial') d(item)
+        where d.item->>'origen' is distinct from 'importado'
+          or d.item ? 'porId'
+          or (d.item - array['respuesta','origen','fecha']) <> '{}'::jsonb)))
+   or (x.c='negocios' and (
+     (x.v - array['id','nombre','procedencia']) <> '{}'::jsonb
+     or x.v->>'procedencia' is distinct from 'importado'))
+   or (x.c='locales' and (
+     (x.v - array['id','municipioId','direcciones','estado','procedencia']) <> '{}'::jsonb
+     or x.v->>'estado' is distinct from 'activo'))
+   or (x.c='importaciones' and (
+     x.v->'c1'->'decisiones' is distinct from '{}'::jsonb
+     and x.v->'c1' ? 'decisiones'))
+ ) then
+   raise exception 'ULIT Censo: el Excel intenta incorporar decisiones o datos ya verificados'
+     using errcode='42501';
+ end if;
+
+ -- La identidad del negocio y campaña va también en la clave, no solo en valor.
+ if exists (select 1 from pg_temp._it_excel_c x
+   where x.c in ('digital','franquicias','clasificaciones')
+    and (x.id is distinct from x.v->>'negocioId'||'|'||v_camp
+      or x.v->>'campanaId' is distinct from v_camp
+      or not exists(select 1 from pg_temp._it_excel_c negocio
+          where negocio.c='negocios' and negocio.id=x.v->>'negocioId')))
+ ) then
+   raise exception 'ULIT Censo: identidad de actividad, franquicia o digital no coincide con el negocio importado'
+     using errcode='42501';
+ end if;
+
+ -- Una observación como máximo por registro de origen. Sin dobles estados.
+ if exists (select 1 from pg_temp._it_excel_c o where o.c='observaciones'
+    group by o.v->>'registroId' having count(*)>1) then
+   raise exception 'ULIT Censo: varias observaciones de la misma fila'
+     using errcode='42501';
+ end if;
+ -- El domicilio observado debe coincidir con el local, si hay uno asignado.
+ if exists (select 1 from pg_temp._it_excel_c o
+   join pg_temp._it_excel_c local on local.c='locales'
+       and local.id=o.v->>'localId'
+   where o.c='observaciones'
+     and not exists(select 1 from jsonb_array_elements(local.v->'direcciones') d(item)
+       where d.item->>'calleId'=o.v->>'calleId'
+         and d.item->>'numero' is not distinct from o.v->'datos'->>'numero'
+         and upper(btrim(coalesce(d.item->>'sufijo','')))=
+             upper(btrim(coalesce(o.v->'datos'->>'sufijo',''))))
+ ) then
+   raise exception 'ULIT Censo: local y dirección observada son distintos'
+     using errcode='42501';
+ end if;
+
+ -- Reutilizar el mismo contenido (aunque cambie SHA, nombre o fila)
+ -- NO convierte un Excel corregido en una parte adicional.
+ if exists (select 1 from pg_temp._it_excel_c r
+    join ulit_censo.entidad anterior on
+      anterior.espacio_id=p_espacio and anterior.coleccion='registros'
+      and anterior.valor->>'itinerarioId'=v_it
+    join ulit_censo.entidad imp on imp.espacio_id=p_espacio
+      and imp.coleccion='importaciones'
+      and imp.id=anterior.valor->>'importacionId'
+      and imp.valor->>'estado'='confirmada'
+    where r.c='registros'
+    and (select coalesce(jsonb_object_agg(lower(btrim(d.key)),
+            lower(btrim(regexp_replace(coalesce(d.value,''),'[[:space:]]+',' ','g')))),
+            '{}'::jsonb)
+          from jsonb_each_text(r.v->'datos') as d)
+       = (select coalesce(jsonb_object_agg(lower(btrim(d.key)),
+            lower(btrim(regexp_replace(coalesce(d.value,''),'[[:space:]]+',' ','g')))),
+            '{}'::jsonb)
+          from jsonb_each_text(anterior.valor->'datos') as d))
+    or exists(select 1 from pg_temp._it_excel_c a
+      join pg_temp._it_excel_c b on a.c='registros' and b.c='registros'
+        and a.id<b.id
+      where a.v->'datos'=b.v->'datos')
+ ) then
+   raise exception 'ULIT Censo: fila duplicada en este itinerario; no se incorporó la parte'
+     using errcode='42501';
+ end if;
  -- No duplicar portales: para estas altas automáticas, cualquier portal
  -- ya conocido se resuelve por conciliación supervisada, nunca por creación.
  if exists(select 1 from pg_temp._it_excel_c l where l.c='locales'
