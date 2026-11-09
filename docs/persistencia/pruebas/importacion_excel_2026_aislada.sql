@@ -208,15 +208,19 @@ end $t$;
 set role authenticated;
 
 \echo '03f · Portal repetido: sufijo a/A, preservando datos coherentes'
+reset role;
 insert into ulit_censo.entidad(espacio_id,coleccion,id,valor,version)
 values ('real-medina-del-campo-2026','locales','hist-sufijo-a',
  '{"id":"hist-sufijo-a","municipioId":"real-mun-medina","estado":"activo","procedencia":"importado","direcciones":[{"calleId":"calle-2","numero":9,"sufijo":"A"}]}',4);
+set role authenticated;
 select pg_temp.rechazado($q$select public.ulit_censo_importar_excel_2026(
  'real-medina-del-campo-2026',4,'IT2',repeat('a',64),false,
  jsonb_set(jsonb_set(pg_temp.plan_it2(),'{7,v,direcciones}',
  '[{"calleId":"calle-2","numero":9,"sufijo":"a"}]'::jsonb),
  '{9,v,datos,sufijo}','"a"'::jsonb))$q$,'42501');
+reset role;
 delete from ulit_censo.entidad where coleccion='locales' and id='hist-sufijo-a';
+set role authenticated;
 
 \echo '04 · Primer IT2: copia anterior, 2 filas, 1 local, 1 pendiente'
 do $t$
