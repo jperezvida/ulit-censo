@@ -309,6 +309,9 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   // G4: Excel de un itinerario en una campaña OPERATIVA existente (no se crea ni se modifica la campaña).
   const campDestino = db.campanas[campanaId];
   const operativo = !!destino.campanaId && !!campDestino && claseCampana(campDestino) === 'operativa';
+  // La política de altas conservadoras solo corresponde al espacio real;
+  // no reinterpreta escenarios G4/G5 existentes ni el censo histórico.
+  const importacionReal = operativo && db.meta.espacio === 'real';
   const itinerario = operativo && destino.itinerarioId ? db.itinerarios[destino.itinerarioId] : undefined;
   // Una incorporación deshecha conserva su traza: la siguiente usa otro identificador.
   // Municipio y año forman parte del identificador: el mismo archivo puede incorporarse a ámbitos
@@ -418,7 +421,7 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   const existentes = new Map<string, Id[]>();
   for (const l of Object.values(db.locales)) {
     if (l.municipioId !== destino.municipioId) continue;
-    const direcciones = operativo ? l.direcciones : [direccionVigente(l)];
+    const direcciones = importacionReal ? l.direcciones : [direccionVigente(l)];
     for (const d of direcciones) {
       if (d.numero === null) continue;
       const k = `${d.calleId}|${d.numero}|${(d.sufijo ?? '').trim().toUpperCase()}`;
@@ -448,7 +451,7 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
 
   // Los 27 «con local propuesto» de un Excel pueden compartir portal entre sí
   // o con el histórico: no se presupone que correspondan a locales distintos.
-  const portalesPendientes = operativo
+  const portalesPendientes = importacionReal
     ? portalesPendientesOperativos(previo.map(({ fi, kDir }) => ({ fila: fi.fila, clave: kDir })), existentes)
     : new Map<number, { motivo: MotivoSinLocal; candidatos?: Id[] }>();
 
