@@ -5,6 +5,7 @@ on:
     paths:
       - 'docs/persistencia/sql/20261109_0009_importacion_excel_itinerarios_2026.sql'
       - 'docs/persistencia/sql/20261109_0010_duplicados_origen_sin_local.sql'
+      - 'docs/persistencia/sql/20261110_0011_timeout_excel_2026.sql'
       - 'docs/persistencia/pruebas/importacion_excel_2026_aislada.sql'
       - 'docs/persistencia/pruebas/importacion_excel_548_filas_aislada.sql'
       - '.github/workflows/ci-excel-itinerarios-sql.yml'
@@ -54,10 +55,28 @@ jobs:
             "$SQL/20261106_0006_importacion_it1_medina_2026.sql" \
             "$SQL/20261107_0007_it1_c_ambigua_reintento_seguro.sql" \
             "$SQL/20261109_0009_importacion_excel_itinerarios_2026.sql" \
-            "$SQL/20261109_0010_duplicados_origen_sin_local.sql"; do
+            "$SQL/20261109_0010_duplicados_origen_sin_local.sql" \
+            "$SQL/20261110_0011_timeout_excel_2026.sql"; do
             echo "Migración sobre PostgreSQL efímero: $F"
             psql -v ON_ERROR_STOP=1 -q -f "$F"
           done
+      - name: Timeout específico de Excel sin relajar el rol ni ampliar otras RPC
+        run: |
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          do $assert$
+          declare config text[];
+          begin
+            select proconfig into config
+              from pg_proc where oid='public.ulit_censo_importar_excel_2026(text,bigint,text,text,boolean,jsonb)'::regprocedure;
+            if not (config @> array['statement_timeout=45s']) then
+              raise exception 'RPC Excel sin timeout específico de 45 segundos';
+            end if;
+            if (select proconfig from pg_proc where oid='public.ulit_censo_leer(text)'::regprocedure)
+              @> array['statement_timeout=45s'] then
+              raise exception 'El timeout se filtró a otra función';
+            end if;
+          end $assert$;
+          SQL
       - name: IT2 sintético, permisos, integridad, copias, partes
         run: psql -v ON_ERROR_STOP=1 -f docs/persistencia/pruebas/importacion_excel_2026_aislada.sql
       - name: Carga sintética IT2 completa 548 filas, 2383 entidades, 2.66+ MiB
