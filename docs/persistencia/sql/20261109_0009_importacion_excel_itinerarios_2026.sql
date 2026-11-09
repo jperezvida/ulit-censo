@@ -304,7 +304,7 @@ begin
      or x.v->>'verificacion' is distinct from 'pendiente'
      or x.v->>'fuente' is distinct from 'importacion'
      or x.v->>'tipo' not in ('confirmado','vacio')
-     or (x.v->'datos' - array['numero','sufijo','nombre','negocioId','vacio','metrosFachada']) <> '{}'::jsonb
+     or ((x.v->'datos') - array['numero','sufijo','nombre','negocioId','vacio','metrosFachada']) <> '{}'::jsonb
      or jsonb_typeof(x.v->'datos'->'vacio') is distinct from 'boolean'))
    or (x.c='digital' and (
      (x.v - array['negocioId','campanaId','datos','estado','historial']) <> '{}'::jsonb
