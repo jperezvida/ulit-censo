@@ -47,7 +47,7 @@ export default function DatosPage() {
   const imp = sel ? db.importaciones[sel] : imps[0];
 
   return (
-    <div className="pagina">
+    <div className={`pagina dat-page ${soloReal ? 'dat-page--real' : ''}`}>
       <div className="pagina-cab">
         <div className="esp">
           <div className="rotulo sin-linea">05 · Datos e importaciones</div>
@@ -62,28 +62,43 @@ export default function DatosPage() {
         </button>}
       </div>
 
-      {soloReal && <DatosRealPage />}
+      {soloReal && <div className="dat-operativa"><DatosRealPage /></div>}
+      <section className="dat-historial" aria-label="Archivos incorporados">
+        <div className="dat-section-heading">
+          <div>
+            <div className="rotulo sin-linea">Historial de importaciones</div>
+            <h2>Archivos incorporados</h2>
+            <p className="muted">Seleccione un archivo para consultar sus registros originales y el estado de sus vínculos.</p>
+          </div>
+          <span className="dat-total-archivos">{fmt(imps.length)} {imps.length === 1 ? 'archivo' : 'archivos'}</span>
+        </div>
       <div className="dat-rejilla">
         <div className="dat-lista">
           {imps.length === 0 && <div className="vacio-estado tarjeta">Sin importaciones en {municipio.nombre}.</div>}
           {imps.map((i) => (
-            <button key={i.id} className={`dat-imp tarjeta ${imp?.id === i.id ? 'on' : ''}`} onClick={() => setSel(i.id)}>
-              <div className="fila">
-                <span className="chip mono">{i.tipo.slice(0, 1)}</span>
-                <b className="esp">{i.archivo}</b>
+            <button key={i.id} type="button"
+              aria-pressed={imp?.id === i.id}
+              className={`dat-imp tarjeta ${imp?.id === i.id ? 'on' : ''}`}
+              onClick={() => setSel(i.id)}>
+              <div className="dat-archivo-cab">
+                <span className="dat-archivo-icon"><FileSpreadsheet size={20} /></span>
+                <span className="dat-archivo-nombre">
+                  <strong>{i.archivo}</strong>
+                  <small>{TIPOS.find((t) => t.t === i.tipo)?.titulo.slice(4)} · {fmtFecha(i.fecha)}</small>
+                </span>
                 {i.procedencia === 'simulado' ? <Sim texto="Simulado" /> : <span className="chip azul">Importado</span>}
               </div>
-              <div className="muted" style={{ fontSize: 12.5 }}>
-                {TIPOS.find((t) => t.t === i.tipo)?.titulo.slice(4)} · {fmtFecha(i.fecha)} · {fmt(i.filas)} filas · {db.campanas[i.campanaId ?? '']?.nombre}
-              </div>
-              <div className="fila" style={{ flexWrap: 'wrap', gap: 6 }}>
-                {Object.entries(i.resumen).map(([k, v]) => <span key={k} className="chip">{v} {k}</span>)}
+              <div className="dat-archivo-meta">
+                <span><b>{fmt(i.filas)}</b> filas</span>
+                {typeof i.resumen['locales creados'] === 'number' && <span><b>{fmt(i.resumen['locales creados'])}</b> locales nuevos</span>}
+                {typeof i.resumen['observaciones'] === 'number' && <span><b>{fmt(i.resumen['observaciones'])}</b> observaciones</span>}
               </div>
             </button>
           ))}
         </div>
-        {imp && <DetalleImportacion imp={imp} />}
+        {imp && <DetalleImportacion key={imp.id} imp={imp} />}
       </div>
+      </section>
       {!soloReal && asistente && campana && <Asistente onCerrar={() => setAsistente(false)} />}
       {!soloReal && inspector && <InspectorExcel onCerrar={() => setInspector(false)} />}
       {!soloReal && analisis && <AnalisisPrevio municipioId={municipio.id} onCerrar={() => setAnalisis(false)} />}
@@ -112,12 +127,18 @@ function DetalleImportacion({ imp }: { imp: Importacion }) {
   const visibles = todasLasFilas ? filtrados : filtrados.slice(0, 80);
   return (
     <div className="dat-detalle tarjeta">
-      <div className="fila" style={{ flexWrap: 'wrap' }}>
-        <h3 style={{ margin: 0 }}>{imp.archivo}</h3>
-        <span className="chip mono" title="Huella del archivo original">#{imp.huella}</span>
+      <div className="dat-detalle-cab">
+        <div>
+          <div className="rotulo sin-linea">Detalle del archivo seleccionado</div>
+          <h3>{imp.archivo}</h3>
+          <p className="muted">{notaVisibleImportacion(imp)}</p>
+        </div>
         <span className="chip ok">{imp.estado}</span>
       </div>
-      {notaVisibleImportacion(imp) && <p className="muted" style={{ fontSize: 13, margin: '6px 0 0' }}>{notaVisibleImportacion(imp)}</p>}
+      <details className="dat-traza">
+        <summary>Ver trazabilidad y datos técnicos del archivo</summary>
+        <div className="dat-traza-contenido">
+          <div className="dat-huella"><b>SHA-256</b><code>{imp.huella}</code></div>
       {imp.c1 && (
         <div className="dat-c1" aria-label="Traza de la incorporación">
           <span className="chip">Perfil {imp.c1.perfil.id} v{imp.c1.perfil.version}</span>
@@ -129,6 +150,8 @@ function DetalleImportacion({ imp }: { imp: Importacion }) {
           )}
         </div>
       )}
+        </div>
+      </details>
       {!soloReal && deshacer && <DeshacerIncorporacion importacionId={imp.id} onCerrar={() => setDeshacer(false)} />}
       <div className="dat-cifras">
         <div><b className="num">{fmt(imp.filas)}</b><span>filas del archivo</span></div>
@@ -143,8 +166,8 @@ function DetalleImportacion({ imp }: { imp: Importacion }) {
         <p className="muted">Las filas originales de esta importación no se incluyen en la demo de volumen.</p>
       ) : (
         <div>
-          <div className="fila" style={{ flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
-            <label className="esp">
+          <div className="dat-herramientas">
+            <label className="dat-buscar">
               <span className="muted" style={{ fontSize: 12, display: 'block' }}>Buscar por calle, negocio, fila o actividad</span>
               <input className="input" type="search" aria-label="Buscar filas del Excel importado"
                 value={busqueda} onChange={(e) => { setBusqueda(e.target.value); setTodasLasFilas(false); }}
@@ -155,7 +178,7 @@ function DetalleImportacion({ imp }: { imp: Importacion }) {
               {todasLasColumnas ? 'Ver columnas principales' : `Ver todas las columnas originales (${Object.keys(registros[0]?.datos ?? {}).length})`}
             </button>
           </div>
-          <div className="dat-tabla scroll-fino">
+          <div className="dat-tabla scroll-fino" role="region" aria-label="Registros originales del Excel" tabIndex={0}>
             <table className="tabla">
               <thead>
                 <tr><th>Fila</th>{columnas.map((c) => <th key={c}>{c}</th>)}<th>Estado del vínculo</th></tr>

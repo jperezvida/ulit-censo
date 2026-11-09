@@ -98,17 +98,19 @@ export default function DatosRealPage() {
     analisis.totalFilas === 105 && analisis.totalPendientes === 91 &&
     informe.vinculados === 14 && fuente?.versionReal === 3;
 
-  return <div className="dat-importacion-real" aria-label="IT1 de Medina 2026, en el módulo Datos original">
-    <p className="muted">Itinerario IT1 · registros auténticos de la campaña 2026.</p>
-    <div className="t-info aviso" role="note">
-      <LockKeyhole size={16} />
-      <span><b>IT1, escritura única y controlada.</b> La operación autorizada crea primero una copia íntegra, incorpora solamente 105 filas y cierra la escritura en la misma transacción. No modifica el histórico 2025 ni habilita escritura general.</span>
-    </div>
+  return <div className="dat-importacion-real" aria-label="Importación de itinerarios en el espacio real">
     {!real ? <div className="t-info error" role="alert">Abra esta página desde el espacio real de ULIT Censo.</div> :
       !operativa ? <div className="t-info" role="status">Seleccione primero «Censo Medina del Campo 2026» en la barra superior. El histórico 2025 se conserva intacto.</div> :
-      <div>
-      {registrosIT1.length > 0 && <section className="tarjeta inc-bloque" aria-label="IT1 guardado en Supabase" style={{ maxWidth: 950 }}>
-        <h2><CheckCircle2 size={18} /> IT1 incorporado en la aplicación completa</h2>
+      <div className="dat-operativa-pila">
+      <ExcelItinerariosReal />
+      {registrosIT1.length > 0 && <section className="tarjeta dat-it1-guardado" aria-label="IT1 guardado en Supabase">
+        <div className="dat-it1-cab">
+          <div>
+            <h2><CheckCircle2 size={19} /> IT1 · incorporado</h2>
+            <p className="muted">La primera importación de 2026 está guardada. Sus registros se consultan también en el historial inferior.</p>
+          </div>
+          <span className="chip ok">Guardado</span>
+        </div>
         <div className="ap-resumen">
           <div><span className="muted">Filas guardadas</span><b>{fmt(registrosIT1.length)}</b></div>
           <div><span className="muted">Con local</span><b>{fmt(registrosIT1.length-pendientesIT1.length)}</b></div>
@@ -129,7 +131,11 @@ export default function DatosRealPage() {
           </table>
         </div>}
       </section>}
-      {registrosIT1.length === 0 && <section className="tarjeta inc-bloque" aria-label="Analizar Excel real IT1" style={{ maxWidth: 950 }}>
+      {registrosIT1.length === 0 && <section className="tarjeta inc-bloque" aria-label="Analizar Excel real IT1">
+        <div className="t-info aviso" role="note">
+          <LockKeyhole size={16} />
+          <span>El primer IT1 solo puede incorporarse mediante la operación inicial específicamente autorizada.</span>
+        </div>
         <h2><FileSpreadsheet size={19} /> IT1 · Censo Medina del Campo 2026</h2>
         <p className="muted">Seleccione el Excel auténtico de IT1. Se revisan filas, direcciones y pendientes antes de ofrecer una confirmación explícita para guardar.</p>
         <label className="campo"><span>Excel IT1 (.xlsx)</span>
@@ -173,7 +179,6 @@ export default function DatosRealPage() {
         {guardado && <div className="t-info ok" role="status"><CheckCircle2 size={16}/>{guardado}</div>}
         {error && <div className="t-info error" role="alert"><AlertTriangle size={16}/>{error}</div>}
       </section>}
-      <ExcelItinerariosReal />
       </div>}
   </div>;
 }

@@ -112,17 +112,28 @@ export default function ExcelItinerariosReal() {
 
   if (!permitir) return null;
   return (
-    <section className="tarjeta inc-bloque" aria-label="Subir Excel de itinerario" style={{ maxWidth: 1100 }}>
-      <h2 style={{ marginTop: 0 }}><FileSpreadsheet size={20} /> Subir Excel de itinerario</h2>
-      <p>Seleccione el Excel de IT2, IT3 o cualquier otro itinerario de esta campaña. Se utilizará el mismo importador de IT1, sin crear otra aplicación.</p>
-      <p className="muted">El límite del guardado depende de los locales y negocios de cada Excel: máximo 1.500 entidades y 1,8 MB de cambios por operación. Se comprobará antes de permitir guardar; no se garantizan 500 filas si generan muchas entidades.</p>
-      <div className="t-info aviso" role="status">
-        <ShieldCheck size={17} />
-        <span><b>Análisis local y guardado supervisado.</b> El Excel se analiza en esta pestaña; nunca se envían sus bytes al servidor. Solo podrán guardarse las entidades revisadas si la migración 0009 está instalada y el servidor autoriza expresamente la operación.</span>
+    <section className="tarjeta dat-upload" aria-label="Subir Excel de itinerario">
+      <div className="dat-upload-cab">
+        <div>
+          <div className="rotulo sin-linea">Nueva incorporación</div>
+          <h2><FileSpreadsheet size={21} /> Subir Excel de itinerario</h2>
+          <p>Seleccione el Excel de IT2, IT3 o cualquier otro itinerario de la campaña 2026 y revise su contenido antes de guardarlo.</p>
+        </div>
+        <span className="dat-upload-etapa">Análisis previo</span>
       </div>
-      <div className="col" style={{ gap: 12, marginTop: 16 }}>
-        <label className="campo">
-          <span>Excel de campo (.xlsx)</span>
+      <div className="dat-pasos-subida" aria-label="Proceso de importación">
+        <span><b>1</b> Seleccionar Excel</span>
+        <span><b>2</b> Revisar datos</span>
+        <span><b>3</b> Confirmar guardado</span>
+      </div>
+      <details className="dat-reglas">
+        <summary>Seguridad y límites de esta operación</summary>
+        <p>Los bytes del XLSX permanecen en esta pestaña. El servidor solo puede recibir las entidades revisadas y confirmadas si la migración 0009 está autorizada y activa.</p>
+        <p>Máximo 1.500 entidades y 1,8 MB de cambios por operación; el número de filas admisibles depende de los locales y negocios detectados.</p>
+      </details>
+      <div className="dat-subida-form">
+        <label className="campo dat-archivo-input">
+          <span>Seleccionar Excel de campo (.xlsx)</span>
           <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             aria-label="Seleccionar Excel de itinerario"
             onChange={(e) => {
@@ -136,7 +147,7 @@ export default function ExcelItinerariosReal() {
         </label>
         {archivo && <>
           <p style={{ margin: 0 }}><b>{archivo.name}</b> · {fmt(archivo.size)} bytes</p>
-          <label className="campo" style={{ maxWidth: 270 }}>
+          <label className="campo dat-codigo-input">
             <span>Itinerario al que pertenece (confírmelo)</span>
             <input className="input" value={codigo} maxLength={5} placeholder="IT2"
               aria-label="Código del itinerario"
