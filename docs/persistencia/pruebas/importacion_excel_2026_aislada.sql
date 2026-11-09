@@ -129,7 +129,8 @@ do $t$ begin
  assert (public.ulit_censo_estado_excel_2026('real-medina-del-campo-2026')->>'habilitada')='true';
 end $t$;
 select pg_temp.rechazado($q$select public.ulit_censo_aplicar(
- 'real-medina-del-campo-2026',4,'vía general','[]'::jsonb)$q$,'42501');
+ 'real-medina-del-campo-2026',4,'vía general',
+ '[{"c":"registros","id":"atajo-no-autorizado","v":{"id":"atajo-no-autorizado"}}]'::jsonb)$q$,'42501');
 
 \echo '04 · Primer IT2: copia anterior, 2 filas, 1 local, 1 pendiente'
 do $t$
