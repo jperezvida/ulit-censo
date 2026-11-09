@@ -40,7 +40,7 @@ describe('Excel operativo real desde la aplicación única', () => {
     expect(JSON.stringify(db)).toBe(antes);
   });
   it('conserva las columnas originales y sus valores sin inventar cambios', () => {
-    const fila = { fila: 24, datos: {
+    const fila = { id: 'fila-24', importacionId: 'imp2', fila: 24, datos: {
       ' Dirección ': 'Calle Carrera', 'Num': '12', 'Nombre del negocio': 'Comercio A',
       'Actividad': 'Calzado', 'Local Vacío': '0',
     } } as RegistroOrigen;
