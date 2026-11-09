@@ -350,7 +350,7 @@ begin
     and (x.id is distinct from x.v->>'negocioId'||'|'||v_camp
       or x.v->>'campanaId' is distinct from v_camp
       or not exists(select 1 from pg_temp._it_excel_c negocio
-          where negocio.c='negocios' and negocio.id=x.v->>'negocioId')))
+          where negocio.c='negocios' and negocio.id=x.v->>'negocioId'))
  then
    raise exception 'ULIT Censo: identidad de actividad, franquicia o digital no coincide con el negocio importado'
      using errcode='42501';
