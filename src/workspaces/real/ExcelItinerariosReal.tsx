@@ -9,7 +9,7 @@ import { leerBytes } from '../espacios/leerArchivo';
 import { fmt } from '../../components/ui';
 import { descargar } from '../../domain/exportacion';
 import { clienteServidor } from '../../store/clienteSupabase';
-import { consultarCapacidadExcel, descargarCopiaPreviaExcel, guardarExcelReal, type CapacidadExcelReal, type GuardadoExcelReal } from '../../store/importacionExcelReal';
+import { consultarCapacidadExcel, descargarCopiaPreviaExcel, guardarExcelReal, prepararCambiosExcel, type CapacidadExcelReal, type GuardadoExcelReal } from '../../store/importacionExcelReal';
 
 /**
  * Mismo importador de IT1. El Excel se procesa en memoria; únicamente las
@@ -61,7 +61,10 @@ export default function ExcelItinerariosReal() {
       const bytes = await leerBytes(archivo);
       const res = await prepararExcelReal(db, campana.id, fuente.personaId, archivo.name, bytes, codigo, parte);
       setAnalisis(res);
-      if (res.lote.aplicable) {
+      if (res.lote.aplicable && res.lote.dbResultado) {
+        // Detectar el máximo efectivo de entidades/bytes ANTES de ofrecer respaldo y guardado.
+        // 500 filas es solo un límite teórico; el total real varía según las relaciones creadas.
+        prepararCambiosExcel(db, res.lote.dbResultado, res.codigo, res.huella, parte);
         const cliente = clienteServidor();
         if (cliente) setCapacidad(await consultarCapacidadExcel(cliente));
       }
@@ -112,6 +115,7 @@ export default function ExcelItinerariosReal() {
     <section className="tarjeta inc-bloque" aria-label="Subir Excel de itinerario" style={{ maxWidth: 1100 }}>
       <h2 style={{ marginTop: 0 }}><FileSpreadsheet size={20} /> Subir Excel de itinerario</h2>
       <p>Seleccione el Excel de IT2, IT3 o cualquier otro itinerario de esta campaña. Se utilizará el mismo importador de IT1, sin crear otra aplicación.</p>
+      <p className="muted">El límite del guardado depende de los locales y negocios de cada Excel: máximo 1.500 entidades y 1,8 MB de cambios por operación. Se comprobará antes de permitir guardar; no se garantizan 500 filas si generan muchas entidades.</p>
       <div className="t-info aviso" role="status">
         <ShieldCheck size={17} />
         <span><b>Análisis local y guardado supervisado.</b> El Excel se analiza en esta pestaña; nunca se envían sus bytes al servidor. Solo podrán guardarse las entidades revisadas si la migración 0009 está instalada y el servidor autoriza expresamente la operación.</span>

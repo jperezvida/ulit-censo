@@ -38,6 +38,13 @@ jobs:
             sudo apt-get update -qq && sudo apt-get install -y postgresql-client
           fi
           psql --version
+      - name: Fijar G5 (0008) ya corregida, solo lectura de la rama PR #21
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin feat/conciliacion-it1-g5-real
+          test "$(git rev-parse FETCH_HEAD)" = "40acb55f7df9c44e56583c19523f1cba7b11ab7b"
+          git show FETCH_HEAD:docs/persistencia/sql/20261108_0008_conciliacion_it1_supervisada.sql > "$RUNNER_TEMP/ulit-g5-0008.sql"
+          git show FETCH_HEAD:docs/persistencia/pruebas/conciliacion_it1_aislada.sql > "$RUNNER_TEMP/ulit-g5-test.sql"
       - name: Migraciones reales en clúster efímero, SIN conexión a Supabase
         run: |
           set -euo pipefail
@@ -51,9 +58,27 @@ jobs:
             "$SQL/20261105_0005_importacion_unica_medina_2025.sql" \
             "$SQL/20261106_0006_importacion_it1_medina_2026.sql" \
             "$SQL/20261107_0007_it1_c_ambigua_reintento_seguro.sql" \
+            "$RUNNER_TEMP/ulit-g5-0008.sql" \
             "$SQL/20261109_0009_importacion_excel_itinerarios_2026.sql"; do
             echo "Migración sobre PostgreSQL efímero: $F"
             psql -v ON_ERROR_STOP=1 -q -f "$F"
           done
       - name: IT2 sintético, permisos, integridad, copias, partes
         run: psql -v ON_ERROR_STOP=1 -f docs/persistencia/pruebas/importacion_excel_2026_aislada.sql
+      - name: Probar G5 sobre PostgreSQL con 0008 y 0009 instaladas
+        run: |
+          set -euo pipefail
+          createdb ulit_censo_g5
+          for F in \
+            "docs/persistencia/pruebas/emulacion_supabase.sql" \
+            "docs/persistencia/sql/20261104_0001_ulit_censo_esquema.sql" \
+            "docs/persistencia/sql/20261104_0002_ulit_censo_operaciones.sql" \
+            "docs/persistencia/sql/20261105_0004_ulit_censo_inicializacion_real.sql" \
+            "docs/persistencia/sql/20261105_0005_importacion_unica_medina_2025.sql" \
+            "docs/persistencia/sql/20261106_0006_importacion_it1_medina_2026.sql" \
+            "docs/persistencia/sql/20261107_0007_it1_c_ambigua_reintento_seguro.sql" \
+            "$RUNNER_TEMP/ulit-g5-0008.sql" \
+            "docs/persistencia/sql/20261109_0009_importacion_excel_itinerarios_2026.sql"; do
+            PGDATABASE=ulit_censo_g5 psql -v ON_ERROR_STOP=1 -q -f "$F"
+          done
+          PGDATABASE=ulit_censo_g5 psql -v ON_ERROR_STOP=1 -f "$RUNNER_TEMP/ulit-g5-test.sql"

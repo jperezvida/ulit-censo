@@ -337,8 +337,9 @@ begin
      (x.v - array['id','municipioId','direcciones','estado','procedencia']) <> '{}'::jsonb
      or x.v->>'estado' is distinct from 'activo'))
    or (x.c='importaciones' and (
-     x.v->'c1'->'decisiones' is distinct from '{}'::jsonb
-     and x.v->'c1' ? 'decisiones'));
+     (x.v->'c1' ? 'decisiones' and x.v->'c1'->'decisiones' <> '{}'::jsonb)
+     or (x.v->'c1' ? 'porId' and
+         x.v->'c1'->>'porId' is distinct from m.persona_id)));
  if v_no_validos>0 then
    raise exception 'ULIT Censo: el Excel intenta incorporar decisiones o datos ya verificados'
      using errcode='42501';
@@ -413,13 +414,15 @@ begin
       and exists(select 1 from jsonb_array_elements(anterior.valor->'direcciones') ad
        where ad->>'calleId'=d->>'calleId'
         and ad->>'numero' is not distinct from d->>'numero'
-        and coalesce(ad->>'sufijo','')=coalesce(d->>'sufijo',''))))
+        and upper(btrim(coalesce(ad->>'sufijo','')))=upper(btrim(coalesce(d->>'sufijo',''))))))
    or exists (select 1 from pg_temp._it_excel_c l2 where l2.c='locales'
      and l2.id<>l.id
-     and l2.v->'direcciones'->0->>'calleId'=l.v->'direcciones'->0->>'calleId'
-     and l2.v->'direcciones'->0->>'numero' is not distinct from l.v->'direcciones'->0->>'numero'
-     and coalesce(l2.v->'direcciones'->0->>'sufijo','')=
-         coalesce(l.v->'direcciones'->0->>'sufijo',''))) then
+     and exists(select 1 from jsonb_array_elements(l.v->'direcciones') d
+       where exists(select 1 from jsonb_array_elements(l2.v->'direcciones') ad
+         where ad->>'calleId'=d->>'calleId'
+           and ad->>'numero' is not distinct from d->>'numero'
+           and upper(btrim(coalesce(ad->>'sufijo',''))) =
+               upper(btrim(coalesce(d->>'sufijo',''))))))) then
    raise exception 'ULIT Censo: alta automática en un portal ya conocido; revisar en conciliación'
      using errcode='42501';
  end if;
