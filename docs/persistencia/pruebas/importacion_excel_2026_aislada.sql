@@ -45,9 +45,9 @@ select jsonb_build_array(
    'id','it2-r3','importacionId','imp-it2','itinerarioId','real-it-it2','fila',3,
    'datos',jsonb_build_object('Dirección','Calle de ensayo','Num','11'))),
  jsonb_build_object('c','vinculos','id','vin-it2-2','v',jsonb_build_object('id','vin-it2-2',
-   'origen',jsonb_build_object('tipo','registro','id','it2-r2'),'localId','loc-it2-9')),
+   'origen',jsonb_build_object('tipo','registro','id','it2-r2'),'localId','loc-it2-9','confianza','probable','criterio','Importación pendiente de supervisión')),
  jsonb_build_object('c','vinculos','id','vin-it2-3','v',jsonb_build_object('id','vin-it2-3',
-   'origen',jsonb_build_object('tipo','registro','id','it2-r3'),'localId',null)),
+   'origen',jsonb_build_object('tipo','registro','id','it2-r3'),'localId',null,'confianza','sin-vinculo','criterio','No se conoce local')),
  jsonb_build_object('c','locales','id','loc-it2-9','v',jsonb_build_object('id','loc-it2-9',
    'municipioId','real-mun-medina','procedencia','importado','estado','activo',
    'direcciones',jsonb_build_array(jsonb_build_object('calleId','calle-2','numero',9)))),
@@ -55,7 +55,7 @@ select jsonb_build_array(
  jsonb_build_object('c','observaciones','id','obs-it2-2','v',jsonb_build_object(
    'id','obs-it2-2','campanaId','real-camp-medina-2026-censo-medina-del-campo-2026',
    'itinerarioId','real-it-it2','registroId','it2-r2','localId','loc-it2-9',
-   'calleId','calle-2','datos',jsonb_build_object('numero',9,'vacio',false,'negocioId','neg-it2'))),
+   'calleId','calle-2','fuente','importacion','tipo','confirmado','verificacion','pendiente','datos',jsonb_build_object('numero',9,'vacio',false,'negocioId','neg-it2'))),
  jsonb_build_object('c','ocupaciones','id','ocu-it2-2','v',jsonb_build_object(
    'id','ocu-it2-2','localId','loc-it2-9','negocioId','neg-it2',
    'desdeCampanaId','real-camp-medina-2026-censo-medina-del-campo-2026',
@@ -80,7 +80,7 @@ select jsonb_build_array(
   'id','it2-r4','importacionId','imp-it2-parte2','itinerarioId','real-it-it2',
   'fila',2,'datos',jsonb_build_object('Dirección','Calle de ensayo','Num','13'))),
  jsonb_build_object('c','vinculos','id','vin-it2-4','v',jsonb_build_object(
-  'id','vin-it2-4','origen',jsonb_build_object('tipo','registro','id','it2-r4'),'localId',null))
+  'id','vin-it2-4','origen',jsonb_build_object('tipo','registro','id','it2-r4'),'localId',null,'confianza','sin-vinculo','criterio','Sin vínculo'))
 );
 $fixture$;
 grant execute on function pg_temp.plan_parte() to authenticated;
