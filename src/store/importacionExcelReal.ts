@@ -3,7 +3,46 @@ import type { BaseDatos } from '../domain/db';
 import { AlmacenSupabase, ConflictoRemoto, diferencia, jsonCanonico, reconstruir, type Cambio } from './almacenSupabase';
 
 export const ESPACIO_EXCEL_REAL = 'real-medina-del-campo-2026';
-export const MAX_CAMBIOS_EXCEL_REAL = { entidades: 1500, bytes: 1800000 } as const;
+export const MAX_CAMBIOS_EXCEL_REAL = { entidades: 1500, bytes: 1800000, filas: 500 } as const;
+
+/** Solo métricas agregadas; nunca transmite ni registra los textos del Excel. */
+export interface DiagnosticoTamanoExcel {
+  entidades: number;
+  bytes: number;
+  filas: number;
+  limiteEntidades: number;
+  limiteBytes: number;
+  limiteFilas: number;
+  excedeEntidades: boolean;
+  excedeBytes: boolean;
+  excedeFilas: boolean;
+  colecciones: { nombre: string; cantidad: number }[];
+}
+
+function medirCambios(cambios: Cambio[]): DiagnosticoTamanoExcel {
+  const porColeccion = new Map<string, number>();
+  for (const cambio of cambios) porColeccion.set(cambio.c, (porColeccion.get(cambio.c) ?? 0) + 1);
+  const bytes = new TextEncoder().encode(JSON.stringify(cambios)).length;
+  const filas = porColeccion.get('registros') ?? 0;
+  return {
+    entidades: cambios.length,
+    bytes,
+    filas,
+    limiteEntidades: MAX_CAMBIOS_EXCEL_REAL.entidades,
+    limiteBytes: MAX_CAMBIOS_EXCEL_REAL.bytes,
+    limiteFilas: MAX_CAMBIOS_EXCEL_REAL.filas,
+    excedeEntidades: cambios.length > MAX_CAMBIOS_EXCEL_REAL.entidades,
+    excedeBytes: bytes > MAX_CAMBIOS_EXCEL_REAL.bytes,
+    excedeFilas: filas > MAX_CAMBIOS_EXCEL_REAL.filas,
+    colecciones: [...porColeccion].map(([nombre, cantidad]) => ({ nombre, cantidad }))
+      .sort((a, b) => b.cantidad - a.cantidad),
+  };
+}
+
+/** Mide el plan en RAM, sin persistencia ni acceso a Supabase. */
+export function diagnosticarTamanoExcel(antes: BaseDatos, despues: BaseDatos): DiagnosticoTamanoExcel {
+  return medirCambios(diferencia(antes, despues));
+}
 const CAMPAÑA_2026 = 'real-camp-medina-2026-censo-medina-del-campo-2026';
 
 export interface CapacidadExcelReal {
@@ -77,9 +116,15 @@ export function prepararCambiosExcel(
   }
   if (Object.values(antes.importaciones).some((i) => i.campanaId===CAMPAÑA_2026 && i.huella===sha))
     throw new Error('Ese Excel ya se encuentra incorporado.');
-  if (cambios.length>MAX_CAMBIOS_EXCEL_REAL.entidades ||
-      new TextEncoder().encode(JSON.stringify(cambios)).length>MAX_CAMBIOS_EXCEL_REAL.bytes)
-    throw new Error('El Excel es demasiado grande para una operación atómica; no se ha enviado.');
+  const tamano = medirCambios(cambios);
+  const limites = [
+    tamano.excedeEntidades ? `${tamano.entidades} entidades (máximo ${tamano.limiteEntidades})` : '',
+    tamano.excedeBytes ? `${(tamano.bytes / 1048576).toFixed(2)} MiB de cambios (máximo ${(tamano.limiteBytes / 1048576).toFixed(2)} MiB)` : '',
+    tamano.excedeFilas ? `${tamano.filas} filas (máximo ${tamano.limiteFilas})` : '',
+  ].filter(Boolean);
+  if (limites.length) throw new Error(
+    `El análisis de ${codigo} está completo, pero supera el límite de guardado atómico: ${limites.join('; ')}. No se ha enviado nada a Supabase. No divida ni modifique el Excel original.`
+  );
   return cambios;
 }
 

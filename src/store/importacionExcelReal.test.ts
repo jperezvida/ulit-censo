@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { baseVacia, type BaseDatos } from '../domain/db';
 import type { Campana, Importacion, Itinerario, RegistroOrigen, VinculoHistorico } from '../domain/types';
-import { prepararCambiosExcel } from './importacionExcelReal';
+import { diagnosticarTamanoExcel, prepararCambiosExcel } from './importacionExcelReal';
 
 const SHA='a'.repeat(64);
 const CAMP26='real-camp-medina-2026-censo-medina-del-campo-2026';
@@ -64,6 +64,34 @@ describe('Guardado de Excel real · control client-side sin tocar Supabase',()=>
     d.antes.importaciones['importado']={id:'importado',campanaId:CAMP26,huella:SHA,estado:'confirmada'} as Importacion;
     d.despues.importaciones['importado']=d.antes.importaciones['importado'];
     expect(()=>prepararCambiosExcel(d.antes,d.despues,'IT2',SHA,false)).toThrow(/ya se encuentra incorporado/);
+  });
+  it('diagnostica límites por entidades, bytes y filas sin exponer textos del Excel', () => {
+    const d=fixture();
+    const normal=diagnosticarTamanoExcel(d.antes,d.despues);
+    expect(normal.filas).toBe(1);
+    expect(normal.entidades).toBeGreaterThan(2);
+    expect(normal.excedeBytes).toBe(false);
+    expect(normal.colecciones.some(c=>c.nombre==='registros'&&c.cantidad===1)).toBe(true);
+    const grande=fixture();
+    grande.despues.registros.r26={...grande.despues.registros.r26,
+      datos:{Dirección:'Calle ficticia', observaciones:'x'.repeat(1900000)} };
+    const diagnostico=diagnosticarTamanoExcel(grande.antes,grande.despues);
+    expect(diagnostico.excedeBytes).toBe(true);
+    expect(diagnostico.excedeEntidades).toBe(false);
+    expect(()=>prepararCambiosExcel(grande.antes,grande.despues,'IT2',SHA,false))
+      .toThrow(/MiB de cambios.*No se ha enviado nada/);
+    expect(JSON.stringify(diagnostico)).not.toContain('Calle ficticia');
+  });
+  it('detecta exceso de entidades aunque no supere el tamaño del JSON', () => {
+    const d=fixture();
+    const extras=Object.fromEntries(Array.from({length:1500},(_,i)=>[
+      'vin-extra-'+i, {id:'vin-extra-'+i,origen:{tipo:'registro',id:'r26'},localId:null},
+    ]));
+    d.despues.vinculos={...d.despues.vinculos,...extras};
+    const diagnostico=diagnosticarTamanoExcel(d.antes,d.despues);
+    expect(diagnostico.excedeEntidades).toBe(true);
+    expect(()=>prepararCambiosExcel(d.antes,d.despues,'IT2',SHA,false))
+      .toThrow(/entidades \(máximo 1500\)/);
   });
   it('impide borrar un registro o modificar la raíz fuera de la secuencia',()=>{
     const d=fixture();

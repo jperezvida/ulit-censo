@@ -9,7 +9,7 @@ import { leerBytes } from '../espacios/leerArchivo';
 import { fmt } from '../../components/ui';
 import { descargar } from '../../domain/exportacion';
 import { clienteServidor } from '../../store/clienteSupabase';
-import { consultarCapacidadExcel, descargarCopiaPreviaExcel, guardarExcelReal, prepararCambiosExcel, type CapacidadExcelReal, type GuardadoExcelReal } from '../../store/importacionExcelReal';
+import { consultarCapacidadExcel, descargarCopiaPreviaExcel, guardarExcelReal, prepararCambiosExcel, diagnosticarTamanoExcel, type DiagnosticoTamanoExcel, type CapacidadExcelReal, type GuardadoExcelReal } from '../../store/importacionExcelReal';
 
 /**
  * Mismo importador de IT1. El Excel se procesa en memoria; únicamente las
@@ -32,6 +32,7 @@ export default function ExcelItinerariosReal() {
   const [respaldoConfirmado, setRespaldoConfirmado] = useState(false);
   const [confirmado, setConfirmado] = useState(false);
   const [guardado, setGuardado] = useState<GuardadoExcelReal | null>(null);
+  const [tamanoPlan, setTamanoPlan] = useState<DiagnosticoTamanoExcel | null>(null);
 
   const valida = useMemo(() => campana
     ? validarDestinoExcel(db, campana.id, codigo, parte)
@@ -54,7 +55,7 @@ export default function ExcelItinerariosReal() {
   async function analizar() {
     if (!permitir || !campana || !fuente || !archivo || !!valida.error || ocupado) return;
     setOcupado(true); setError(null); setAnalisis(null); setVerTodas(false); setBusqueda('');
-    setCapacidad(null); setRespaldo(null); setRespaldoConfirmado(false); setConfirmado(false); setGuardado(null);
+    setCapacidad(null); setRespaldo(null); setRespaldoConfirmado(false); setConfirmado(false); setGuardado(null); setTamanoPlan(null);
     try {
       if (archivo.size === 0 || archivo.size > LIMITES_XLSX.maxBytesArchivo)
         throw new Error(`Archivo vacío o demasiado grande. Límite: ${fmt(LIMITES_XLSX.maxBytesArchivo / 1048576)} MB.`);
@@ -62,8 +63,9 @@ export default function ExcelItinerariosReal() {
       const res = await prepararExcelReal(db, campana.id, fuente.personaId, archivo.name, bytes, codigo, parte);
       setAnalisis(res);
       if (res.lote.aplicable && res.lote.dbResultado) {
-        // Detectar el máximo efectivo de entidades/bytes ANTES de ofrecer respaldo y guardado.
-        // 500 filas es solo un límite teórico; el total real varía según las relaciones creadas.
+        // Mostrar cuántas entidades/bytes genera ESTE Excel, sin copiar su contenido.
+        // El diagnóstico se conserva aunque el guardado se bloquee.
+        setTamanoPlan(diagnosticarTamanoExcel(db, res.lote.dbResultado));
         prepararCambiosExcel(db, res.lote.dbResultado, res.codigo, res.huella, parte);
         const cliente = clienteServidor();
         if (cliente) setCapacidad(await consultarCapacidadExcel(cliente));
@@ -141,7 +143,7 @@ export default function ExcelItinerariosReal() {
               setArchivo(elegido);
               setCodigo(elegido ? (codigoItinerarioExcel(elegido.name) ?? '') : '');
               setParte(false); setAnalisis(null); setError(null); setBusqueda(''); setVerTodas(false);
-              setCapacidad(null);setRespaldo(null);setRespaldoConfirmado(false);setConfirmado(false);setGuardado(null);
+              setCapacidad(null);setRespaldo(null);setRespaldoConfirmado(false);setConfirmado(false);setGuardado(null);setTamanoPlan(null);
               e.target.value = '';
             }} />
         </label>
@@ -151,14 +153,14 @@ export default function ExcelItinerariosReal() {
             <span>Itinerario al que pertenece (confírmelo)</span>
             <input className="input" value={codigo} maxLength={5} placeholder="IT2"
               aria-label="Código del itinerario"
-              onChange={(e) => { setCodigo(e.target.value.toUpperCase().replace(/\s/g, '')); setAnalisis(null);setRespaldo(null);setCapacidad(null); }} />
+              onChange={(e) => { setCodigo(e.target.value.toUpperCase().replace(/\s/g, '')); setAnalisis(null);setRespaldo(null);setCapacidad(null);setTamanoPlan(null); }} />
           </label>
           <div className="t-info">
             {valida.itinerarioId ? `Se utilizará el itinerario ${valida.codigo} existente en la campaña.`
               : `Se preparará ${valida.codigo || 'el itinerario elegido'} como itinerario nuevo. No se creará en el servidor hasta confirmar una importación autorizada.`}
           </div>
           <label className="fila" style={{ gap: 10, alignItems: 'flex-start' }}>
-            <input type="checkbox" checked={parte} onChange={(e) => { setParte(e.target.checked); setAnalisis(null);setCapacidad(null);setRespaldo(null); }}
+            <input type="checkbox" checked={parte} onChange={(e) => { setParte(e.target.checked); setAnalisis(null);setCapacidad(null);setRespaldo(null);setTamanoPlan(null); }}
               aria-label="Parte adicional de un itinerario ya importado" />
             <span>Este archivo es una <b>parte adicional</b> de un itinerario ya incorporado (por ejemplo, IT5 parte 2). No marcar para sustituir o corregir el archivo original.</span>
           </label>
@@ -187,6 +189,28 @@ export default function ExcelItinerariosReal() {
           <div><span className="muted">Pendientes</span><b>{fmt(analisis.lote.totalPendientes)}</b></div>
           <div><span className="muted">Cruces</span><b>{fmt(informe.cruces)}</b></div>
         </div>
+        {tamanoPlan && <section aria-label="Diagnóstico de tamaño del plan" className={`t-info ${tamanoPlan.excedeEntidades || tamanoPlan.excedeBytes || tamanoPlan.excedeFilas ? 'aviso' : 'ok'}`}>
+          <div style={{ width: '100%', minWidth: 0 }}>
+            <strong>Dimensión real de la operación (no del archivo XLSX)</strong>
+            <div className="ap-resumen" style={{ marginTop: 10, marginBottom: 10 }}>
+              <div><span>Entidades nuevas</span><b>{fmt(tamanoPlan.entidades)} / {fmt(tamanoPlan.limiteEntidades)}</b></div>
+              <div><span>Datos preparados</span><b>{(tamanoPlan.bytes / 1048576).toFixed(2)} / {(tamanoPlan.limiteBytes / 1048576).toFixed(2)} MiB</b></div>
+              <div><span>Filas originales</span><b>{fmt(tamanoPlan.filas)} / {fmt(tamanoPlan.limiteFilas)}</b></div>
+            </div>
+            {(tamanoPlan.excedeEntidades || tamanoPlan.excedeBytes || tamanoPlan.excedeFilas) &&
+              <p style={{ margin: '8px 0' }}><b>Guardado bloqueado por:</b> {[
+                tamanoPlan.excedeEntidades ? 'número de entidades' : null,
+                tamanoPlan.excedeBytes ? 'volumen de datos' : null,
+                tamanoPlan.excedeFilas ? 'número de filas' : null,
+              ].filter(Boolean).join(', ')}. El análisis se conserva; no se han enviado datos.</p>}
+            <details>
+              <summary>Ver desglose de entidades por tipo</summary>
+              <p className="muted" style={{ margin: '8px 0' }}>
+                {tamanoPlan.colecciones.map((c) => `${c.nombre}: ${fmt(c.cantidad)}`).join(' · ')}
+              </p>
+            </details>
+          </div>
+        </section>}
         <div className="muted" style={{ fontSize: 12 }}>
           Hoja analizada: {informe.nombre} · IT: {informe.itinerario} · SHA-256: <code>{informe.sha256 || 'No calculado'}</code>
         </div>
