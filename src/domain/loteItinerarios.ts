@@ -22,6 +22,7 @@ export interface ArchivoPreparadoLote {
   vinculados: number;
   pendientes: number;
   cruces: number;
+  detallesCruces?: { fila: number; tipo: string; itinerario: string; detalle: string }[];
   sha256: string;
   aplicable: boolean;
   avisos: string[];
@@ -85,7 +86,7 @@ export async function prepararLoteItinerarios(
         nombre: archivo.nombre, itinerario: itinerario.codigo, filas: plan.registros.previstos,
         vinculados: plan.correspondencias.inequivoca + plan.correspondencias.decidida,
         pendientes: plan.correspondencias.ambigua + plan.correspondencias['sin-vinculo'],
-        cruces: plan.cruces?.length ?? 0, sha256: plan.archivo.sha256, aplicable: aceptable,
+        cruces: plan.cruces?.length ?? 0, detallesCruces: plan.cruces ?? [], sha256: plan.archivo.sha256, aplicable: aceptable,
         avisos: [...bloqueos, ...plan.pendientes, ...(yaIncorporado && permitirPartes ? ['Parte adicional del mismo itinerario: no se sobrescribe el archivo anterior.'] : [])],
       });
       if (!aceptable) { bloqueado = true; continue; }

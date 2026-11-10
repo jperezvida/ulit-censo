@@ -1,0 +1,109 @@
+name: ULIT Censo · Excel IT2+ PostgreSQL aislado
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/persistencia/sql/20261109_0009_importacion_excel_itinerarios_2026.sql'
+      - 'docs/persistencia/sql/20261109_0010_duplicados_origen_sin_local.sql'
+      - 'docs/persistencia/sql/20261110_0011_timeout_excel_2026.sql'
+      - 'docs/persistencia/sql/20261110_0012_timeout_respaldo_y_lectura_real.sql'
+      - 'docs/persistencia/pruebas/importacion_excel_2026_aislada.sql'
+      - 'docs/persistencia/pruebas/importacion_excel_548_filas_aislada.sql'
+      - '.github/workflows/ci-excel-itinerarios-sql.yml'
+permissions:
+  contents: read
+concurrency:
+  group: excel-itinerarios-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      db:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 3s --health-retries 12
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar cliente PostgreSQL
+        run: |
+          if ! command -v psql >/dev/null; then
+            sudo apt-get update -qq && sudo apt-get install -y postgresql-client
+          fi
+          psql --version
+      - name: Migraciones reales en clúster efímero, SIN conexión a Supabase
+        run: |
+          set -euo pipefail
+          TEST=docs/persistencia/pruebas
+          SQL=docs/persistencia/sql
+          for F in \
+            "$TEST/emulacion_supabase.sql" \
+            "$SQL/20261104_0001_ulit_censo_esquema.sql" \
+            "$SQL/20261104_0002_ulit_censo_operaciones.sql" \
+            "$SQL/20261105_0004_ulit_censo_inicializacion_real.sql" \
+            "$SQL/20261105_0005_importacion_unica_medina_2025.sql" \
+            "$SQL/20261106_0006_importacion_it1_medina_2026.sql" \
+            "$SQL/20261107_0007_it1_c_ambigua_reintento_seguro.sql" \
+            "$SQL/20261109_0009_importacion_excel_itinerarios_2026.sql" \
+            "$SQL/20261109_0010_duplicados_origen_sin_local.sql" \
+            "$SQL/20261110_0011_timeout_excel_2026.sql" \
+            "$SQL/20261110_0012_timeout_respaldo_y_lectura_real.sql"; do
+            echo "Migración sobre PostgreSQL efímero: $F"
+            psql -v ON_ERROR_STOP=1 -q -f "$F"
+          done
+      - name: Timeout específico de Excel sin relajar el rol ni ampliar otras RPC
+        run: |
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          do $assert$
+          declare config text[];
+          begin
+            select proconfig into config
+              from pg_proc where oid='public.ulit_censo_importar_excel_2026(text,bigint,text,text,boolean,jsonb)'::regprocedure;
+            if not (config @> array['statement_timeout=45s']) then
+              raise exception 'RPC Excel sin timeout específico de 45 segundos';
+            end if;
+            if (select proconfig from pg_proc where oid='public.ulit_censo_mis_espacios()'::regprocedure)
+              @> array['statement_timeout=45s'] then
+              raise exception 'El timeout se filtró a otra función';
+            end if;
+          end $assert$;
+          SQL
+      - name: Timeout limitado a lectura y respaldo, sin alterar permisos ni límites del rol
+        run: |
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          do $assert$
+          declare
+            fn text;
+            cfg text[];
+          begin
+            foreach fn in array array[
+              'public.ulit_censo_crear_copia(text,text)',
+              'public.ulit_censo_descargar_copia(text,uuid)',
+              'public.ulit_censo_leer(text)'
+            ] loop
+              select proconfig into cfg from pg_proc where oid=fn::regprocedure;
+              if not (cfg @> array['statement_timeout=45s']) then
+                raise exception 'RPC sin timeout de respaldo: %', fn;
+              end if;
+            end loop;
+            if (select proconfig from pg_proc where oid='public.ulit_censo_mis_espacios()'::regprocedure)
+                 @> array['statement_timeout=45s'] then
+              raise exception 'Cambio de timeout se ha extendido a una RPC ajena';
+            end if;
+          end $assert$;
+          SQL
+      - name: IT2 sintético, permisos, integridad, copias, partes
+        run: psql -v ON_ERROR_STOP=1 -f docs/persistencia/pruebas/importacion_excel_2026_aislada.sql
+      - name: Carga sintética IT2 completa 548 filas, 2383 entidades, 2.66+ MiB
+        run: psql -v ON_ERROR_STOP=1 -f docs/persistencia/pruebas/importacion_excel_548_filas_aislada.sql

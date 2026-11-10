@@ -2,6 +2,7 @@ import type { BaseDatos } from './db';
 import { ErrorDominio, kNC, siguienteOrden } from './db';
 import { direccionVigente, anioDe } from './consultas';
 import { claveCalle, normalizar } from './text';
+import { crucesDeOrigenSinCalle } from './crucesOrigenReal';
 import { huella } from '../data/rng';
 import { sha256Texto } from './sha256';
 import { TAXONOMIA_POR_ID, catalogoDeNodo } from './taxonomy';
@@ -16,6 +17,41 @@ import type {
   RevisionDigital, TrazaIncorporacion, VariableDigital, VinculoHistorico,
   TrazaConciliacionDeshecha,
 } from './types';
+
+/** Validación documental acotada al XLSX de IT2 ya cotejado con el listado de campo.
+ * No corrige el archivo ni cambia el dato original. No es una validación de negocios,
+ * cierres, categorías ni de reconciliación histórica.
+ */
+export function revisionDocumentalIt2(sha: string, codigo: string, filas: number[]): boolean {
+  return codigo === 'IT2' &&
+    sha === '37a6a1f6f201d8b9b9d7215a57b65f9f5b26af5cfa2157851ea575fc15384f64' &&
+    filas.length === 34 &&
+    filas.every((n, i) => n === 516 + i);
+}
+
+/** Evita altas automáticas de locales que no son físicamente identificables.
+ * A igualdad de calle, número y sufijo, varias filas NO demuestran varios locales:
+ * las filas se conservan y su correspondencia se resuelve en Oficina.
+ * Se aplica solo a itinerarios operativos; el histórico importado es inmutable.
+ */
+export function portalesPendientesOperativos(
+  filas: ReadonlyArray<{ fila: number; clave?: string }>,
+  existentes: ReadonlyMap<string, readonly Id[]>,
+): Map<number, { motivo: MotivoSinLocal; candidatos?: Id[] }> {
+  const cantidades = new Map<string, number>();
+  for (const f of filas) if (f.clave) cantidades.set(f.clave, (cantidades.get(f.clave) ?? 0) + 1);
+  const resultado = new Map<number, { motivo: MotivoSinLocal; candidatos?: Id[] }>();
+  for (const f of filas) {
+    if (!f.clave) continue;
+    const previos = existentes.get(f.clave);
+    if (previos?.length) {
+      resultado.set(f.fila, { motivo: 'local-existente-en-direccion', candidatos: [...new Set(previos)] });
+    } else if ((cantidades.get(f.clave) ?? 0) > 1) {
+      resultado.set(f.fila, { motivo: 'direccion-repetida-en-archivo' });
+    }
+  }
+  return resultado;
+}
 
 /**
  * C1c · Incorporación ATÓMICA y REVERSIBLE de un censo histórico (XLSX interpretado por C1b) al
@@ -122,10 +158,9 @@ export type MotivoSinLocal =
   | 'sin-numero'
   /** Solo hay dirección completa y no se ha separado en calle y número (regla no autorizada o forma no separable). */
   | 'direccion-sin-separar'
-  /**
-   * Ya NO se produce (corrección C1c-1): varias filas con la misma calle y número en una campaña son
-   * locales físicos distintos. Se conserva en el tipo para leer planes y trazas anteriores.
-   */
+  /** En itinerarios operativos, varias filas en un mismo portal se conservan como
+   * observaciones pendientes: sin identificador de puerta no se crean locales por inferencia.
+   * Las trazas históricas conservan su interpretación anterior. */
   | 'direccion-repetida-en-archivo'
   | 'local-existente-en-direccion'
   | 'estado-local-desconocido';
@@ -169,7 +204,7 @@ export interface PlanIncorporacion {
    * (misma calle, número y nombre) o contradicciones (mismo portal: vacío en uno, ocupado en otro). Nada
    * se fusiona: quedan para la conciliación supervisada.
    */
-  cruces?: { fila: number; tipo: 'posible-duplicado' | 'contradiccion'; itinerario: string; detalle: string }[];
+  cruces?: { fila: number; tipo: 'posible-duplicado' | 'contradiccion' | 'portal-compartido'; itinerario: string; detalle: string }[];
   aplicable: boolean;
   bloqueos: Bloqueo[];
   registros: { previstos: number; excluidos: number; candidatasExcluir: { fila: number; decidida: boolean }[] };
@@ -275,6 +310,9 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   // G4: Excel de un itinerario en una campaña OPERATIVA existente (no se crea ni se modifica la campaña).
   const campDestino = db.campanas[campanaId];
   const operativo = !!destino.campanaId && !!campDestino && claseCampana(campDestino) === 'operativa';
+  // La política de altas conservadoras solo corresponde al espacio real;
+  // no reinterpreta escenarios G4/G5 existentes ni el censo histórico.
+  const importacionReal = operativo && db.meta.espacio === 'real';
   const itinerario = operativo && destino.itinerarioId ? db.itinerarios[destino.itinerarioId] : undefined;
   // Una incorporación deshecha conserva su traza: la siguiente usa otro identificador.
   // Municipio y año forman parte del identificador: el mismo archivo puede incorporarse a ámbitos
@@ -378,14 +416,18 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   const porClave = new Map<string, Id[]>();
   // G3: solo las vías vigentes del municipio (un alta manual cuenta una vez validada).
   for (const c of callesVigentes(db, destino.municipioId)) porClave.set(claveCalle(c.nombre), [...(porClave.get(claveCalle(c.nombre)) ?? []), c.id]);
-  // Locales existentes por dirección exacta (calle|número|sufijo).
+  // Portales conocidos por calle|número|sufijo. En campaña operativa se
+  // comparan TODAS las direcciones registradas, como hace la RPC del servidor:
+  // fijarse solo en la dirección vigente deja pasar falsos locales nuevos.
   const existentes = new Map<string, Id[]>();
   for (const l of Object.values(db.locales)) {
     if (l.municipioId !== destino.municipioId) continue;
-    const d = direccionVigente(l);
-    if (d.numero === null) continue;
-    const k = `${d.calleId}|${d.numero}|${(d.sufijo ?? '').toUpperCase()}`;
-    existentes.set(k, [...(existentes.get(k) ?? []), l.id]);
+    const direcciones = importacionReal ? l.direcciones : [direccionVigente(l)];
+    for (const d of direcciones) {
+      if (d.numero === null) continue;
+      const k = `${d.calleId}|${d.numero}|${(d.sufijo ?? '').trim().toUpperCase()}`;
+      existentes.set(k, [...(existentes.get(k) ?? []), l.id]);
+    }
   }
 
   const excluidas = new Map((decisiones.exclusiones ?? []).map((e) => [e.fila, e]));
@@ -408,6 +450,12 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
     return { fi, claves, calleId, portal, kDir, calleDecidida: !!conciliada, sinSeparar: loc.origen === 'sin-separar' };
   });
 
+  // Los 27 «con local propuesto» de un Excel pueden compartir portal entre sí
+  // o con el histórico: no se presupone que correspondan a locales distintos.
+  const portalesPendientes = importacionReal
+    ? portalesPendientesOperativos(previo.map(({ fi, kDir }) => ({ fila: fi.fila, clave: kDir })), existentes)
+    : new Map<number, { motivo: MotivoSinLocal; candidatos?: Id[] }>();
+
   const filas: PlanFila[] = previo.map(({ fi, claves, calleId, portal, kDir, calleDecidida, sinSeparar }) => {
     const base = { fila: fi.fila, local: fi.local, incidencias: incPorFila.get(fi.fila) ?? 0, calleId, ...(calleDecidida ? { calleDecidida } : {}) };
     if (excluidas.has(fi.fila)) return { ...base, correspondencia: 'excluida', localNuevo: false, negocio: false, observacion: false, ocupacion: false };
@@ -429,10 +477,13 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
     if (!portal) return sinLocal('sin-vinculo', 'numero-desconocido');
     if (portal.tipo === 'sin-numero') return sinLocal('ambigua', 'sin-numero');
     if (fi.local === 'desconocido') return sinLocal('ambigua', 'estado-local-desconocido', existentes.get(kDir!));
+    const cautela = portalesPendientes.get(fi.fila);
+    if (cautela) return sinLocal('ambigua', cautela.motivo, cautela.candidatos);
     const previos = existentes.get(kDir!);
     if (previos?.length) return sinLocal('ambigua', 'local-existente-en-direccion', previos);
-    // C1c-1: otra fila del archivo con la misma calle y número es OTRO local físico del mismo portal
-    // (bajos, locales interiores…): cada fila crea su propio local, sin fusionarlos ni marcar ambigüedad.
+    // En el histórico C1c se mantiene la interpretación original (no se
+    // reescriben 2025/IT1). En los nuevos itinerarios operativos solo hay alta
+    // automática cuando el portal es único y no existe ya en la base.
     return ocupacion(`loc-${importacionId}-${fi.fila}`, true);
   });
 
@@ -457,14 +508,29 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   const gravedad = cuenta(resultado.incidencias.map((i) => i.gravedad));
   const tipos = cuenta(resultado.incidencias.map((i) => i.tipo as string));
   const candidatas = capa.candidatasExcluir.map((c) => ({ fila: c.fila, decidida: excluidas.has(c.fila) }));
-  const cruces = operativo ? crucesConOtrosItinerarios(db, campanaId, destino.itinerarioId, previo.map(({ fi, calleId, portal }) => ({ fi, calleId, portal }))) : [];
+  const filasCruce = previo.map(({ fi, calleId, portal }) => ({ fi, calleId, portal }));
+  const crucesObservados = operativo ? crucesConOtrosItinerarios(db, campanaId, destino.itinerarioId, filasCruce) : [];
+  // En los Excel del espacio real se detectan también coincidencias de registros sin
+  // calle reconocida por el callejero, sin alterar la fuente ni enlazar ningún local.
+  const crucesOrigen = operativo && db.meta.espacio === 'real'
+    ? crucesDeOrigenSinCalle(db, campanaId, destino.itinerarioId, filasCruce)
+    : [];
+  const cruces = [...crucesObservados, ...crucesOrigen.filter((c) => !crucesObservados.some((o) => o.fila === c.fila && o.tipo === c.tipo))];
   // Filas cuyo propio Excel indica otro itinerario (columna «itinerario»): se señala, no se corrige.
   const codigoNum = itinerario ? Number(itinerario.codigo.replace(/\D/g, '')) : NaN;
   const otroIt = operativo && Number.isFinite(codigoNum) ? resultado.filas.filter((f) => esValida(f.celdas.itinerario) && Number(f.celdas.itinerario.valor) !== codigoNum).map((f) => f.fila) : [];
+  // La fuente PDF de itinerario 2 (8 páginas, facilitada el 09/11/2026)
+  // incluye estas cuatro vías y sus 34 filas. No modifica el XLSX ni acepta
+  // otros archivos: exige huella completa y el rango exacto de filas contrastado.
+  const revisionIt2 = revisionDocumentalIt2(sha, itinerario?.codigo ?? '', otroIt);
+
   const pendientes = [
     ...(cruces.filter((c) => c.tipo === 'posible-duplicado').length ? [`${cruces.filter((c) => c.tipo === 'posible-duplicado').length} fila(s) coinciden (calle, número y nombre) con lo ya incorporado por otro itinerario: posibles duplicados; no se fusionan, quedan para la conciliación supervisada`] : []),
     ...(cruces.filter((c) => c.tipo === 'contradiccion').length ? [`${cruces.filter((c) => c.tipo === 'contradiccion').length} fila(s) contradicen a otro itinerario en el mismo portal (vacío frente a ocupado): se conservan las dos observaciones, sin corregir ninguna`] : []),
-    ...(otroIt.length ? [`${otroIt.length} fila(s) indican en su columna «itinerario» un itinerario distinto de ${itinerario!.codigo} (filas ${otroIt.slice(0, 8).join(', ')}${otroIt.length > 8 ? '…' : ''}): compruébelo`] : []),
+    ...(cruces.filter((c) => c.tipo === 'portal-compartido').length ? [`${cruces.filter((c) => c.tipo === 'portal-compartido').length} fila(s) comparten portal con otro itinerario en los Excel originales: se revisan en Oficina, sin fusionar ni crear locales`] : []),
+    ...(otroIt.length ? [revisionIt2
+      ? '34 filas 516–549: discrepancia de la columna «itinerario» contrastada con el listado de campo IT2 (PDF, 09/11/2026). Pertenecen al recorrido IT2; se conservan las celdas originales y la discrepancia de procedencia.'
+      : `${otroIt.length} fila(s) indican en su columna «itinerario» un itinerario distinto de ${itinerario!.codigo} (filas ${otroIt.slice(0, 8).join(', ')}${otroIt.length > 8 ? '…' : ''}): compruébelo`] : []),
     ...enOtroAnio.map((i) => `El mismo archivo ya se incorporó como histórico de ${i.c1!.anio} (importación «${i.id}»): comprobar que ${destino.anio} es el año correcto`),
     ...Object.values(REGLAS).filter((r) => r.clase === 'propuesta' && !(op.reglasAutorizadas ?? []).includes(r.id) && resultado.filas.some((f) => Object.values(f.celdas).some((c) => c.regla === r.id && c.estado === 'pendiente')))
       .map((r) => `Regla no autorizada: ${r.id} (${r.descripcion})`),
@@ -776,7 +842,7 @@ export function aplicarIncorporacion(
     id: importacionId, municipioId: destino.municipioId, campanaId, tipo: operativo ? 'C-excel-itinerario' : 'A-censo-historico', archivo: plan.archivo.nombre, huella: plan.archivo.sha256, fecha: ahora,
     filas: capa.filas.length, estado: 'confirmada', procedencia: 'importado',
     resumen: { ...resumen, 'registros de origen': creadas.registros.length, 'locales creados': creadas.locales.length, 'negocios creados': creadas.negocios.length, 'observaciones': creadas.observaciones.length, 'ocupaciones': creadas.ocupaciones.length },
-    nota: 'C1c · Censo histórico incorporado como referencia: nada queda revisado, verificado ni validado. Los bytes del archivo no se guardan.',
+    nota: operativo ? 'Excel de itinerario incorporado en la campaña operativa. Se conservan sus filas y celdas de origen, sin guardar los bytes del XLSX. La revisión de Oficina queda pendiente.' : 'C1c · Censo histórico incorporado como referencia: nada queda revisado, verificado ni validado. Los bytes del archivo no se guardan.',
     c1: traza,
   };
   db.importaciones[importacionId] = imp;

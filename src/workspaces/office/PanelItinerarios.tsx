@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, BadgeCheck, Clock, Globe, Lock, Map, Store, Tags } from 'lucide-react';
+import { AlertTriangle, ArrowRight, BadgeCheck, Clock, ClipboardCheck, Globe, Lock, Map, Store, Tags } from 'lucide-react';
 import { useContexto } from '../../store/contexto';
 import { useFuenteOficina } from '../../store/fuenteOficina';
 import { ESTADO_OFICINA_TXT } from '../../domain/bloqueo';
@@ -42,6 +42,21 @@ export default function PanelItinerarios() {
         </button>
       </header>
 
+      {fuente?.soloLectura && campana.anio === 2026 && <section className="tarjeta" style={{padding:16,marginBottom:16}}>
+        <div className="fila" style={{gap:12,alignItems:'center',flexWrap:'wrap'}}>
+          <ClipboardCheck size={22}/>
+          <div style={{flex:1,minWidth:200}}>
+            <b>Fase 1 · Revisión general</b>
+            <p className="muted" style={{margin:'4px 0 0'}}>
+              Comprueba nombres, locales vacíos, fachadas y datos comerciales de los Excel 2026.
+              Solo muestra las filas que necesitan atención.
+            </p>
+          </div>
+          <button className="btn primario" onClick={() => nav('/oficina/revision-general')}>
+            Abrir revisión <ArrowRight size={15}/>
+          </button>
+        </div>
+      </section>}
       {its.length === 0 && <div className="t-info">Esta campaña no tiene itinerarios. Puedes trabajar en la vista general municipal.</div>}
 
       <div className="ofi-tarjetas">
