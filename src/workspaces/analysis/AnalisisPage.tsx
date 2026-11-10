@@ -324,6 +324,7 @@ function Exportar() {
   return (
     <div className="an-export">
       {campana.anio === 2026 && <ExportacionTrabajo2026 db={db} campanaId={campana.id} its={its} municipio={municipio.nombre} />}
+      {campana.anio !== 2026 ? (
       <div className="tarjeta an-bloque">
         <h3>{campana.anio === 2026 ? 'Exportación de locales conciliados · provisional' : 'Excel compatible con el censo tradicional'}</h3>
         <div className="fila" style={{ flexWrap: 'wrap' }}>
@@ -346,6 +347,12 @@ function Exportar() {
           </table>
         </div>
       </div>
+      ) : (
+        <p className="muted" style={{ fontSize: 12 }}>
+          La exportación municipal definitiva de locales únicos se habilitará tras la conciliación y validación.
+          Hasta entonces utiliza el Excel de trabajo, que mantiene todos los registros de campo y sus correcciones.
+        </p>
+      )}
       <div className="tarjeta an-bloque">
         <h3>Mapas y hojas de campo</h3>
         <p className="muted">Documento A4 por itinerario con mapa numerado, listado de calles y locales anteriores con espacio para anotar.</p>
