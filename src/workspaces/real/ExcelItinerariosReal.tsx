@@ -32,6 +32,7 @@ export default function ExcelItinerariosReal() {
   const [respaldoConfirmado, setRespaldoConfirmado] = useState(false);
   const [confirmado, setConfirmado] = useState(false);
   const [guardado, setGuardado] = useState<GuardadoExcelReal | null>(null);
+  const [avisoRecarga, setAvisoRecarga] = useState<string | null>(null);
   const [tamanoPlan, setTamanoPlan] = useState<DiagnosticoTamanoExcel | null>(null);
 
   const valida = useMemo(() => campana
@@ -98,14 +99,20 @@ export default function ExcelItinerariosReal() {
       !respaldoConfirmado || !confirmado || ocupado) return;
     const cliente=clienteServidor();
     if(!cliente) return setError('No hay conexión segura con Supabase.');
-    setOcupado(true);setError(null);
+    setOcupado(true);setError(null);setAvisoRecarga(null);
     try {
       const r=await guardarExcelReal(cliente,db,analisis.lote.dbResultado,
         fuente.versionReal,analisis.codigo,informe.sha256,parte);
-      await fuente.recargarReal();
+      // La RPC ha confirmado el COMMIT. Desactivar cualquier posibilidad
+      // de reenvío ANTES de recargar la fuente, que puede agotar su propio timeout.
       setGuardado(r);
       setArchivo(null);setAnalisis(null);setRespaldo(null);
       setCapacidad(null);setConfirmado(false);setRespaldoConfirmado(false);
+      try {
+        await fuente.recargarReal();
+      } catch {
+        setAvisoRecarga('El Excel se ha guardado en el servidor, pero la recarga de la pantalla ha fallado o agotado su tiempo. Actualice la página para consultar los datos. No repita la importación.');
+      }
     }catch(e){
       setError((e instanceof Error?e.message:String(e))+
         ' No repita la importación sin consultar primero el estado del servidor y sus registros.');
@@ -174,7 +181,10 @@ export default function ExcelItinerariosReal() {
         {error && <div className="t-info error" role="alert"><AlertTriangle size={15} />{error}</div>}
       </div>
       {guardado && <div className="t-info ok" role="status"><CheckCircle2 size={16} />
-        <span><b>{guardado.itinerario} guardado y verificado.</b> {fmt(guardado.filas)} filas nuevas, versión {guardado.version}. La escritura general vuelve a estar bloqueada. <Link to="/oficina/sin-local">Abrir los registros pendientes en Oficina</Link> · <Link to="/oficina">Ir a Oficina</Link>.</span>
+        <span><b>{guardado.itinerario} guardado y confirmado por el servidor.</b> {fmt(guardado.filas)} filas nuevas, versión {guardado.version}. La escritura general vuelve a estar bloqueada. <Link to="/oficina/sin-local">Abrir los registros pendientes en Oficina</Link> · <Link to="/oficina">Ir a Oficina</Link>.</span>
+      </div>}
+      {(avisoRecarga || guardado?.verificacionPendiente) && <div className="t-info aviso" role="status">
+        <AlertTriangle size={16}/><span>{avisoRecarga || 'El servidor confirmó la importación, pero la comprobación adicional de versión no ha respondido. Actualice la página para consultar el estado. No repita la importación.'}</span>
       </div>}
       {analisis && informe && <div className="col" style={{ gap: 14, marginTop: 18 }} aria-label="Resultado de análisis de itinerario">
         <div className={`t-info ${analisis.lote.aplicable ? 'ok' : 'aviso'}`} role="status">
