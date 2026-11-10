@@ -219,6 +219,13 @@ export default function ExcelItinerariosReal() {
           <ul style={{ paddingLeft: 22, marginTop: 8 }}>{informe.avisos.slice(0, 15).map((aviso, i) => <li key={i}>{aviso}</li>)}</ul>
           {informe.avisos.length > 15 && <p className="muted">Hay {informe.avisos.length - 15} avisos adicionales. Es necesario revisarlos antes de incorporar.</p>}
         </div>}
+        {(informe.detallesCruces?.length ?? 0) > 0 && <details className="t-info aviso">
+          <summary><strong>Ver {fmt(informe.detallesCruces!.length)} cruces documentales con otros itinerarios</strong></summary>
+          <p className="muted">Coincidencias por calle y portal en los archivos originales. No prueban que sea el mismo local ni autorizan cambios de estado. Pendientes de Oficina.</p>
+          <ul style={{ paddingLeft: 22 }}>
+            {informe.detallesCruces!.map((c, i) => <li key={i}>Fila {c.fila} · {c.detalle}</li>)}
+          </ul>
+        </details>}
         {analisis.filasNuevas.length > 0 && <>
           <h3 style={{ margin: 0 }}>Filas originales del Excel ({fmt(analisis.filasNuevas.length)})</h3>
           <label className="campo" style={{ maxWidth: 450 }}>
