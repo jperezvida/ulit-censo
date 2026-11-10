@@ -314,7 +314,7 @@ function ExportacionTrabajo2026({ db, campanaId, its, municipio }: {
   const [it, setIt] = useState('');
   const trabajo = useMemo(() => exportarRevisionGeneral(db, campanaId, it || undefined), [db, campanaId, it]);
   const { resumen } = trabajo;
-  const nombre = `${municipio.replace(/\\s+/g, '_')}_2026_trabajo_revision_${it ? its.find((x) => x.id === it)?.codigo ?? 'it' : 'todos'}.csv`;
+  const nombre = `${municipio.replace(/\s+/g, '_')}_2026_trabajo_revision_${it ? its.find((x) => x.id === it)?.codigo ?? 'it' : 'todos'}.csv`;
 
   return <section className="tarjeta an-bloque">
     <h3>Excel de trabajo 2026 · con correcciones</h3>
