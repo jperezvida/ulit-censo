@@ -37,10 +37,10 @@ describe('Análisis · exportación de trabajo 2026', () => {
       db={db} campanaId="c26" municipio="Medina del Campo"
       its={Object.values(db.itinerarios)} /></MemoryRouter>);
     expect(screen.getByRole('heading', { name: /Excel de trabajo 2026/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Descargar trabajo 2026 \(2 filas\)/ })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /Descargar Excel de trabajo \(2 filas\)/ })).toBeEnabled();
     expect(screen.getByText(/no es el censo final de locales únicos/)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Itinerario para exportar el trabajo 2026'), { target: { value: 'it2' } });
-    expect(screen.getByRole('button', { name: /Descargar trabajo 2026 \(1 filas\)/ })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /Descargar Excel de trabajo \(1 filas\)/ })).toBeEnabled();
     expect(screen.getByRole('link', { name: 'Ir a Revisión general' })).toHaveAttribute('href', '/oficina/revision-general');
     expect(Object.keys(db.registros)).toHaveLength(2);
   });
@@ -52,6 +52,6 @@ describe('Análisis · exportación de trabajo 2026', () => {
       db={db} campanaId="c26" municipio="Medina del Campo"
       its={Object.values(db.itinerarios)} /></MemoryRouter>);
     fireEvent.change(screen.getByLabelText('Itinerario para exportar el trabajo 2026'), { target: { value: 'it2' } });
-    expect(screen.getByRole('button', { name: /Descargar trabajo 2026 \(0 filas\)/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Descargar Excel de trabajo \(0 filas\)/ })).toBeDisabled();
   });
 });
