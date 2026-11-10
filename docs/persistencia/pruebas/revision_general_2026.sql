@@ -98,5 +98,20 @@ begin
   raise exception 'Debe rechazar versión anterior';
  exception when sqlstate 'PT409' then null;
  end;
+  -- Restaurar los valores efectivos originales conserva la operación anterior en historial.
+  x:=public.ulit_censo_revision_general_2026('real-medina-del-campo-2026','guardar',9,'reg-sintetico-1','{}','Restituir valor anterior');
+  if x->>'version'<>'10' then raise exception 'No incrementó versión al revertir'; end if;
+  if (select valor->'historial'->0->'valoresAnteriores'->>'nombre' from ulit_censo.entidad
+      where coleccion='correccionesRegistros' and id='reg-sintetico-1') <> '' then
+    raise exception 'No conserva la versión corregida al revertir';
+  end if;
+  if (select valor->'valores' from ulit_censo.entidad
+      where coleccion='correccionesRegistros' and id='reg-sintetico-1') <> '{}'::jsonb then
+    raise exception 'La reversión no ha retirado el valor corregido';
+  end if;
+  if (select count(*) from ulit_censo.entidad_historial
+      where coleccion='correccionesRegistros' and id='reg-sintetico-1') <> 2 then
+    raise exception 'No se registraron ambas decisiones';
+  end if;
 end $prueba$;
 select '✓ SQL aislado: autorización, copia, escritura, origen, historial y versión correctos' as verificado;
