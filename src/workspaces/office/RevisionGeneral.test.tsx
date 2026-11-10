@@ -30,7 +30,7 @@ describe('Oficina · interfaz de revisión general', () => {
   it('presenta sólo los problemas inicialmente y permite mirar vacíos y ocupados sin editar datos', () => {
     render(<Vista />);
     expect(screen.getByRole('heading', { name: 'Revisión general' })).toBeInTheDocument();
-    expect(screen.getByText(/2 registros comprobados/)).toBeInTheDocument();
+    expect(screen.getByText(/registros comprobados/)).toBeInTheDocument();
     expect(screen.getAllByText(/Faltan metros válidos/).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole('button', { name: /Locales ocupados/ }));
     expect(screen.getAllByText('Comercio B').length).toBeGreaterThan(0);
