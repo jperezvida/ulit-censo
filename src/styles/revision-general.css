@@ -8,6 +8,7 @@
 .rg-controles { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin: 0 0 13px; }
 .rg-filtros { display: flex; gap: 7px; flex-wrap: wrap; }
 .rg-filtros button { display: inline-flex; gap: 9px; align-items: center; }
+.rg-itinerario { width: auto; min-width: 182px; max-width: 230px; }
 .rg-buscador { display: flex; align-items: center; gap: 7px; background: white; border: 1px solid #cdd8e7; border-radius: 9px; padding: 8px 12px; min-width: 255px; flex: 0 1 360px; color: #697b90; }
 .rg-buscador input { outline: none; border: 0; width: 100%; background: transparent; color: #243c55; }
 .rg-doscolumnas { display: grid; grid-template-columns: minmax(280px, 0.93fr) minmax(360px, 1.3fr); align-items: start; gap: 14px; }
@@ -46,6 +47,7 @@
 @media (max-width: 850px) {
   .rg-doscolumnas { grid-template-columns: minmax(0, 1fr); }
   .rg-listado { max-height: 340px; }
+  .rg-itinerario { flex: 1 1 100%; max-width: none; }
   .rg-buscador { flex: 1 1 250px; }
   .rg-detalle { padding: 15px; }
 }
