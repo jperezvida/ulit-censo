@@ -6,6 +6,7 @@ on:
       - 'docs/persistencia/sql/20261109_0009_importacion_excel_itinerarios_2026.sql'
       - 'docs/persistencia/sql/20261109_0010_duplicados_origen_sin_local.sql'
       - 'docs/persistencia/sql/20261110_0011_timeout_excel_2026.sql'
+      - 'docs/persistencia/sql/20261110_0012_timeout_respaldo_y_lectura_real.sql'
       - 'docs/persistencia/pruebas/importacion_excel_2026_aislada.sql'
       - 'docs/persistencia/pruebas/importacion_excel_548_filas_aislada.sql'
       - '.github/workflows/ci-excel-itinerarios-sql.yml'
@@ -56,7 +57,8 @@ jobs:
             "$SQL/20261107_0007_it1_c_ambigua_reintento_seguro.sql" \
             "$SQL/20261109_0009_importacion_excel_itinerarios_2026.sql" \
             "$SQL/20261109_0010_duplicados_origen_sin_local.sql" \
-            "$SQL/20261110_0011_timeout_excel_2026.sql"; do
+            "$SQL/20261110_0011_timeout_excel_2026.sql" \
+            "$SQL/20261110_0012_timeout_respaldo_y_lectura_real.sql"; do
             echo "Migración sobre PostgreSQL efímero: $F"
             psql -v ON_ERROR_STOP=1 -q -f "$F"
           done
@@ -74,6 +76,30 @@ jobs:
             if (select proconfig from pg_proc where oid='public.ulit_censo_leer(text)'::regprocedure)
               @> array['statement_timeout=45s'] then
               raise exception 'El timeout se filtró a otra función';
+            end if;
+          end $assert$;
+          SQL
+      - name: Timeout limitado a lectura y respaldo, sin alterar permisos ni límites del rol
+        run: |
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          do $assert$
+          declare
+            fn text;
+            cfg text[];
+          begin
+            foreach fn in array array[
+              'public.ulit_censo_crear_copia(text,text)',
+              'public.ulit_censo_descargar_copia(text,uuid)',
+              'public.ulit_censo_leer(text)'
+            ] loop
+              select proconfig into cfg from pg_proc where oid=fn::regprocedure;
+              if not (cfg @> array['statement_timeout=45s']) then
+                raise exception 'RPC sin timeout de respaldo: %', fn;
+              end if;
+            end loop;
+            if (select proconfig from pg_proc where oid='public.ulit_censo_mis_espacios()'::regprocedure)
+                 @> array['statement_timeout=45s'] then
+              raise exception 'Cambio de timeout se ha extendido a una RPC ajena';
             end if;
           end $assert$;
           SQL
