@@ -105,14 +105,14 @@ export function revisarRegistroGeneral(r: RegistroOrigen, valores?: Record<strin
     if (!fachada || !Number.isFinite(metros) || metros <= 0) {
       aviso('vacio-sin-fachada', 'Faltan metros válidos de fachada', 'Un local vacío necesita una longitud de fachada mayor que cero.');
     }
-    const rellenos = CLASIFICACION.filter((k) => !!datoRevisionGeneral(r, k));
+    const rellenos = CLASIFICACION.filter((k) => !!dato(k));
     if (rellenos.length) {
       aviso('vacio-con-clasificacion', 'Local vacío con categorización', `Hay ${rellenos.length} campo(s) de actividad o descripción rellenados. Revisar sin borrar automáticamente.`);
     }
     if (indicioPositivo(dato('franquicia'))) {
       aviso('vacio-con-franquicia', 'Local vacío marcado como franquicia', 'La condición de franquicia corresponde a un negocio, no a un local vacío.');
     }
-    const digitales = DIGITAL.filter((k) => indicioPositivo(datoRevisionGeneral(r, k)));
+    const digitales = DIGITAL.filter((k) => indicioPositivo(dato(k)));
     if (digitales.length) {
       aviso('vacio-con-digital', 'Local vacío con presencia digital', `Hay ${digitales.length} dato(s) positivos de web, Google o redes. Comprobar si pertenecen al ocupante anterior.`);
     }
