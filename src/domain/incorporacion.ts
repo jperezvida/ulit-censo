@@ -2,6 +2,7 @@ import type { BaseDatos } from './db';
 import { ErrorDominio, kNC, siguienteOrden } from './db';
 import { direccionVigente, anioDe } from './consultas';
 import { claveCalle, normalizar } from './text';
+import { crucesDeOrigenSinCalle } from './crucesOrigenReal';
 import { huella } from '../data/rng';
 import { sha256Texto } from './sha256';
 import { TAXONOMIA_POR_ID, catalogoDeNodo } from './taxonomy';
@@ -203,7 +204,7 @@ export interface PlanIncorporacion {
    * (misma calle, número y nombre) o contradicciones (mismo portal: vacío en uno, ocupado en otro). Nada
    * se fusiona: quedan para la conciliación supervisada.
    */
-  cruces?: { fila: number; tipo: 'posible-duplicado' | 'contradiccion'; itinerario: string; detalle: string }[];
+  cruces?: { fila: number; tipo: 'posible-duplicado' | 'contradiccion' | 'portal-compartido'; itinerario: string; detalle: string }[];
   aplicable: boolean;
   bloqueos: Bloqueo[];
   registros: { previstos: number; excluidos: number; candidatasExcluir: { fila: number; decidida: boolean }[] };
@@ -507,7 +508,14 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   const gravedad = cuenta(resultado.incidencias.map((i) => i.gravedad));
   const tipos = cuenta(resultado.incidencias.map((i) => i.tipo as string));
   const candidatas = capa.candidatasExcluir.map((c) => ({ fila: c.fila, decidida: excluidas.has(c.fila) }));
-  const cruces = operativo ? crucesConOtrosItinerarios(db, campanaId, destino.itinerarioId, previo.map(({ fi, calleId, portal }) => ({ fi, calleId, portal }))) : [];
+  const filasCruce = previo.map(({ fi, calleId, portal }) => ({ fi, calleId, portal }));
+  const crucesObservados = operativo ? crucesConOtrosItinerarios(db, campanaId, destino.itinerarioId, filasCruce) : [];
+  // En los Excel del espacio real se detectan también coincidencias de registros sin
+  // calle reconocida por el callejero, sin alterar la fuente ni enlazar ningún local.
+  const crucesOrigen = operativo && db.meta.espacio === 'real'
+    ? crucesDeOrigenSinCalle(db, campanaId, destino.itinerarioId, filasCruce)
+    : [];
+  const cruces = [...crucesObservados, ...crucesOrigen.filter((c) => !crucesObservados.some((o) => o.fila === c.fila && o.tipo === c.tipo))];
   // Filas cuyo propio Excel indica otro itinerario (columna «itinerario»): se señala, no se corrige.
   const codigoNum = itinerario ? Number(itinerario.codigo.replace(/\D/g, '')) : NaN;
   const otroIt = operativo && Number.isFinite(codigoNum) ? resultado.filas.filter((f) => esValida(f.celdas.itinerario) && Number(f.celdas.itinerario.valor) !== codigoNum).map((f) => f.fila) : [];
@@ -519,6 +527,7 @@ export function planificarIncorporacion(db: BaseDatos, resultado: ResultadoInter
   const pendientes = [
     ...(cruces.filter((c) => c.tipo === 'posible-duplicado').length ? [`${cruces.filter((c) => c.tipo === 'posible-duplicado').length} fila(s) coinciden (calle, número y nombre) con lo ya incorporado por otro itinerario: posibles duplicados; no se fusionan, quedan para la conciliación supervisada`] : []),
     ...(cruces.filter((c) => c.tipo === 'contradiccion').length ? [`${cruces.filter((c) => c.tipo === 'contradiccion').length} fila(s) contradicen a otro itinerario en el mismo portal (vacío frente a ocupado): se conservan las dos observaciones, sin corregir ninguna`] : []),
+    ...(cruces.filter((c) => c.tipo === 'portal-compartido').length ? [`${cruces.filter((c) => c.tipo === 'portal-compartido').length} fila(s) comparten portal con otro itinerario en los Excel originales: se revisan en Oficina, sin fusionar ni crear locales`] : []),
     ...(otroIt.length ? [revisionIt2
       ? '34 filas 516–549: discrepancia de la columna «itinerario» contrastada con el listado de campo IT2 (PDF, 09/11/2026). Pertenecen al recorrido IT2; se conservan las celdas originales y la discrepancia de procedencia.'
       : `${otroIt.length} fila(s) indican en su columna «itinerario» un itinerario distinto de ${itinerario!.codigo} (filas ${otroIt.slice(0, 8).join(', ')}${otroIt.length > 8 ? '…' : ''}): compruébelo`] : []),
