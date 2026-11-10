@@ -1,5 +1,5 @@
 import type { BaseDatos } from './db';
-import type { RegistroOrigen } from './types';
+import type { CorreccionRegistro, RegistroOrigen } from './types';
 import { PERFIL_CENSO_27, PERFIL_ITINERARIO_28 } from './xlsx/perfilesImportacion';
 
 /**
@@ -26,6 +26,7 @@ export interface FilaRevisionGeneral {
   numero: string;
   nombre: string;
   estado: 'vacio' | 'ocupado' | 'desconocido';
+  correccion?: CorreccionRegistro;
   incidencias: IncidenciaGeneral[];
 }
 export interface ResultadoRevisionGeneral {
@@ -49,7 +50,8 @@ for (const perfil of [PERFIL_CENSO_27, PERFIL_ITINERARIO_28]) {
 }
 
 /** Accede al contenido original cuando existe, con compatibilidad con importaciones antiguas. */
-export function datoRevisionGeneral(r: RegistroOrigen, clave: string): string {
+export function datoRevisionGeneral(r: RegistroOrigen, clave: string, valores?: Record<string, string>): string {
+  if (valores && Object.prototype.hasOwnProperty.call(valores, clave)) return valores[clave];
   const original = r.original?.[clave];
   if (original) {
     switch (original.t) {
@@ -79,10 +81,11 @@ function indicioPositivo(valor: string): boolean {
   return !!v && !['0', '0.0', '0,0', 'no', 'n', 'false', 'falso', '-'].includes(v);
 }
 
-export function revisarRegistroGeneral(r: RegistroOrigen): { estado: FilaRevisionGeneral['estado']; incidencias: IncidenciaGeneral[] } {
-  const vacio = datoRevisionGeneral(r, 'vacio');
-  const nombre = datoRevisionGeneral(r, 'nombre');
-  const fachada = datoRevisionGeneral(r, 'fachada');
+export function revisarRegistroGeneral(r: RegistroOrigen, valores?: Record<string, string>): { estado: FilaRevisionGeneral['estado']; incidencias: IncidenciaGeneral[] } {
+  const dato = (clave: string) => datoRevisionGeneral(r, clave, valores);
+  const vacio = dato('vacio');
+  const nombre = dato('nombre');
+  const fachada = dato('fachada');
   const incidencias: IncidenciaGeneral[] = [];
   const aviso = (tipo: TipoIncidenciaGeneral, titulo: string, detalle: string) => incidencias.push({ tipo, titulo, detalle });
 
@@ -106,7 +109,7 @@ export function revisarRegistroGeneral(r: RegistroOrigen): { estado: FilaRevisio
     if (rellenos.length) {
       aviso('vacio-con-clasificacion', 'Local vacío con categorización', `Hay ${rellenos.length} campo(s) de actividad o descripción rellenados. Revisar sin borrar automáticamente.`);
     }
-    if (indicioPositivo(datoRevisionGeneral(r, 'franquicia'))) {
+    if (indicioPositivo(dato('franquicia'))) {
       aviso('vacio-con-franquicia', 'Local vacío marcado como franquicia', 'La condición de franquicia corresponde a un negocio, no a un local vacío.');
     }
     const digitales = DIGITAL.filter((k) => indicioPositivo(datoRevisionGeneral(r, k)));
@@ -130,15 +133,18 @@ export function auditarRevisionGeneral(db: BaseDatos, campanaId: string): Result
     .filter((r) => importaciones.has(r.importacionId) && !r.exclusion)
     .sort((a, b) => (db.itinerarios[a.itinerarioId ?? '']?.codigo ?? '').localeCompare(db.itinerarios[b.itinerarioId ?? '']?.codigo ?? '', 'es', { numeric: true }) || a.importacionId.localeCompare(b.importacionId) || a.fila - b.fila)
     .map((registro): FilaRevisionGeneral => {
-      const { estado, incidencias } = revisarRegistroGeneral(registro);
+      const correccion = db.correccionesRegistros?.[registro.id];
+      const vigente = correccion?.campanaId === campanaId ? correccion : undefined;
+      const valores = vigente?.valores;
+      const { estado, incidencias } = revisarRegistroGeneral(registro, valores);
       return {
         id: registro.id, registro,
         archivo: importaciones.get(registro.importacionId)?.archivo ?? 'Excel importado',
         itinerario: db.itinerarios[registro.itinerarioId ?? '']?.codigo ?? 'Sin itinerario',
-        direccion: datoRevisionGeneral(registro, 'direccion') || 'Sin calle consignada',
-        numero: datoRevisionGeneral(registro, 'numero') || 's/n',
-        nombre: datoRevisionGeneral(registro, 'nombre'),
-        estado, incidencias,
+        direccion: datoRevisionGeneral(registro, 'direccion', valores) || 'Sin calle consignada',
+        numero: datoRevisionGeneral(registro, 'numero', valores) || 's/n',
+        nombre: datoRevisionGeneral(registro, 'nombre', valores),
+        estado, incidencias, correccion: vigente,
       };
     });
   const incidenciasPorTipo: ResultadoRevisionGeneral['incidenciasPorTipo'] = {};
