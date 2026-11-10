@@ -88,6 +88,23 @@ describe('Fase 1 · revisión general', () => {
     expect(res.sinIncidencias).toBe(3);
   });
 
+  it('aplica la corrección efectiva sin perder ni reescribir las celdas originales', () => {
+    const db = base();
+    const original = fila('r1', { ...origen('1', 'Nombre antiguo', '3'), Instagram: '1' });
+    db.registros.r1 = original;
+    db.correccionesRegistros = {
+      r1: { id: 'r1', registroId: 'r1', campanaId: 'c26', valores: { nombre: '', instagram: '' },
+        porId: 'revisor', fecha: '2026-11-10', motivo: 'Negocio anterior',
+        historial: [] },
+    };
+    const auditoria = auditarRevisionGeneral(db, 'c26');
+    expect(auditoria.conIncidencias).toBe(0);
+    expect(auditoria.filas[0].correccion?.motivo).toBe('Negocio anterior');
+    expect(original.datos['Nombre del negocio']).toBe('Nombre antiguo');
+    expect(original.datos.Instagram).toBe('1');
+    expect(revisarRegistroGeneral(original).incidencias.length).toBe(2);
+  });
+
   it('escala a muchos registros y cuenta filas con incidencias, no avisos repetidos', () => {
     const db = base();
     for (let i = 1; i <= 817; i++) {
