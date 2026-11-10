@@ -30,6 +30,7 @@ export default function RevisionGeneral() {
   const resultado = useMemo(() => campana ? auditarRevisionGeneral(db, campana.id) : null, [db, campana?.id]);
   const [filtro, setFiltro] = useState<Filtro>('incidencias');
   const [busqueda, setBusqueda] = useState('');
+  const [itinerarioFiltro, setItinerarioFiltro] = useState('');
   const [seleccionado, setSeleccionado] = useState<string | null>(null);
   const [limite, setLimite] = useState(80);
   if (!campana || !resultado) return null;
@@ -40,9 +41,11 @@ export default function RevisionGeneral() {
     { clave: 'ocupados' as const, etiqueta: 'Locales ocupados', total: resultado.filas.filter((f) => f.estado === 'ocupado').length },
   ];
 
+  const itinerarios = [...new Set(resultado.filas.map((f) => f.itinerario))].sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
   const texto = busqueda.trim().toLocaleLowerCase('es');
   const filtradas = resultado.filas.filter((f) =>
-    (filtro === 'incidencias' ? f.incidencias.length > 0 : filtro === 'vacios' ? f.estado === 'vacio' : f.estado === 'ocupado')
+    (!itinerarioFiltro || f.itinerario === itinerarioFiltro)
+    && (filtro === 'incidencias' ? f.incidencias.length > 0 : filtro === 'vacios' ? f.estado === 'vacio' : f.estado === 'ocupado')
     && (!texto || [f.direccion, f.numero, f.nombre, f.itinerario, f.archivo, String(f.registro.fila), ...f.incidencias.map((i) => i.titulo)]
       .join(' ').toLocaleLowerCase('es').includes(texto))
   );
@@ -76,6 +79,11 @@ export default function RevisionGeneral() {
           {op.etiqueta} <b>{op.total}</b>
         </button>)}
       </div>
+      {itinerarios.length > 1 && <select className="input rg-itinerario" aria-label="Filtrar por itinerario" value={itinerarioFiltro}
+        onChange={(e) => { setItinerarioFiltro(e.target.value); setSeleccionado(null); setLimite(80); }}>
+        <option value="">Todos los itinerarios</option>
+        {itinerarios.map((codigo) => <option key={codigo} value={codigo}>{codigo} · {resultado.filas.filter((f) => f.itinerario === codigo && f.incidencias.length).length} con incidencias</option>)}
+      </select>}
       <label className="rg-buscador"><Search size={15} /><input aria-label="Buscar por calle, negocio, itinerario o fila" placeholder="Buscar calle, negocio o fila…"
         value={busqueda} onChange={(e) => { setBusqueda(e.target.value); setSeleccionado(null); setLimite(80); }} /></label>
     </div>
