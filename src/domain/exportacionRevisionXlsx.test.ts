@@ -37,7 +37,7 @@ describe('Excel nativo · trabajo Medina 2026', () => {
     expect(datos.rowCount).toBe(2);
     expect(trazas.rowCount).toBe(2);
     expect(datos.views[0].state).toBe('frozen');
-    expect(datos.getRow(1).values.slice(1)).toEqual(PERFIL_ITINERARIO_28.columnas.map((c) => c.cabecera));
+    expect((datos.getRow(1).values as ExcelJS.CellValue[]).slice(1)).toEqual(PERFIL_ITINERARIO_28.columnas.map((c) => c.cabecera));
     const idxNombre = PERFIL_ITINERARIO_28.columnas.findIndex((c) => c.clave === 'nombre') + 1;
     expect(datos.getRow(2).getCell(idxNombre).value ?? '').toBe('');
     expect(trazas.getRow(2).getCell(1).value).toBe('reg-ficticio');
