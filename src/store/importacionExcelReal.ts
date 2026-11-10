@@ -60,6 +60,9 @@ export interface GuardadoExcelReal {
   itinerario: string;
   importacionId: string;
   copia: string;
+  /** La escritura recibió confirmación de la RPC, pero su lectura ligera posterior
+   * no permitió confirmar la versión; se requiere recarga manual, NUNCA reimportar. */
+  verificacionPendiente?: boolean;
 }
 
 /** No interpreta un error de red, permisos o RPC ausente como autorización. */
@@ -174,9 +177,12 @@ export async function guardarExcelReal(
   if (!r || r.version!==versionEsperada+1 || r.itinerario!==codigo ||
       !r.copia || r.filas!==cambios.filter((x)=>x.c==='registros').length)
     throw new Error('El servidor respondió con una confirmación inesperada. No repita la importación.');
-  const {db:actual,info:verificado}=await almacen.leer();
-  if (!actual || verificado.version!==r.version || verificado.escrituraHabilitada ||
-      jsonCanonico(actual)!==jsonCanonico(despues))
-    throw new Error('El servidor guardó la operación, pero la verificación posterior no coincide. NO repita la importación; revise Supabase.');
-  return r;
+  // La RPC responde HTTP 200 únicamente tras confirmar la transacción y
+  // devolver versión, filas, identificador de importación y copia.
+  // NO volver a leer aquí el censo completo: esa segunda RPC heredaba
+  // statement_timeout=8s y presentaba un falso error después del COMMIT.
+  // Una comprobación ligera de versión no debe invalidar el éxito de escritura
+  // si falla por red, timeout o por latencia de lectura.
+  const estado = await consultarCapacidadExcel(cliente).catch(() => null);
+  return { ...r, verificacionPendiente: !estado || estado.version !== r.version };
 }
