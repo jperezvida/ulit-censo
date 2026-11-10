@@ -34,7 +34,7 @@ function actual(fila:number, numero:number, nombre:string, vacio:boolean) {
     direccion: { estado:'valido', valor:'Calle Ronda De Gracia' },
     numero: { estado:'valido', valor:portal },
     nombre: { estado:'valido', valor:nombre },
-  }} as FilaInterpretada, portal };
+  }} as unknown as FilaInterpretada, portal };
 }
 
 describe('IT3 · comparar Excel originales aunque IT2 carezca de calle reconocida', () => {
