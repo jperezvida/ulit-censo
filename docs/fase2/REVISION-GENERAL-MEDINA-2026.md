@@ -44,7 +44,9 @@ No identifica un mismo número de portal como duplicidad. La revisión muestra e
 original por separado de la vista corregida; toda corrección se guarda como
 `correccionesRegistros` y queda auditada en `operacion` y `entidad_historial`.
 
-**La RPC propuesta aún no está instalada ni autorizada.** El espacio real está
+**La RPC propuesta aún no está instalada ni autorizada.** La migración introduce además
+una autorización administrativa desactivada por defecto: crear el respaldo por sí solo
+NO desbloquea la escritura. El espacio real está
 en versión 8. Las copias conservadas comprobadas abarcan versiones 1–7: no
 existe todavía copia íntegra de la versión 8. La primera corrección debe quedar
 bloqueada hasta crear y verificar esa copia. La migración 0010 permanece en la
@@ -59,5 +61,8 @@ PR de revisión, sin aplicar.
    PT409, guardado y recarga, reversión y auditoría.
 3. Validar una copia/restauración de la versión 8 e identificar la autorización
    específica antes de desplegar o activar escrituras reales.
-4. Verificar visualmente la bandeja en escritorio y móvil, contra los
+4. Integrar expresamente los valores efectivos corregidos en la exportación y el
+   análisis final del censo, sin alterar las fuentes históricas. Hasta entonces,
+   «sin avisos» NO equivale a censo definitivo ni debe permitirse cerrar la Fase 5.
+5. Verificar visualmente la bandeja en escritorio y móvil, contra los
    totales de esta ficha.
