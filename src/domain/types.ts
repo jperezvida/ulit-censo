@@ -441,6 +441,20 @@ export interface RegistroOrigen {
   exclusion?: { porId: Id; fecha: string; motivo: string };
 }
 
+/** Corrección supervisada de una fila 2026. NUNCA modifica RegistroOrigen ni sus celdas originales. */
+export interface CorreccionRegistro {
+  id: Id;
+  registroId: Id;
+  campanaId: Id;
+  /** Valores canónicos de la corrección. La cadena vacía retira un dato del censo efectivo sin borrar el Excel. */
+  valores: Record<string, string>;
+  porId: Id;
+  fecha: string;
+  motivo: string;
+  /** Las revisiones anteriores se conservan para revertir y auditar. */
+  historial: { fecha: string; porId: Id; motivo: string; valoresAnteriores: Record<string, string> }[];
+}
+
 export type Confianza = 'confirmada' | 'probable' | 'dudosa' | 'sin-vinculo';
 
 /** Correspondencia entre un registro/observación y un local físico. */
