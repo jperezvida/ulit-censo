@@ -73,7 +73,7 @@ jobs:
             if not (config @> array['statement_timeout=45s']) then
               raise exception 'RPC Excel sin timeout específico de 45 segundos';
             end if;
-            if (select proconfig from pg_proc where oid='public.ulit_censo_leer(text)'::regprocedure)
+            if (select proconfig from pg_proc where oid='public.ulit_censo_mis_espacios()'::regprocedure)
               @> array['statement_timeout=45s'] then
               raise exception 'El timeout se filtró a otra función';
             end if;
