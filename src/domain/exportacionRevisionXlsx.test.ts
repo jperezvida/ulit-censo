@@ -29,7 +29,7 @@ const simulado = (): ExportacionRevisionGeneral => ({
 describe('Excel nativo · trabajo Medina 2026', () => {
   it('tiene 28 columnas originales, 3 hojas y trazabilidad en la misma fila', async () => {
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(await generarXlsxRevisionGeneral(simulado()));
+    await wb.xlsx.load((await generarXlsxRevisionGeneral(simulado())) as unknown as ArrayBuffer);
     expect(wb.worksheets.map((w) => w.name)).toEqual(['Datos 2026', 'Origen y correcciones', 'Resumen']);
     const datos = wb.getWorksheet('Datos 2026')!;
     const trazas = wb.getWorksheet('Origen y correcciones')!;
@@ -49,7 +49,7 @@ describe('Excel nativo · trabajo Medina 2026', () => {
     const salida = simulado();
     salida.filas[0]['Nombre del negocio'] = '=1+2';
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(await generarXlsxRevisionGeneral(salida));
+    await wb.xlsx.load((await generarXlsxRevisionGeneral(salida)) as unknown as ArrayBuffer);
     const datos = wb.getWorksheet('Datos 2026')!;
     const idxNombre = PERFIL_ITINERARIO_28.columnas.findIndex((c) => c.clave === 'nombre') + 1;
     expect(datos.getRow(2).getCell(idxNombre).value).toBe('=1+2');
