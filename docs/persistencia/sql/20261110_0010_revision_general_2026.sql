@@ -4,6 +4,21 @@
 -- Requiere el esquema de persistencia y las importaciones 2026 ya instaladas.
 begin;
 
+-- Autorización administrativa INDEPENDIENTE, desactivada por defecto.
+-- No se inserta ninguna fila aquí: habilitarla exige auditoría y permiso posterior.
+create table if not exists ulit_censo.autorizacion_revision_general_2026 (
+  espacio_id text primary key references ulit_censo.espacio(id),
+  habilitada boolean not null default false,
+  autorizada_por uuid,
+  autorizada_en timestamptz,
+  motivo text,
+  constraint autorizacion_revision_consistente
+    check (not habilitada or (autorizada_por is not null and autorizada_en is not null
+      and length(coalesce(nullif(btrim(motivo),''),'')) >= 8))
+);
+alter table ulit_censo.autorizacion_revision_general_2026 enable row level security;
+revoke all on ulit_censo.autorizacion_revision_general_2026 from public,anon,authenticated,service_role;
+
 -- Entidad privada adicional, incluida en las copias y en la lectura normal del espacio.
 -- Ampliamos la lista explícita completa; nunca concedemos DML sobre las tablas.
 create or replace function ulit_censo.coleccion_valida(c text)
@@ -52,6 +67,7 @@ declare
   v_estado text;
   v_backup boolean;
   v_iniciada boolean;
+  v_autorizada boolean;
   v_clave text;
   v_valor jsonb;
   v_permitidas constant text[] := array[
@@ -99,15 +115,25 @@ begin
     and sha256 is not null)
   into v_backup;
 
+  select exists(select 1 from ulit_censo.autorizacion_revision_general_2026
+    where espacio_id=p_espacio and habilitada and autorizada_por is not null)
+  into v_autorizada;
+
   -- Antes de la PRIMERA corrección, respaldo exactamente de la versión vigente.
   -- Las siguientes correcciones cuentan con ese respaldo inicial y el historial
   -- atómico de entidad_historial y operacion para cada revisión.
   if p_accion = 'estado' then
-    return pg_catalog.jsonb_build_object('habilitada', v_iniciada or v_backup,
-      'version',e.version,'motivo',case when v_iniciada or v_backup then ''
-      else 'Falta una copia íntegra de la versión actual antes de guardar la primera corrección.' end);
+    return pg_catalog.jsonb_build_object('habilitada', v_autorizada and (v_iniciada or v_backup),
+      'version',e.version,'motivo',case
+        when not v_autorizada then 'El guardado de esta fase aún no ha recibido autorización administrativa.'
+        when v_iniciada or v_backup then ''
+        else 'Falta una copia íntegra de la versión actual antes de guardar la primera corrección.' end);
   end if;
 
+  if not v_autorizada then
+    raise exception 'ULIT Censo: la fase de corrección no está autorizada'
+      using errcode='42501';
+  end if;
   if not (v_iniciada or v_backup) then
     raise exception 'ULIT Censo: falta respaldo de la versión actual, sin cambios'
       using errcode='42501';
@@ -178,6 +204,10 @@ begin
        or pg_catalog.jsonb_typeof(v_ant->'historial') is distinct from 'array') then
     raise exception 'ULIT Censo: revisión previa corrupta, requiere soporte'
       using errcode='42501';
+  end if;
+  if v_ant is null and p_valores = '{}'::jsonb then
+    raise exception 'ULIT Censo: no se puede registrar una corrección vacía'
+      using errcode='22023';
   end if;
   if v_ant->'valores' = p_valores then
     raise exception 'ULIT Censo: la propuesta no tiene cambios' using errcode='22023';
