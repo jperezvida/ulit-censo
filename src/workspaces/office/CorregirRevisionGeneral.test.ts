@@ -18,7 +18,7 @@ const fila: FilaRevisionGeneral = {
 describe('Fase 1 · propuesta de corrección supervisada', () => {
   it('limpia las contradicciones del local vacío sin tocar el origen', () => {
     const propuestos = propuestaRevisionGeneral(fila, '1', '', '3,5', true, true, true);
-    expect(propuestos).toEqual({ nombre: '', actividad: '', franquicia: '', instagram: '' });
+    expect(propuestos).toEqual({ nombre: '', actividad: '', franquicia: '', instagram: '', facebook: '' });
     expect(revisarRegistroGeneral(fila.registro, propuestos).incidencias).toEqual([]);
     expect(fila.registro.datos.Actividad).toBe('Peluquería');
     expect(fila.registro.datos.Instagram).toBe('1');
