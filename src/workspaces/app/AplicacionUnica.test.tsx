@@ -15,7 +15,14 @@ vi.mock('../../store/clienteSupabase', () => {
   const cliente = { auth: {
     getSession: async () => ({ data: { session: servidor.sesion ? { user: { id: 'usuario-institucional' } } : null }, error: null }),
     signInWithPassword: async () => { servidor.logins++; servidor.sesion = true; return { error: null }; },
-  }};
+  },
+    rpc: (_nombre: string) => {
+      // La infraestructura de prueba representa un servidor anterior sin RPC
+      // paginada: la aplicación debe caer a la lectura existente de forma segura.
+      const p = Promise.resolve({ data: null, error: { code: 'PGRST202', message: 'No instalada' } });
+      return Object.assign(p, { abortSignal: () => p });
+    },
+  };
   return { clienteServidor: () => cliente };
 });
 vi.mock('../../store/almacenSupabase', () => ({
