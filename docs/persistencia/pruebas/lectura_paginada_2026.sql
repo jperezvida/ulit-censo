@@ -50,6 +50,17 @@ begin
     raise exception 'No rechazó otro espacio';
   exception when sqlstate '22023' then null;
   end;
+  -- Un usuario autenticado pero NO miembro nunca puede leer los datos reales.
+  perform pg_catalog.set_config('request.jwt.claim.sub',
+    '00000000-0000-0000-0000-00000000000d',false);
+  begin
+    perform public.ulit_censo_leer_parte('real-medina-del-campo-2026',10,'','',2);
+    raise exception 'Miembro no autorizado ha leído el censo';
+  exception when sqlstate '42501' then null;
+  end;
+  perform pg_catalog.set_config('request.jwt.claim.sub',
+    '00000000-0000-0000-0000-00000000000e',false);
+
   if (select escritura_habilitada from ulit_censo.espacio
     where id='real-medina-del-campo-2026') then
     raise exception 'La lectura abrió escritura general';
