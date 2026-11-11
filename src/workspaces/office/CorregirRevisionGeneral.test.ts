@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FilaRevisionGeneral } from '../../domain/revisionGeneral';
 import { revisarRegistroGeneral } from '../../domain/revisionGeneral';
-import { propuestaRevisionGeneral } from './CorregirRevisionGeneral';
+import { descripcionAutomaticaCorreccion, propuestaRevisionGeneral } from './CorregirRevisionGeneral';
 
 const fila: FilaRevisionGeneral = {
   id: 'r1', archivo: 'IT1.xlsx', itinerario: 'IT1', direccion: 'Calle A', numero: '1', nombre: 'Antiguo',
@@ -16,6 +16,15 @@ const fila: FilaRevisionGeneral = {
 };
 
 describe('Fase 1 · propuesta de corrección supervisada', () => {
+  it('genera el motivo técnico sin solicitar un campo obligatorio al usuario', () => {
+    expect(descripcionAutomaticaCorreccion({ nombre: '', instagram: '' }))
+      .toBe('Revisión general 2026 · campos corregidos: nombre, instagram');
+    expect(descripcionAutomaticaCorreccion({}, { nombre: '' }))
+      .toBe('Revisión general 2026 · campos corregidos: nombre');
+    expect(descripcionAutomaticaCorreccion({ actividad: 'x' }, { actividad: 'x' }))
+      .toContain('sin cambios');
+  });
+
   it('limpia las contradicciones del local vacío sin tocar el origen', () => {
     const propuestos = propuestaRevisionGeneral(fila, '1', '', '3,5', true, true, true);
     expect(propuestos).toEqual({ nombre: '', actividad: '', franquicia: '', instagram: '', facebook: '' });
