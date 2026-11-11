@@ -19,7 +19,12 @@ vi.mock('../../store/clienteSupabase', () => {
     rpc: (_nombre: string) => {
       // La infraestructura de prueba representa un servidor anterior sin RPC
       // paginada: la aplicación debe caer a la lectura existente de forma segura.
-      const p = Promise.resolve({ data: null, error: { code: 'PGRST202', message: 'No instalada' } });
+      const esAcceso = _nombre === 'ulit_censo_mis_espacios';
+      const p = Promise.resolve({
+        data: esAcceso ? [{ espacio_id: 'real-medina-del-campo-2026', tipo: 'real', version: 4,
+          rol: 'administrador', persona_id: 'coordinacion', escritura_habilitada: false }] : null,
+        error: esAcceso ? null : { code: 'PGRST202', message: 'No instalada' },
+      });
       return Object.assign(p, { abortSignal: () => p });
     },
   };
