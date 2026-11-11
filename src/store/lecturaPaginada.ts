@@ -42,7 +42,7 @@ export async function leerEspacioPaginado(
   onProgreso?: (entidades: number) => void,
 ): Promise<{ db: BaseDatos; info: InfoEspacioRemoto }> {
   if (espacioId !== ESPACIO_REAL) throw new LecturaPaginadaInconsistente('Espacio fuera del alcance de la revisión.');
-  const accesoRpc = cliente.rpc('ulit_censo_mis_espacios');
+  const accesoRpc = cliente.rpc('ulit_censo_mis_espacios', {}, { get: true });
   const { data: accesos, error: errorAcceso } =
     await (signal ? accesoRpc.abortSignal(signal) : accesoRpc);
   if (errorAcceso) throw new Error('No se pudo verificar la pertenencia al espacio real.');
@@ -66,7 +66,7 @@ export async function leerEspacioPaginado(
       p_despues_coleccion: ultimaColeccion,
       p_despues_id: ultimoId,
       p_limite: POR_PAGINA,
-    });
+    }, { get: true });
     const { data, error } = await (signal ? solicitud.abortSignal(signal) : solicitud);
     if (error) {
       if (error.code === 'PGRST202' || error.code === '42883') throw new LecturaPaginadaNoDisponible();
