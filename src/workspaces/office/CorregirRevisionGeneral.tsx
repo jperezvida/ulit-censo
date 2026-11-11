@@ -4,6 +4,15 @@ import { datoRevisionGeneral, revisarRegistroGeneral } from '../../domain/revisi
 import { guardarCorreccionRevisionGeneral } from '../../store/revisionGeneralReal';
 
 const CLASIFICACION = ['grupoActividad', 'grupoComercio', 'subgrupo', 'actividad', 'descripcionActividad'];
+/** Justificación técnica automática: conserva la auditoría sin pedir texto al revisor. */
+export function descripcionAutomaticaCorreccion(
+  valores: Record<string, string>, anteriores: Record<string, string> = {},
+): string {
+  const claves = new Set([...Object.keys(valores), ...Object.keys(anteriores)]);
+  const cambiadas = [...claves].filter((clave) => valores[clave] !== anteriores[clave]);
+  return `Revisión general 2026 · campos corregidos: ${cambiadas.join(', ') || 'sin cambios'}`.slice(0, 400);
+}
+
 const DIGITAL = [
   'web', 'googleBusiness', 'ventaOnline', 'numResenas', 'respondeResenas',
   'instagram', 'seguidoresInstagram', 'facebook', 'seguidoresFacebook',
@@ -45,7 +54,6 @@ export default function CorregirRevisionGeneral({ fila, habilitada, version, mot
   const [quitarClasificacion, setQuitarClasificacion] = useState(false);
   const [quitarFranquicia, setQuitarFranquicia] = useState(false);
   const [quitarDigital, setQuitarDigital] = useState(false);
-  const [motivo, setMotivo] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
   const tipos = new Set(fila.incidencias.map((x) => x.tipo));
@@ -58,14 +66,15 @@ export default function CorregirRevisionGeneral({ fila, habilitada, version, mot
   const tras = useMemo(() => revisarRegistroGeneral(fila.registro, valores), [fila.registro, valores]);
   const sinCambios = JSON.stringify(Object.entries(valores).sort()) ===
     JSON.stringify(Object.entries(fila.correccion?.valores ?? {}).sort());
+  const motivoAutomatico = descripcionAutomaticaCorreccion(valores, fila.correccion?.valores);
 
   const guardar = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!habilitada || !version || sinCambios || guardando || motivo.trim().length < 8) return;
+    if (!habilitada || !version || sinCambios || guardando) return;
     setGuardando(true);
     setError('');
     try {
-      await guardarCorreccionRevisionGeneral(fila.id, version, valores, motivo);
+      await guardarCorreccionRevisionGeneral(fila.id, version, valores, motivoAutomatico);
       await onGuardada();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -106,16 +115,12 @@ export default function CorregirRevisionGeneral({ fila, habilitada, version, mot
     <p className={tras.incidencias.length ? 'rg-previa aviso' : 'rg-previa ok'}>
       Después de esta corrección: {tras.incidencias.length ? `${tras.incidencias.length} aviso(s) pendiente(s)` : 'sin incoherencias detectadas'}.
     </p>
-    <label className="rg-motivo"><span>Motivo de la corrección</span>
-      <input className="input" required minLength={8} maxLength={400} value={motivo}
-        onChange={(e) => setMotivo(e.target.value)} placeholder="Ej.: Confirmado en la visita del itinerario" />
-    </label>
     {!habilitada && <p className="rg-bloqueo" role="status">{motivoBloqueo || 'El guardado todavía no está autorizado.'}</p>}
     {error && <p className="t-info error" role="alert">{error}</p>}
     <div className="rg-acciones">
       <button className="btn s" type="button" onClick={onCancelar} disabled={guardando}>Cancelar</button>
       <button className="btn s primario" type="submit" disabled={!habilitada || !version || sinCambios || guardando ||
-        motivo.trim().length < 8 || !['0','1'].includes(estado)}>
+        !['0','1'].includes(estado)}>
         {guardando ? 'Verificando guardado…' : 'Guardar corrección'}
       </button>
     </div>
