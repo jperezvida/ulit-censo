@@ -6,6 +6,8 @@ on:
       - 'docs/persistencia/sql/20261110_0010_revision_general_2026.sql'
       - 'docs/persistencia/pruebas/revision_general_2026.sql'
       - 'docs/persistencia/pruebas/ejecutar-revision-general.sh'
+      - 'docs/persistencia/sql/20261111_0011_lectura_paginada_real.sql'
+      - 'docs/persistencia/pruebas/lectura_paginada_2026.sql'
       - '.github/workflows/ci-revision-general-sql.yml'
 permissions:
   contents: read
