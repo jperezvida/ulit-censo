@@ -99,8 +99,9 @@ export class AlmacenSupabase {
 
   get version() { return this.info?.version ?? 0; }
 
-  private async rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
-    const { data, error } = await this.cliente.rpc(fn, args);
+  private async rpc<T>(fn: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
+    const peticion = this.cliente.rpc(fn, args);
+    const { data, error } = await (signal ? peticion.abortSignal(signal) : peticion);
     if (error) {
       if (error.code === 'PT409') throw new ConflictoRemoto();
       throw new ErrorRemoto(error.message.replace(/^ULIT Censo: /, ''));
@@ -109,8 +110,8 @@ export class AlmacenSupabase {
   }
 
   /** Lee el espacio entero. `db` es null si aún no tiene contenido (espacio recién dado de alta). */
-  async leer(): Promise<{ db: BaseDatos | null; info: InfoEspacioRemoto }> {
-    const r = await this.rpc<{ espacioId: string; tipo: TipoEspacio; version: number; escrituraHabilitada: boolean; preparacionHabilitada?: boolean; rol: string; personaId: string; entidades: Record<string, Record<string, unknown>> }>('ulit_censo_leer', { p_espacio: this.espacioId });
+  async leer(signal?: AbortSignal): Promise<{ db: BaseDatos | null; info: InfoEspacioRemoto }> {
+    const r = await this.rpc<{ espacioId: string; tipo: TipoEspacio; version: number; escrituraHabilitada: boolean; preparacionHabilitada?: boolean; rol: string; personaId: string; entidades: Record<string, Record<string, unknown>> }>('ulit_censo_leer', { p_espacio: this.espacioId }, signal);
     this.info = { espacioId: r.espacioId, tipo: r.tipo, version: Number(r.version), escrituraHabilitada: r.escrituraHabilitada, preparacionHabilitada: r.preparacionHabilitada ?? false, rol: r.rol, personaId: r.personaId };
     return { db: reconstruir(r.entidades), info: this.info };
   }
