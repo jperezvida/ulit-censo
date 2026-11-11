@@ -5,6 +5,7 @@ import { FuenteOficinaContext } from '../../store/fuenteOficina';
 import { clienteServidor } from '../../store/clienteSupabase';
 import { AlmacenSupabase } from '../../store/almacenSupabase';
 import { conTiempoMaximo } from '../../store/conTiempoMaximo';
+import { leerEspacioPaginado, LecturaPaginadaNoDisponible } from '../../store/lecturaPaginada';
 import { verificarEspacio, personaEspacio } from '../../domain/espacios';
 import type { BaseDatos } from '../../domain/db';
 import type { Rol } from '../../domain/types';
@@ -44,10 +45,21 @@ export default function AplicacionUnica() {
     if (falloSesion) throw new Error('No se ha podido validar la sesión.');
     if (!data.session?.user) { setSinSesion(true); throw new Error('Inicie sesión para entrar en ULIT Censo.'); }
     setSinSesion(false);
-    setFaseCarga('Cargando el censo real de Medina del Campo…');
+    setFaseCarga('Cargando el censo real por bloques seguros…');
     const { db, info } = await conTiempoMaximo(
-      (signal) => new AlmacenSupabase(cliente, ESPACIO_REAL).leer(signal), 25000,
-      'El servidor tardó demasiado en entregar el censo completo. La sesión sigue protegida. Prueba «Comprobar acceso de nuevo»; no se ha modificado ningún dato.',
+      async (signal) => {
+        try {
+          return await leerEspacioPaginado(cliente, ESPACIO_REAL, signal, (n) =>
+            setFaseCarga(`Cargando el censo real… ${n.toLocaleString('es-ES')} entidades comprobadas`));
+        } catch (e) {
+          // Compatibilidad temporal: si 0011 no está instalado se intenta la RPC
+          // original UNA sola vez, también con un límite global de tiempo.
+          if (!(e instanceof LecturaPaginadaNoDisponible) || signal.aborted) throw e;
+          setFaseCarga('Lectura por bloques pendiente de instalar. Probando conexión anterior…');
+          return await new AlmacenSupabase(cliente, ESPACIO_REAL).leer(signal);
+        }
+      }, 32000,
+      'El servidor tardó demasiado en entregar el censo. La sesión sigue protegida. Pulsa «Comprobar acceso de nuevo»; no se ha modificado ningún dato.',
     );
     if (!db || info.tipo !== 'real' || info.espacioId !== ESPACIO_REAL ||
         db.meta.espacioId !== ESPACIO_REAL || verificarEspacio(db, 'real').length ||
