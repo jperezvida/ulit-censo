@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet } from 'react-router-dom';
-import { AlertTriangle, LockKeyhole, RefreshCw } from 'lucide-react';
 import { FuenteOficinaContext } from '../../store/fuenteOficina';
+import PantallaAcceso from './PantallaAcceso';
 import { clienteServidor } from '../../store/clienteSupabase';
 import { AlmacenSupabase } from '../../store/almacenSupabase';
 import { conTiempoMaximo } from '../../store/conTiempoMaximo';
@@ -111,22 +111,12 @@ export default function AplicacionUnica() {
     aplicar: () => false,
   }) : null, [lectura, actual, recargar]);
 
-  if (cargando) return <main className="pagina" role="status"><h1>ULIT Censo</h1><p>{faseCarga}</p><p className="muted">La comprobación tiene un límite de tiempo y mostrará una opción para reintentar si falla.</p></main>;
-  if (!fuente) return <main className="pagina" style={{ maxWidth: 640, margin: '44px auto' }}>
-    <div className="marca-ulit grande"><b>ULIT</b><span>Censo</span></div>
-    <h1>Acceso a ULIT Censo</h1>
-    <p>Una única aplicación completa, conectada al servidor de la Cátedra.</p>
-    {error && <div role="alert" className="t-info error"><AlertTriangle size={16} />{error}</div>}
-    {sinSesion ? <form onSubmit={(e) => void entrar(e)} className="tarjeta" style={{ padding: 20 }}>
-      <label className="campo"><span>Correo de la cuenta autorizada</span>
-        <input className="input" type="email" autoComplete="username" required value={correo} onChange={(e) => setCorreo(e.target.value)} />
-      </label>
-      <label className="campo"><span>Contraseña</span>
-        <input className="input" type="password" autoComplete="current-password" required value={contrasena} onChange={(e) => setContrasena(e.target.value)} />
-      </label>
-      <button className="btn primario" type="submit"><LockKeyhole size={15} /> Entrar en ULIT Censo</button>
-    </form> : <button className="btn primario" onClick={() => void reintentar()}><RefreshCw size={16}/> Comprobar acceso de nuevo</button>}
-    <p className="muted">Si no se puede verificar el acceso, nunca se muestran datos ficticios en sustitución de los reales.</p>
-  </main>;
+  if (cargando || !fuente) return <PantallaAcceso
+    cargando={cargando} faseCarga={faseCarga} sinSesion={sinSesion} error={error}
+    correo={correo} contrasena={contrasena}
+    onCorreo={setCorreo} onContrasena={setContrasena}
+    onEntrar={(evento) => void entrar(evento)}
+    onReintentar={() => void reintentar()}
+  />;
   return <FuenteOficinaContext.Provider value={fuente}><Outlet /></FuenteOficinaContext.Provider>;
 }
