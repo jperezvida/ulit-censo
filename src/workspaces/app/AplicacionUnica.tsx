@@ -4,6 +4,7 @@ import { AlertTriangle, LockKeyhole, RefreshCw } from 'lucide-react';
 import { FuenteOficinaContext } from '../../store/fuenteOficina';
 import { clienteServidor } from '../../store/clienteSupabase';
 import { AlmacenSupabase } from '../../store/almacenSupabase';
+import { conTiempoMaximo } from '../../store/conTiempoMaximo';
 import { verificarEspacio, personaEspacio } from '../../domain/espacios';
 import type { BaseDatos } from '../../domain/db';
 import type { Rol } from '../../domain/types';
@@ -25,6 +26,7 @@ interface Lectura {
 export default function AplicacionUnica() {
   const [lectura, setLectura] = useState<Lectura | null>(null);
   const [cargando, setCargando] = useState(true);
+  const [faseCarga, setFaseCarga] = useState('Verificando sesión…');
   const [error, setError] = useState<string | null>(null);
   const [sinSesion, setSinSesion] = useState(false);
   const [correo, setCorreo] = useState('');
@@ -34,11 +36,19 @@ export default function AplicacionUnica() {
   const recargar = useCallback(async () => {
     const cliente = clienteServidor();
     if (!cliente) throw new Error('No está configurada la conexión institucional a Supabase.');
-    const { data, error: falloSesion } = await cliente.auth.getSession();
+    setFaseCarga('Comprobando sesión segura…');
+    const { data, error: falloSesion } = await conTiempoMaximo(
+      () => cliente.auth.getSession(), 12000,
+      'La comprobación de la sesión ha superado el tiempo de espera. Prueba a acceder de nuevo.',
+    );
     if (falloSesion) throw new Error('No se ha podido validar la sesión.');
     if (!data.session?.user) { setSinSesion(true); throw new Error('Inicie sesión para entrar en ULIT Censo.'); }
     setSinSesion(false);
-    const { db, info } = await new AlmacenSupabase(cliente, ESPACIO_REAL).leer();
+    setFaseCarga('Cargando el censo real de Medina del Campo…');
+    const { db, info } = await conTiempoMaximo(
+      (signal) => new AlmacenSupabase(cliente, ESPACIO_REAL).leer(signal), 25000,
+      'El servidor tardó demasiado en entregar el censo completo. La sesión sigue protegida. Prueba «Comprobar acceso de nuevo»; no se ha modificado ningún dato.',
+    );
     if (!db || info.tipo !== 'real' || info.espacioId !== ESPACIO_REAL ||
         db.meta.espacioId !== ESPACIO_REAL || verificarEspacio(db, 'real').length ||
         personaEspacio(db)?.id !== info.personaId ||
@@ -59,9 +69,12 @@ export default function AplicacionUnica() {
     e.preventDefault();
     const cliente = clienteServidor();
     if (!cliente || !correo || !contrasena) return;
-    setCargando(true); setError(null);
+    setCargando(true); setError(null); setFaseCarga('Iniciando sesión segura…');
     try {
-      const { error: fallo } = await cliente.auth.signInWithPassword({ email: correo, password: contrasena });
+      const { error: fallo } = await conTiempoMaximo(
+        () => cliente.auth.signInWithPassword({ email: correo, password: contrasena }), 15000,
+        'El servicio de autenticación no ha respondido a tiempo. Prueba de nuevo.',
+      );
       if (fallo) throw new Error('No se ha podido iniciar sesión con esa cuenta.');
       await recargar();
       setContrasena('');
@@ -70,7 +83,7 @@ export default function AplicacionUnica() {
   };
 
   const reintentar = async () => {
-    setCargando(true); setError(null);
+    setCargando(true); setError(null); setFaseCarga('Verificando sesión…');
     try { await recargar(); }
     catch (e) { setLectura(null); setError(e instanceof Error ? e.message : String(e)); }
     finally { setCargando(false); }
@@ -86,7 +99,7 @@ export default function AplicacionUnica() {
     aplicar: () => false,
   }) : null, [lectura, actual, recargar]);
 
-  if (cargando) return <main className="pagina" role="status"><h1>ULIT Censo</h1><p>Verificando sesión y datos auténticos…</p></main>;
+  if (cargando) return <main className="pagina" role="status"><h1>ULIT Censo</h1><p>{faseCarga}</p><p className="muted">La comprobación tiene un límite de tiempo y mostrará una opción para reintentar si falla.</p></main>;
   if (!fuente) return <main className="pagina" style={{ maxWidth: 640, margin: '44px auto' }}>
     <div className="marca-ulit grande"><b>ULIT</b><span>Censo</span></div>
     <h1>Acceso a ULIT Censo</h1>
