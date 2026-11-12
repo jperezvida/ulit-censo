@@ -1,67 +1,61 @@
 import { clienteServidor } from './clienteSupabase';
 
-/** Escritura específica de la fase 1: el Excel original es inmutable. */
+/** Guardado REAL 2026: únicamente metros de fachada de locales vacíos. */
 export const ESPACIO_REVISION_2026 = 'real-medina-del-campo-2026';
 
 export interface CapacidadRevisionGeneral {
   habilitada: boolean;
   version?: number;
   motivo?: string;
+  alcance?: string;
+  respaldoAutomatico?: boolean;
 }
 
-/**
- * Comprueba que la RPC específica está instalada Y que existe una copia íntegra
- * de la versión previa a la primera corrección. No concede permisos desde el cliente.
- */
+/** La copia inicial es creada atómicamente por el servidor en el primer guardado. */
 export async function capacidadRevisionGeneral(): Promise<CapacidadRevisionGeneral> {
   const cliente = clienteServidor();
-  if (!cliente) return { habilitada: false, motivo: 'Conexión al servidor sin configurar.' };
-  const { data, error } = await cliente.rpc('ulit_censo_revision_general_2026', {
-    p_espacio: ESPACIO_REVISION_2026,
-    p_accion: 'estado',
-    p_version_esperada: 0,
-    p_registro_id: '',
-    p_valores: {},
-    p_motivo: '',
+  if (!cliente) return { habilitada: false, motivo: 'No está configurada la conexión institucional.' };
+  const { data, error } = await cliente.rpc('ulit_censo_fachada_2026', {
+    p_espacio: ESPACIO_REVISION_2026, p_accion: 'estado',
+    p_version_esperada: 0, p_registro_id: '', p_metros: '',
   });
   if (error) {
-    if (['PGRST202', '42883'].includes(error.code ?? '')) return {
-      habilitada: false, motivo: 'El guardado supervisado de esta fase aún no está autorizado en el servidor.',
-    };
-    return { habilitada: false, motivo: 'No se ha podido verificar el permiso para corregir.' };
+    return { habilitada: false, motivo: ['PGRST202','42883'].includes(error.code ?? '')
+      ? 'Todavía no está instalada la autorización de metros de fachada.'
+      : 'No ha sido posible comprobar el permiso de guardado.' };
   }
   const estado = data as CapacidadRevisionGeneral | null;
-  return estado && typeof estado.habilitada === 'boolean' ? estado
-    : { habilitada: false, motivo: 'El servidor no devolvió un permiso verificable.' };
+  return estado?.habilitada === true && estado.alcance === 'fachada-vacios'
+    ? estado : { habilitada: false, motivo: estado?.motivo || 'Permiso no verificable.' };
 }
 
-/**
- * No se admite guardado genérico: únicamente cambios de celdas aprobados por la RPC.
- * PT409 indica conflicto; NUNCA se reintenta automáticamente un cambio incierto.
- */
+/** Sin escritura genérica. No se permite alterar otros campos por esta vía. */
 export async function guardarCorreccionRevisionGeneral(
-  registroId: string, version: number, valores: Record<string, string>, motivo: string,
+  registroId: string, version: number, valores: Record<string, string>, _motivo?: string,
 ): Promise<number> {
   const cliente = clienteServidor();
-  if (!cliente) throw new Error('No se ha podido abrir la conexión segura con el servidor.');
-  if (!registroId || !Number.isSafeInteger(version) || version < 8 || !motivo.trim() || Object.keys(valores).length > 25) {
-    throw new Error('La propuesta de corrección está incompleta o no es válida.');
+  if (!cliente) throw new Error('No se puede conectar con Supabase.');
+  const claves = Object.keys(valores);
+  const metros = valores.fachada ?? '';
+  if (!registroId || !Number.isSafeInteger(version) || version < 8
+    || claves.length !== 1 || claves[0] !== 'fachada'
+    || !/^[0-9]{1,5}([,.][0-9]{1,3})?$/.test(metros.trim())
+    || Number(metros.replace(',','.')) <= 0) {
+    throw new Error('Ahora solo se pueden guardar metros positivos de fachada para locales vacíos.');
   }
-  const { data, error } = await cliente.rpc('ulit_censo_revision_general_2026', {
-    p_espacio: ESPACIO_REVISION_2026,
-    p_accion: 'guardar',
-    p_version_esperada: version,
-    p_registro_id: registroId,
-    p_valores: valores,
-    p_motivo: motivo.trim(),
+  const { data, error } = await cliente.rpc('ulit_censo_fachada_2026', {
+    p_espacio: ESPACIO_REVISION_2026, p_accion: 'guardar',
+    p_version_esperada: version, p_registro_id: registroId, p_metros: metros.trim(),
   });
   if (error?.code === 'PT409') {
-    throw new Error('La base ha cambiado desde que abriste la ficha. Recarga antes de revisar: no se ha sobrescrito nada.');
+    throw new Error('El censo se ha actualizado. Recarga antes de guardar de nuevo para no sobrescribir cambios.');
   }
-  if (error) throw new Error(error.message.replace(/^ULIT Censo: /, ''));
+  if (error) throw new Error(error.message.replace(/^ULIT Censo: /,''));
   const resultado = data as { version?: unknown; registroId?: unknown } | null;
-  if (resultado?.registroId !== registroId || !Number.isSafeInteger(Number(resultado.version)) || Number(resultado.version) <= version) {
-    throw new Error('No se pudo verificar el guardado. No repitas la operación: recarga los datos desde el servidor.');
+  if (resultado?.registroId !== registroId
+    || !Number.isSafeInteger(Number(resultado.version))
+    || Number(resultado.version) <= version) {
+    throw new Error('El servidor no confirmó el guardado. No repitas la operación: comprueba primero la ficha.');
   }
   return Number(resultado.version);
 }
