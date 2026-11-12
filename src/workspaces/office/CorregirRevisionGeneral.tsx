@@ -13,6 +13,12 @@ export function descripcionAutomaticaCorreccion(
   return `Revisión general 2026 · campos corregidos: ${cambiadas.join(', ') || 'sin cambios'}`.slice(0, 400);
 }
 
+/** Valida medidas positivas, enteras o con hasta tres decimales (coma o punto). */
+export function metrosFachadaValidos(valor: string): boolean {
+  const metros = valor.trim();
+  return /^\d{1,5}([,.]\d{1,3})?$/.test(metros) && Number(metros.replace(',', '.')) > 0;
+}
+
 const DIGITAL = [
   'web', 'googleBusiness', 'ventaOnline', 'numResenas', 'respondeResenas',
   'instagram', 'seguidoresInstagram', 'facebook', 'seguidoresFacebook',
@@ -71,7 +77,7 @@ export default function CorregirRevisionGeneral({ fila, habilitada, version, mot
 
   const guardar = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!habilitada || !version || sinCambios || guardando || estado !== '1' || !/^\\d{1,5}([,.]\\d{1,3})?$/.test(fachada.trim()) || Number(fachada.replace(',','.')) <= 0) return;
+    if (!habilitada || !version || sinCambios || guardando || estado !== '1' || !metrosFachadaValidos(fachada)) return;
     setGuardando(true);
     setError('');
     try {
@@ -112,7 +118,7 @@ export default function CorregirRevisionGeneral({ fila, habilitada, version, mot
     <div className="rg-acciones">
       <button className="btn s" type="button" onClick={onCancelar} disabled={guardando}>Cancelar</button>
       <button className="btn s primario" type="submit" disabled={!habilitada || !version || sinCambios || guardando || !vacio ||
-        !/^\\d{1,5}([,.]\\d{1,3})?$/.test(fachada.trim()) || Number(fachada.replace(',','.')) <= 0}>
+        !metrosFachadaValidos(fachada)}>
         {guardando ? 'Verificando guardado…' : 'Guardar metros'}
       </button>
     </div>

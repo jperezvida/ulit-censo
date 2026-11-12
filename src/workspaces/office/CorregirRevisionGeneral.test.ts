@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FilaRevisionGeneral } from '../../domain/revisionGeneral';
 import { revisarRegistroGeneral } from '../../domain/revisionGeneral';
-import { descripcionAutomaticaCorreccion, propuestaRevisionGeneral } from './CorregirRevisionGeneral';
+import { descripcionAutomaticaCorreccion, metrosFachadaValidos, propuestaRevisionGeneral } from './CorregirRevisionGeneral';
 
 const fila: FilaRevisionGeneral = {
   id: 'r1', archivo: 'IT1.xlsx', itinerario: 'IT1', direccion: 'Calle A', numero: '1', nombre: 'Antiguo',
@@ -16,6 +16,16 @@ const fila: FilaRevisionGeneral = {
 };
 
 describe('Fase 1 · propuesta de corrección supervisada', () => {
+  it('acepta 5 metros de fachada y decimales; bloquea ceros y textos', () => {
+    expect(metrosFachadaValidos('5')).toBe(true);
+    expect(metrosFachadaValidos('3,5')).toBe(true);
+    expect(metrosFachadaValidos('3.50')).toBe(true);
+    expect(metrosFachadaValidos(' 12 ')).toBe(true);
+    for (const invalido of ['', '0', '-4', '3,', '1,2345', 'texto', '1e3']) {
+      expect(metrosFachadaValidos(invalido)).toBe(false);
+    }
+  });
+
   it('genera el motivo técnico sin solicitar un campo obligatorio al usuario', () => {
     expect(descripcionAutomaticaCorreccion({ nombre: '', instagram: '' }))
       .toBe('Revisión general 2026 · campos corregidos: nombre, instagram');
