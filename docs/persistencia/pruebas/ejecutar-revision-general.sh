@@ -18,6 +18,8 @@ q -f "$SQL/20261104_0002_ulit_censo_operaciones.sql"
 q -f "$SQL/20261105_0004_ulit_censo_inicializacion_real.sql"
 q -f "$SQL/20261110_0010_revision_general_2026.sql"
 q -f "$SQL/20261111_0011_lectura_paginada_real.sql"
+q -f "$SQL/20261112_0012_fachada_real_2026.sql"
 q -f "$P/revision_general_2026.sql"
 q -f "$P/lectura_paginada_2026.sql"
+q -f "$P/fachada_real_2026.sql"
 echo '✓ Migraciones 0010 y 0011 verificadas con PostgreSQL 17 y datos ficticios'
