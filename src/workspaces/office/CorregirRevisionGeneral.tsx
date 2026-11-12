@@ -57,7 +57,7 @@ export default function CorregirRevisionGeneral({ fila, habilitada, version, mot
 
   // La autorización real actual comprende solo fachada. No enviar estado, nombre
   // ni ningún otro campo, aunque la interfaz los muestre para contextualizar.
-  const valores = useMemo(() => {
+  const valores = useMemo<Record<string, string>>(() => {
     const base = datoRevisionGeneral(fila.registro, 'fachada');
     const actual = fachada.trim();
     return actual === base ? {} : { fachada: actual };
