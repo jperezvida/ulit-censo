@@ -60,7 +60,8 @@ export default function CorregirRevisionGeneral({ fila, habilitada, version, mot
   const valores = useMemo<Record<string, string>>(() => {
     const base = datoRevisionGeneral(fila.registro, 'fachada');
     const actual = fachada.trim();
-    return actual === base ? {} : { fachada: actual };
+    if (actual === base) return {} as Record<string, string>;
+    return { fachada: actual } as Record<string, string>;
   }, [fila.registro, fachada]);
 
   const tras = useMemo(() => revisarRegistroGeneral(fila.registro, valores), [fila.registro, valores]);
