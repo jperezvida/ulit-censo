@@ -1,5 +1,5 @@
 import type {
-  Calle, Campana, ClasificacionCampana, Cobertura, EstadoOficinaItinerario, FranquiciaCampana, Id, Importacion, Itinerario, LocalFisico,
+  Calle, Campana, ClasificacionCampana, CorreccionRegistro, Cobertura, EstadoOficinaItinerario, FranquiciaCampana, Id, Importacion, Itinerario, LocalFisico,
   Municipio, Negocio, Observacion, Ocupacion, PendienteSync, Persona, RegistroOrigen, Revision, RevisionDigital,
   SituacionPrevia, VinculoHistorico,
 } from './types';
@@ -25,6 +25,8 @@ export interface BaseDatos {
   ocupaciones: Record<Id, Ocupacion>;
   observaciones: Record<Id, Observacion>;
   registros: Record<Id, RegistroOrigen>;
+  /** Vista corregida de una fila original, nunca sobrescribe los valores importados. */
+  correccionesRegistros?: Record<Id, CorreccionRegistro>;
   vinculos: Record<Id, VinculoHistorico>;
   importaciones: Record<Id, Importacion>;
   /** clave: campana|local */
@@ -58,7 +60,7 @@ export function baseVacia(): BaseDatos {
     generado: new Date().toISOString(),
     municipios: {}, calles: {}, campanas: {}, itinerarios: {}, coberturas: {}, situacionesPrevias: {},
     callesRevisadasPlan: {}, locales: {}, negocios: {}, ocupaciones: {}, observaciones: {}, registros: {},
-    vinculos: {}, importaciones: {}, revisiones: {}, digital: {}, clasificaciones: {}, franquicias: {}, oficinaItinerarios: {}, secuencia: 0,
+    correccionesRegistros: {}, vinculos: {}, importaciones: {}, revisiones: {}, digital: {}, clasificaciones: {}, franquicias: {}, oficinaItinerarios: {}, secuencia: 0,
     personas: {}, colaSync: [], meta: {},
   };
 }

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet } from 'react-router-dom';
-import { AlertTriangle, LockKeyhole, RefreshCw } from 'lucide-react';
 import { FuenteOficinaContext } from '../../store/fuenteOficina';
+import PantallaAcceso from './PantallaAcceso';
 import { clienteServidor } from '../../store/clienteSupabase';
 import { AlmacenSupabase } from '../../store/almacenSupabase';
+import { conTiempoMaximo } from '../../store/conTiempoMaximo';
+import { leerEspacioPaginado, LecturaPaginadaNoDisponible } from '../../store/lecturaPaginada';
 import { verificarEspacio, personaEspacio } from '../../domain/espacios';
 import type { BaseDatos } from '../../domain/db';
 import type { Rol } from '../../domain/types';
@@ -25,6 +27,7 @@ interface Lectura {
 export default function AplicacionUnica() {
   const [lectura, setLectura] = useState<Lectura | null>(null);
   const [cargando, setCargando] = useState(true);
+  const [faseCarga, setFaseCarga] = useState('Verificando sesión…');
   const [error, setError] = useState<string | null>(null);
   const [sinSesion, setSinSesion] = useState(false);
   const [correo, setCorreo] = useState('');
@@ -34,11 +37,30 @@ export default function AplicacionUnica() {
   const recargar = useCallback(async () => {
     const cliente = clienteServidor();
     if (!cliente) throw new Error('No está configurada la conexión institucional a Supabase.');
-    const { data, error: falloSesion } = await cliente.auth.getSession();
+    setFaseCarga('Comprobando sesión segura…');
+    const { data, error: falloSesion } = await conTiempoMaximo(
+      () => cliente.auth.getSession(), 12000,
+      'La comprobación de la sesión ha superado el tiempo de espera. Prueba a acceder de nuevo.',
+    );
     if (falloSesion) throw new Error('No se ha podido validar la sesión.');
     if (!data.session?.user) { setSinSesion(true); throw new Error('Inicie sesión para entrar en ULIT Censo.'); }
     setSinSesion(false);
-    const { db, info } = await new AlmacenSupabase(cliente, ESPACIO_REAL).leer();
+    setFaseCarga('Cargando el censo real por bloques seguros…');
+    const { db, info } = await conTiempoMaximo(
+      async (signal) => {
+        try {
+          return await leerEspacioPaginado(cliente, ESPACIO_REAL, signal, (n) =>
+            setFaseCarga(`Cargando el censo real… ${n.toLocaleString('es-ES')} entidades comprobadas`));
+        } catch (e) {
+          // Compatibilidad temporal: si 0011 no está instalado se intenta la RPC
+          // original UNA sola vez, también con un límite global de tiempo.
+          if (!(e instanceof LecturaPaginadaNoDisponible) || signal.aborted) throw e;
+          setFaseCarga('Lectura por bloques pendiente de instalar. Probando conexión anterior…');
+          return await new AlmacenSupabase(cliente, ESPACIO_REAL).leer(signal);
+        }
+      }, 32000,
+      'El servidor tardó demasiado en entregar el censo. La sesión sigue protegida. Pulsa «Comprobar acceso de nuevo»; no se ha modificado ningún dato.',
+    );
     if (!db || info.tipo !== 'real' || info.espacioId !== ESPACIO_REAL ||
         db.meta.espacioId !== ESPACIO_REAL || verificarEspacio(db, 'real').length ||
         personaEspacio(db)?.id !== info.personaId ||
@@ -59,9 +81,12 @@ export default function AplicacionUnica() {
     e.preventDefault();
     const cliente = clienteServidor();
     if (!cliente || !correo || !contrasena) return;
-    setCargando(true); setError(null);
+    setCargando(true); setError(null); setFaseCarga('Iniciando sesión segura…');
     try {
-      const { error: fallo } = await cliente.auth.signInWithPassword({ email: correo, password: contrasena });
+      const { error: fallo } = await conTiempoMaximo(
+        () => cliente.auth.signInWithPassword({ email: correo, password: contrasena }), 15000,
+        'El servicio de autenticación no ha respondido a tiempo. Prueba de nuevo.',
+      );
       if (fallo) throw new Error('No se ha podido iniciar sesión con esa cuenta.');
       await recargar();
       setContrasena('');
@@ -70,7 +95,7 @@ export default function AplicacionUnica() {
   };
 
   const reintentar = async () => {
-    setCargando(true); setError(null);
+    setCargando(true); setError(null); setFaseCarga('Verificando sesión…');
     try { await recargar(); }
     catch (e) { setLectura(null); setError(e instanceof Error ? e.message : String(e)); }
     finally { setCargando(false); }
@@ -86,22 +111,12 @@ export default function AplicacionUnica() {
     aplicar: () => false,
   }) : null, [lectura, actual, recargar]);
 
-  if (cargando) return <main className="pagina" role="status"><h1>ULIT Censo</h1><p>Verificando sesión y datos auténticos…</p></main>;
-  if (!fuente) return <main className="pagina" style={{ maxWidth: 640, margin: '44px auto' }}>
-    <div className="marca-ulit grande"><b>ULIT</b><span>Censo</span></div>
-    <h1>Acceso a ULIT Censo</h1>
-    <p>Una única aplicación completa, conectada al servidor de la Cátedra.</p>
-    {error && <div role="alert" className="t-info error"><AlertTriangle size={16} />{error}</div>}
-    {sinSesion ? <form onSubmit={(e) => void entrar(e)} className="tarjeta" style={{ padding: 20 }}>
-      <label className="campo"><span>Correo de la cuenta autorizada</span>
-        <input className="input" type="email" autoComplete="username" required value={correo} onChange={(e) => setCorreo(e.target.value)} />
-      </label>
-      <label className="campo"><span>Contraseña</span>
-        <input className="input" type="password" autoComplete="current-password" required value={contrasena} onChange={(e) => setContrasena(e.target.value)} />
-      </label>
-      <button className="btn primario" type="submit"><LockKeyhole size={15} /> Entrar en ULIT Censo</button>
-    </form> : <button className="btn primario" onClick={() => void reintentar()}><RefreshCw size={16}/> Comprobar acceso de nuevo</button>}
-    <p className="muted">Si no se puede verificar el acceso, nunca se muestran datos ficticios en sustitución de los reales.</p>
-  </main>;
+  if (cargando || !fuente) return <PantallaAcceso
+    cargando={cargando} faseCarga={faseCarga} sinSesion={sinSesion} error={error}
+    correo={correo} contrasena={contrasena}
+    onCorreo={setCorreo} onContrasena={setContrasena}
+    onEntrar={(evento) => void entrar(evento)}
+    onReintentar={() => void reintentar()}
+  />;
   return <FuenteOficinaContext.Provider value={fuente}><Outlet /></FuenteOficinaContext.Provider>;
 }

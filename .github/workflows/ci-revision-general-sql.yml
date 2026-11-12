@@ -1,0 +1,24 @@
+name: ULIT Censo · Fase 1 SQL aislado
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/persistencia/sql/20261110_0010_revision_general_2026.sql'
+      - 'docs/persistencia/pruebas/revision_general_2026.sql'
+      - 'docs/persistencia/pruebas/ejecutar-revision-general.sh'
+      - 'docs/persistencia/sql/20261111_0011_lectura_paginada_real.sql'
+      - 'docs/persistencia/pruebas/lectura_paginada_2026.sql'
+      - 'docs/persistencia/sql/20261112_0012_fachada_real_2026.sql'
+      - 'docs/persistencia/pruebas/fachada_real_2026.sql'
+      - '.github/workflows/ci-revision-general-sql.yml'
+permissions:
+  contents: read
+jobs:
+  revision-general-sql:
+    name: PostgreSQL 17 desechable · sin producción
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probar migración y RPC con datos sintéticos aislados
+        run: docker run --rm --network none -v "$GITHUB_WORKSPACE:/work:ro" -w /work postgres:17 bash docs/persistencia/pruebas/ejecutar-revision-general.sh /tmp/ulit-revision-general-ci

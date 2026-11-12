@@ -15,7 +15,19 @@ vi.mock('../../store/clienteSupabase', () => {
   const cliente = { auth: {
     getSession: async () => ({ data: { session: servidor.sesion ? { user: { id: 'usuario-institucional' } } : null }, error: null }),
     signInWithPassword: async () => { servidor.logins++; servidor.sesion = true; return { error: null }; },
-  }};
+  },
+    rpc: (_nombre: string) => {
+      // La infraestructura de prueba representa un servidor anterior sin RPC
+      // paginada: la aplicación debe caer a la lectura existente de forma segura.
+      const esAcceso = _nombre === 'ulit_censo_mis_espacios';
+      const p = Promise.resolve({
+        data: esAcceso ? [{ espacio_id: 'real-medina-del-campo-2026', tipo: 'real', version: 4,
+          rol: 'administrador', persona_id: 'coordinacion', escritura_habilitada: false }] : null,
+        error: esAcceso ? null : { code: 'PGRST202', message: 'No instalada' },
+      });
+      return Object.assign(p, { abortSignal: () => p });
+    },
+  };
   return { clienteServidor: () => cliente };
 });
 vi.mock('../../store/almacenSupabase', () => ({
@@ -81,6 +93,30 @@ describe('Una sola aplicación completa, nunca demo ni pantalla auxiliar', () =>
     await waitFor(() => expect(screen.getByText('Histórico real 2025')).toBeInTheDocument());
     expect(servidor.logins).toBe(1);
   });
+  it('presenta acceso institucional sin error rojo al pedir inicio de sesión', async () => {
+    servidor.sesion=false;
+    montar();
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Bienvenido de nuevo' })).toBeInTheDocument());
+    expect(screen.getByText('CÁTEDRA DE INNOVACIÓN PARA EL COMERCIO')).toBeInTheDocument();
+    expect(screen.getByText('El comercio,', { exact: false })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Entrar en ULIT Censo' })).toBeEnabled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Contraseña')).toHaveAttribute('type', 'password');
+  });
+
+  it('permite mostrar y ocultar la clave sin modificar la sesión ni enviar el formulario', async () => {
+    servidor.sesion=false;
+    montar();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Mostrar contraseña' })).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'clave-solo-prueba' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Mostrar contraseña' }));
+    expect(screen.getByLabelText('Contraseña')).toHaveAttribute('type', 'text');
+    expect(screen.getByRole('button', { name: 'Ocultar contraseña' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Ocultar contraseña' }));
+    expect(screen.getByLabelText('Contraseña')).toHaveAttribute('type', 'password');
+    expect(servidor.logins).toBe(0);
+  });
+
   it('si Supabase falla, nunca sustituye reales por datos ficticios', async () => {
     servidor.denegar=true;
     montar();

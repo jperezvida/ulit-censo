@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, BadgeCheck, Clock, Globe, Lock, Map, Store, Tags } from 'lucide-react';
+import { AlertTriangle, ArrowRight, BadgeCheck, ClipboardCheck, Clock, Globe, Lock, Map, Store, Tags } from 'lucide-react';
 import { useContexto } from '../../store/contexto';
 import { useFuenteOficina } from '../../store/fuenteOficina';
 import { ESTADO_OFICINA_TXT } from '../../domain/bloqueo';
@@ -37,6 +37,9 @@ export default function PanelItinerarios() {
             <AlertTriangle size={15} /> Ver {fmt(sinLocal)} filas sin local
           </button>
         )}
+        <button className="btn" onClick={() => nav('/oficina/revision-general')} title="Comprobación automática de coherencia de los Excel incorporados">
+          <ClipboardCheck size={15} /> Revisión general
+        </button>
         <button className="btn" onClick={() => nav('/oficina/municipal')} title="Todos los registros de la campaña, sin separar por itinerario">
           <Map size={15} /> Vista general municipal
         </button>

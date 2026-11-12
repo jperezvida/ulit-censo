@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { ExportacionTrabajo2026 } from './ExportacionTrabajo2026';
 import type { GeoJSONSource, Map as MLMap, MapLayerMouseEvent } from 'maplibre-gl';
 import { AlertTriangle, Download, FileSpreadsheet, Info, Printer } from 'lucide-react';
 import { useContexto, useFichaLocal, useIndices } from '../../store/contexto';
@@ -7,6 +8,7 @@ import { useFuenteOficina } from '../../store/fuenteOficina';
 import { compararCampanas, resumenCampana } from '../../domain/estadisticas';
 import { coberturaCalle, esCompletada, itinerariosDe } from '../../domain/consultas';
 import { aCSV, COLUMNAS_TRADICIONALES, descargar, filasExport } from '../../domain/exportacion';
+import { exportarRevisionGeneral } from '../../domain/exportacionRevisionGeneral';
 import { COLOR_GRUPO, TAXONOMIA } from '../../domain/taxonomy';
 import { MapaBase } from '../../components/mapa/MapaBase';
 import { geojsonLocales } from '../territory/capas';
@@ -43,6 +45,10 @@ function Evolucion() {
   const [aId, setA] = useState<Id>(campana?.campanaReferenciaId ?? campanas[Math.max(0, campanas.length - 2)]?.id);
   const [bId, setB] = useState<Id>(campana?.campanaReferenciaId ? campana.id : campanas[campanas.length - 1]?.id);
   const cmp = useMemo(() => (aId && bId && aId !== bId ? compararCampanas(db, aId, bId) : null), [db, aId, bId]);
+  const trabajo2026 = useMemo(() =>
+    enReal && bId && db.campanas[bId]?.anio === 2026
+      ? exportarRevisionGeneral(db, bId).resumen
+      : null, [db, bId, enReal]);
   const serie = useMemo(
     () =>
       campanas.map((c, i) => {
@@ -74,6 +80,17 @@ function Evolucion() {
         <span className="esp" />
         {!enReal && <Sim texto="Cifras sobre datos ficticios" />}
       </div>
+      {trabajo2026 && (
+        <div className="t-info aviso an-ancho" style={{ margin: 0 }}>
+          <AlertTriangle size={15} />
+          <span>La campaña 2026 tiene <b>{fmt(trabajo2026.filas)} filas de Excel</b>:
+            {' '}{fmt(trabajo2026.conIncidencias)} con incoherencias automáticas pendientes.
+            Estos registros todavía no equivalen necesariamente a locales físicos conciliados.
+            Las estadísticas de evolución proceden de los locales vinculados, no de este recuento.
+            {' '}<Link to="/oficina/revision-general">Abrir revisión general</Link>.
+          </span>
+        </div>
+      )}
       {enCursoB && (
         <div className="t-info aviso an-ancho" style={{ margin: 0 }}>
           <AlertTriangle size={15} /> {B!.nombre} está en curso: el campo cubre el {Math.round(cobB * 100)} % de las calles del ámbito. Los locales aún no visitados aparecen como «no observados» (indeterminados), nunca como cierres.
@@ -306,8 +323,10 @@ function Exportar() {
   const nombre = `${municipio.nombre.replace(/\s+/g, '_')}_${campana.anio}_${ambito === 'todo' ? 'completo' : ambito.replace(':', '-')}.csv`;
   return (
     <div className="an-export">
+      {campana.anio === 2026 && <ExportacionTrabajo2026 db={db} campanaId={campana.id} its={its} municipio={municipio.nombre} />}
+      {campana.anio !== 2026 ? (
       <div className="tarjeta an-bloque">
-        <h3>Excel compatible con el censo tradicional</h3>
+        <h3>{campana.anio === 2026 ? 'Exportación de locales conciliados · provisional' : 'Excel compatible con el censo tradicional'}</h3>
         <div className="fila" style={{ flexWrap: 'wrap' }}>
           <select className="input" style={{ width: 280 }} value={ambito} onChange={(e) => setAmbito(e.target.value)}>
             <option value="todo">{municipio.nombre} · {campana.nombre} completo</option>
@@ -317,7 +336,10 @@ function Exportar() {
           <button className="btn primario" onClick={() => descargar(nombre, aCSV(filas))} disabled={!filas.length}><Download size={15} /> Descargar CSV ({fmt(filas.length)} filas)</button>
           {!enReal && <Sim texto="Contenido ficticio" />}
         </div>
-        <p className="muted" style={{ fontSize: 12 }}>CSV con separador «;» y UTF-8, se abre directamente en Excel. Columnas provisionales hasta recibir la estructura real; las métricas digitales indican si están verificadas en esta campaña.</p>
+        <p className="muted" style={{ fontSize: 12 }}>
+          {campana.anio === 2026 && 'Esta exportación se construye solo con los locales físicos vinculados. No incluye automáticamente todas las filas de itinerarios ni incorpora la capa de correcciones de Fase 1. Para el trabajo de campo completo utiliza el archivo de trabajo anterior. '}
+          CSV con separador «;» y UTF-8, se abre directamente en Excel. Columnas provisionales hasta recibir la estructura real; las métricas digitales indican si están verificadas en esta campaña.
+        </p>
         <div className="dat-tabla scroll-fino" style={{ maxHeight: 360 }}>
           <table className="tabla">
             <thead><tr>{COLUMNAS_TRADICIONALES.slice(0, 12).map((c) => <th key={c}>{c}</th>)}</tr></thead>
@@ -325,6 +347,12 @@ function Exportar() {
           </table>
         </div>
       </div>
+      ) : (
+        <p className="muted" style={{ fontSize: 12 }}>
+          La exportación municipal definitiva de locales únicos se habilitará tras la conciliación y validación.
+          Hasta entonces utiliza el Excel de trabajo, que mantiene todos los registros de campo y sus correcciones.
+        </p>
+      )}
       <div className="tarjeta an-bloque">
         <h3>Mapas y hojas de campo</h3>
         <p className="muted">Documento A4 por itinerario con mapa numerado, listado de calles y locales anteriores con espacio para anotar.</p>
