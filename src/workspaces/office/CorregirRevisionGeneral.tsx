@@ -97,8 +97,8 @@ export default function CorregirRevisionGeneral({ fila, habilitada, version, mot
   };
 
   return <form className="rg-editor" aria-label="Corregir registro supervisadamente" onSubmit={(e) => void guardar(e)}>
-    <h3>{vacio ? 'Revisar local vacío' : 'Confirmar local ocupado'}</h3>
-    <p>Indica la situación actual. Si hay un negocio, puedes marcar el local como ocupado: se quitará «Local Vacío = 1» y los metros de fachada del vacío. Los datos originales del Excel se conservan.</p>
+    <h3>Datos de revisión</h3>
+    <p>Corrige y guarda para pasar al siguiente. El Excel original se conserva intacto.</p>
     <div className="rg-campos">
       <label><span>Estado del local</span>
         <select className="input" value={estado} onChange={(e) => setEstado(e.target.value)} disabled={!permitirOcupar} required>
@@ -119,15 +119,16 @@ export default function CorregirRevisionGeneral({ fila, habilitada, version, mot
     {estado === '0' && <p className="rg-previa ok">Se conservará «{nombre}» y se retirarán el 1 de «Local Vacío» y los metros de fachada. No se eliminará la información del negocio.</p>}
 
     <p className={tras.incidencias.length ? 'rg-previa aviso' : 'rg-previa ok'}>
-      Después de esta corrección: {tras.incidencias.length ? `${tras.incidencias.length} aviso(s) pendiente(s)` : 'sin incoherencias detectadas'}.
+      {sinCambios ? 'Sin cambios por guardar.' :
+        `Tras guardar: ${tras.incidencias.length ? `${tras.incidencias.length} aviso(s) pendiente(s)` : 'sin incoherencias detectadas'}.`}
     </p>
     {!habilitada && <p className="rg-bloqueo" role="status">{motivoBloqueo || 'El guardado todavía no está autorizado.'}</p>}
     {error && <p className="t-info error" role="alert">{error}</p>}
     <div className="rg-acciones">
-      <button className="btn s" type="button" onClick={onCancelar} disabled={guardando}>Cancelar</button>
+      <button className="btn s" type="button" onClick={onCancelar} disabled={guardando || sinCambios}>Restablecer</button>
       <button className="btn s primario" type="submit" disabled={!habilitada || !version || sinCambios || guardando ||
         (estado === '0' ? !permitirOcupar : !metrosFachadaValidos(fachada))}>
-        {guardando ? 'Guardando cambio…' : vacio ? 'Guardar metros' : 'Confirmar local ocupado'}
+        {guardando ? 'Guardando…' : vacio ? 'Guardar y siguiente' : 'Confirmar ocupación y seguir'}
       </button>
     </div>
   </form>;
