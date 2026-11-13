@@ -37,13 +37,13 @@ describe('Oficina · transición supervisada vacío a ocupado', () => {
     render(<CorregirRevisionGeneral
       fila={fila('Asesoría Nuria Mate')} habilitada version={9}
       onGuardada={onGuardada} onCancelar={vi.fn()} />);
-    expect(screen.getByText(/Local vacío con nombre de negocio|Indica la situación actual/)).toBeInTheDocument();
+    expect(screen.getByText(/Datos de revisión|Corrige y guarda/)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Estado del local'), { target: { value: '0' } });
     expect(screen.getByLabelText('Metros de fachada')).toHaveValue('');
     expect(screen.getByLabelText('Metros de fachada')).toBeDisabled();
     expect(screen.getByLabelText('Nombre del negocio')).toHaveValue('Asesoría Nuria Mate');
     expect(screen.getByText(/sin incoherencias detectadas/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar local ocupado' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar ocupación y seguir' }));
     await waitFor(() => expect(onGuardada).toHaveBeenCalledWith(cambio));
     expect(guardarCorreccionRevisionGeneral).toHaveBeenCalledWith(
       'reg-prueba-27',9,{ vacio: '0', fachada: '' },expect.any(String),
@@ -63,7 +63,7 @@ describe('Oficina · transición supervisada vacío a ocupado', () => {
     fireEvent.change(screen.getByLabelText('Estado del local'), { target:{value:'0'} });
     expect(screen.getByLabelText('Metros de fachada')).toHaveValue('');
     expect(screen.getByText(/se retirarán el 1/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button',{name:'Confirmar local ocupado'}));
+    fireEvent.click(screen.getByRole('button',{name:'Confirmar ocupación y seguir'}));
     await waitFor(()=>expect(onGuardada).toHaveBeenCalledTimes(1));
     expect(guardarCorreccionRevisionGeneral).toHaveBeenCalledWith(
       'reg-prueba-27',9,{vacio:'0',fachada:''},expect.any(String),
@@ -74,7 +74,7 @@ describe('Oficina · transición supervisada vacío a ocupado', () => {
     render(<CorregirRevisionGeneral fila={fila('')} habilitada version={9}
       onGuardada={vi.fn()} onCancelar={vi.fn()} />);
     expect(screen.getByLabelText('Estado del local')).toBeDisabled();
-    expect(screen.getByRole('button',{name:'Guardar metros'})).toBeDisabled();
+    expect(screen.getByRole('button',{name:'Guardar y siguiente'})).toBeDisabled();
   });
 
   it('sigue permitiendo registrar únicamente metros en un local vacío', async () => {
@@ -88,7 +88,7 @@ describe('Oficina · transición supervisada vacío a ocupado', () => {
     render(<CorregirRevisionGeneral fila={fila('')} habilitada version={9}
       onGuardada={onGuardada} onCancelar={vi.fn()} />);
     fireEvent.change(screen.getByLabelText('Metros de fachada'),{target:{value:'5'}});
-    fireEvent.click(screen.getByRole('button',{name:'Guardar metros'}));
+    fireEvent.click(screen.getByRole('button',{name:'Guardar y siguiente'}));
     await waitFor(()=>expect(onGuardada).toHaveBeenCalledTimes(1));
     expect(guardarCorreccionRevisionGeneral).toHaveBeenCalledWith('reg-prueba-27',9,{fachada:'5'},expect.any(String));
   });
