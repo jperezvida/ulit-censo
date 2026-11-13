@@ -53,7 +53,8 @@ begin
         and id='reg-sintetico-1') <> '1' then
     raise exception 'Se modificó el estado original importado';
   end if;
-  if (select valor->'historial'->0->'valoresAnteriores'->>'fachada'
+  if (select valor->'historial'->(pg_catalog.jsonb_array_length(valor->'historial')-1)
+      ->'valoresAnteriores'->>'fachada'
       from ulit_censo.entidad where espacio_id='real-medina-del-campo-2026'
       and coleccion='correccionesRegistros' and id='reg-sintetico-1')<>'6' then
     raise exception 'No quedó la medición anterior en el historial';
