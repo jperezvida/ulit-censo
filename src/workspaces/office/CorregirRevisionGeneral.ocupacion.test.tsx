@@ -37,7 +37,7 @@ describe('Oficina · transición supervisada vacío a ocupado', () => {
     render(<CorregirRevisionGeneral
       fila={fila('Asesoría Nuria Mate')} habilitada version={9}
       onGuardada={onGuardada} onCancelar={vi.fn()} />);
-    expect(screen.getByText(/Datos de revisión|Corrige y guarda/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Datos de revisión' })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Estado del local'), { target: { value: '0' } });
     expect(screen.getByLabelText('Metros de fachada')).toHaveValue('');
     expect(screen.getByLabelText('Metros de fachada')).toBeDisabled();
