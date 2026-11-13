@@ -62,7 +62,13 @@ begin
   end if;
   if p_accion='guardar' then
     if p_metros is null or length(p_metros) > 20
-       or replace(pg_catalog.btrim(p_metros),',','.') !~ '^[0-9]{1,5}(\.[0-9]{1,3})?
+       or replace(pg_catalog.btrim(p_metros),',','.') !~ '^[0-9]{1,5}([.][0-9]{1,3})?$'
+       or replace(pg_catalog.btrim(p_metros),',','.')::numeric <= 0 then
+      raise exception 'ULIT Censo: metros de fachada incorrectos' using errcode='22023';
+    end if;
+  elsif p_metros is distinct from '' then
+    raise exception 'ULIT Censo: un negocio ocupado no lleva metros de local vacío' using errcode='22023';
+  end if;
   select valor into v_reg from ulit_censo.entidad
     where espacio_id=p_espacio and coleccion='registros' and id=p_registro_id;
   if v_reg is null or v_reg ? 'exclusion' then
