@@ -37,7 +37,9 @@ export default function RevisionGeneral() {
   const [itinerarioFiltro, setItinerarioFiltro] = useState('');
   const [seleccionado, setSeleccionado] = useState<string | null>(null);
   const [limite, setLimite] = useState(80);
-  const [editando, setEditando] = useState(false);
+  /** Conserva la secuencia original durante esta tanda, incluso tras resolver incidencias. */
+  const [recorridoIds, setRecorridoIds] = useState<string[] | null>(null);
+  const [reinicioFicha, setReinicioFicha] = useState(0);
   const [avisoGuardado, setAvisoGuardado] = useState('');
   const [capacidad, setCapacidad] = useState<CapacidadRevisionGeneral>({ habilitada: false, motivo: 'Comprobando autorización…' });
   useEffect(() => {
@@ -46,7 +48,7 @@ export default function RevisionGeneral() {
     void capacidadRevisionGeneral().then((r) => { if (vigente) setCapacidad(r); })
       .catch(() => { if (vigente) setCapacidad({ habilitada: false, motivo: 'No se ha podido verificar la autorización de guardado.' }); });
     return () => { vigente = false; };
-  }, [fuente?.soloLectura, fuente?.versionReal, campana?.id, campana?.anio]);
+  }, [fuente?.soloLectura, campana?.id, campana?.anio]);
   if (!campana || !resultado) return null;
 
   const opciones = [
@@ -63,10 +65,28 @@ export default function RevisionGeneral() {
     && (!texto || [f.direccion, f.numero, f.nombre, f.itinerario, f.archivo, String(f.registro.fila), ...f.incidencias.map((i) => i.titulo)]
       .join(' ').toLocaleLowerCase('es').includes(texto))
   );
-  const indice = Math.max(0, filtradas.findIndex((f) => f.id === seleccionado));
-  const activa = filtradas[indice];
-  const pasar = (pos: number) => setSeleccionado(filtradas[pos]?.id ?? null);
-  const elegirFiltro = (f: Filtro) => { setFiltro(f); setSeleccionado(null); setEditando(false); setLimite(80); };
+  // Tras guardar, una fila deja de tener incidencias. Se conserva en el recorrido
+  // para que «Anterior» permita consultarla; no se realiza otra petición al servidor.
+  const porId = new Map(resultado.filas.map((fila) => [fila.id, fila]));
+  const recorrido = recorridoIds
+    ? recorridoIds.map((id) => porId.get(id)).filter((fila): fila is FilaRevisionGeneral => !!fila)
+    : filtradas;
+  const indice = Math.max(0, recorrido.findIndex((f) => f.id === seleccionado));
+  const activa = recorrido[indice];
+  const pasar = (pos: number) => {
+    if (pos >= 0 && pos < recorrido.length) {
+      setSeleccionado(recorrido[pos].id);
+      setReinicioFicha((n) => n + 1);
+    }
+  };
+  const reiniciarRecorrido = () => {
+    setSeleccionado(null);
+    setRecorridoIds(null);
+    setReinicioFicha((n) => n + 1);
+    setLimite(80);
+    setAvisoGuardado('');
+  };
+  const elegirFiltro = (f: Filtro) => { setFiltro(f); reiniciarRecorrido(); };
 
   return <main className="pagina rg-pagina">
     <div className="pagina-cab">
@@ -74,7 +94,7 @@ export default function RevisionGeneral() {
         <Link to="/oficina" className="btn s fantasma"><ChevronLeft size={14} /> Volver a Oficina</Link>
         <div className="rotulo" style={{ marginTop: 14 }}>Oficina · {campana.nombre} · Fase 1</div>
         <h1>Revisión general</h1>
-        <p>La aplicación comprueba automáticamente los locales de los Excel incorporados y te muestra únicamente lo que merece revisión.</p>
+        <p>La aplicación detecta las incidencias. Revisa los datos directamente, guarda y continúa con la siguiente; puedes volver atrás.</p>
       </div>
     </div>
 
@@ -95,28 +115,31 @@ export default function RevisionGeneral() {
         </button>)}
       </div>
       {itinerarios.length > 1 && <select className="input rg-itinerario" aria-label="Filtrar por itinerario" value={itinerarioFiltro}
-        onChange={(e) => { setItinerarioFiltro(e.target.value); setSeleccionado(null); setEditando(false); setLimite(80); }}>
+        onChange={(e) => { setItinerarioFiltro(e.target.value); reiniciarRecorrido(); }}>
         <option value="">Todos los itinerarios</option>
         {itinerarios.map((codigo) => <option key={codigo} value={codigo}>{codigo} · {resultado.filas.filter((f) => f.itinerario === codigo && f.incidencias.length).length} con incidencias</option>)}
       </select>}
       <label className="rg-buscador"><Search size={15} /><input aria-label="Buscar por calle, negocio, itinerario o fila" placeholder="Buscar calle, negocio o fila…"
-        value={busqueda} onChange={(e) => { setBusqueda(e.target.value); setSeleccionado(null); setEditando(false); setLimite(80); }} /></label>
+        value={busqueda} onChange={(e) => { setBusqueda(e.target.value); reiniciarRecorrido(); }} /></label>
     </div>
 
     {resultado.examinadas === 0 && <div className="t-info">No hay filas de Excel confirmadas en esta campaña. La revisión comenzará cuando se incorporen sus itinerarios.</div>}
     {resultado.examinadas > 0 && <div className="rg-doscolumnas">
       <section className="rg-listado" aria-label="Registros para revisar">
-        <div className="rg-listado-cab">{filtradas.length} filas en esta vista</div>
-        {filtradas.slice(0, limite).map((f) => <button key={f.id} type="button"
+        <div className="rg-listado-cab">
+          {recorridoIds ? `${filtradas.length} pendientes · ${recorrido.length - filtradas.length} revisadas en esta tanda`
+            : `${filtradas.length} filas en esta vista`}
+        </div>
+        {recorrido.slice(0, limite).map((f) => <button key={f.id} type="button"
           className={`rg-fila ${activa?.id === f.id ? 'seleccionada' : ''}`}
-          aria-pressed={activa?.id === f.id} onClick={() => { setSeleccionado(f.id); setEditando(false); }}>
+          aria-pressed={activa?.id === f.id} onClick={() => { setSeleccionado(f.id); setReinicioFicha((n) => n + 1); }}>
           <span className="rg-fila-arriba"><b>{f.nombre || (f.estado === 'vacio' ? 'Local vacío' : 'Sin nombre')}</b>
             <span className={f.incidencias.length ? 'rg-chip-alerta' : 'rg-chip-ok'}>{f.incidencias.length ? `${f.incidencias.length} aviso(s)` : 'Sin incidencias'}</span></span>
           <span className="rg-fila-abajo">{f.direccion}, {f.numero} · {f.itinerario} · fila {f.registro.fila}</span>
         </button>)}
-        {filtradas.length === 0 && <div className="t-info">No hay registros con estos filtros.</div>}
-        {filtradas.length > limite && <button className="btn s rg-mas" onClick={() => setLimite((v) => v + 80)}>
-          Mostrar más ({filtradas.length - limite} restantes)
+        {recorrido.length === 0 && <div className="t-info">No hay registros con estos filtros.</div>}
+        {recorrido.length > limite && <button className="btn s rg-mas" onClick={() => setLimite((v) => v + 80)}>
+          Mostrar más ({recorrido.length - limite} restantes)
         </button>}
       </section>
 
@@ -128,8 +151,8 @@ export default function RevisionGeneral() {
               <p>{activa.direccion}, {activa.numero}</p></div>
             <div className="rg-paginacion">
               <button className="btn s icono" aria-label="Registro anterior" onClick={() => pasar(indice - 1)} disabled={indice === 0}><ChevronLeft size={15} /></button>
-              <span>{indice + 1} / {filtradas.length}</span>
-              <button className="btn s icono" aria-label="Registro siguiente" onClick={() => pasar(indice + 1)} disabled={indice === filtradas.length - 1}><ChevronRight size={15} /></button>
+              <span>{indice + 1} / {recorrido.length}</span>
+              <button className="btn s icono" aria-label="Registro siguiente" onClick={() => pasar(indice + 1)} disabled={indice === recorrido.length - 1}><ChevronRight size={15} /></button>
             </div>
           </div>
           {activa.incidencias.length ? <div className="rg-incidencias">
@@ -137,20 +160,30 @@ export default function RevisionGeneral() {
               <AlertTriangle size={17} /><div><b>{inc.titulo}</b><p>{inc.detalle}</p></div>
             </div>)}
           </div> : <div className="rg-sin-inc"><CheckCircle2 size={17} /> No se han detectado contradicciones en esta fila.</div>}
-          {fuente?.soloLectura && campana.anio === 2026 && (
-            editando ? <CorregirRevisionGeneral key={activa.id} fila={activa} habilitada={capacidad.habilitada}
+          {fuente?.soloLectura && campana.anio === 2026
+            && (activa.incidencias.length > 0 || activa.correccion) && (
+            <CorregirRevisionGeneral key={`${activa.id}-${reinicioFicha}`}
+              fila={activa} habilitada={capacidad.habilitada}
               version={fuente.versionReal} motivoBloqueo={capacidad.motivo}
-              onCancelar={() => setEditando(false)}
+              onCancelar={() => setReinicioFicha((n) => n + 1)}
               onGuardada={(cambio) => {
-                if (!fuente.aplicarCorreccionReal) throw new Error('Esta sesión no admite actualización segura de correcciones.');
+                if (!fuente.aplicarCorreccionReal) throw new Error(
+                  'Esta sesión no admite actualización segura de correcciones.');
+                // Fijar la secuencia ANTES de que la corrección quite una fila
+                // del filtro «Con incidencias».
+                if (!recorridoIds) setRecorridoIds(recorrido.map((f) => f.id));
                 fuente.aplicarCorreccionReal(cambio);
-                setAvisoGuardado(cambio.correccion.valores.vacio === '0'
-                  ? 'Guardado correctamente. El local figura ahora como ocupado y sin metros de fachada de vacío.'
-                  : 'Metros de fachada guardados correctamente. El registro original sigue intacto.');
-                setEditando(false);
-                setSeleccionado(null);
-              }} />
-              : <button className="btn s rg-corregir" onClick={() => setEditando(true)}>Preparar corrección</button>
+                const siguiente = recorrido.slice(indice + 1).find((f) => f.incidencias.length > 0);
+                if (siguiente) {
+                  setSeleccionado(siguiente.id);
+                  setAvisoGuardado('Guardado correctamente. Siguiente incidencia preparada.');
+                } else {
+                  setSeleccionado(activa.id);
+                  setAvisoGuardado('Guardado. Has llegado al final de esta tanda. Puedes volver a las filas anteriores.');
+                }
+                setReinicioFicha((n) => n + 1);
+              }}
+            />
           )}
           <ValorOriginal fila={activa} />
           <p className="rg-origen">Origen: {activa.archivo} · fila {activa.registro.fila}. Los datos permanecen intactos.</p>
