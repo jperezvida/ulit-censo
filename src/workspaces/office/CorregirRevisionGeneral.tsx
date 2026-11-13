@@ -65,9 +65,14 @@ export default function CorregirRevisionGeneral({ fila, habilitada, version, mot
   // Cambio de estado explícito: la decisión la toma una persona cuando existe
   // un negocio identificado. El servidor conserva nombre y datos del negocio.
   const valores = useMemo<Record<string, string>>(() => {
-    if (estado === '0' && permitirOcupar) return { vacio: '0', fachada: '' };
-    const metros = fachada.trim();
-    return metros === actual('fachada') ? {} : { fachada: metros };
+    const propuestos: Record<string, string> = {};
+    if (estado === '0' && permitirOcupar) {
+      propuestos.vacio = '0';
+      propuestos.fachada = '';
+    } else if (fachada.trim() !== actual('fachada')) {
+      propuestos.fachada = fachada.trim();
+    }
+    return propuestos;
   }, [estado, fachada, permitirOcupar, fila]);
 
   const tras = useMemo(() => revisarRegistroGeneral(
