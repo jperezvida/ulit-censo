@@ -38,6 +38,7 @@ export default function RevisionGeneral() {
   const [seleccionado, setSeleccionado] = useState<string | null>(null);
   const [limite, setLimite] = useState(80);
   const [editando, setEditando] = useState(false);
+  const [avisoGuardado, setAvisoGuardado] = useState('');
   const [capacidad, setCapacidad] = useState<CapacidadRevisionGeneral>({ habilitada: false, motivo: 'Comprobando autorización…' });
   useEffect(() => {
     if (!fuente?.soloLectura || campana?.anio !== 2026) return;
@@ -77,6 +78,7 @@ export default function RevisionGeneral() {
       </div>
     </div>
 
+    {avisoGuardado && <p className="rg-previa ok" role="status">{avisoGuardado}</p>}
     <div className="rg-resumen" role="status">
       <span><b>{resultado.examinadas}</b> registros comprobados</span>
       <span className={resultado.conIncidencias ? 'rg-alerta' : ''}><b>{resultado.conIncidencias}</b> con incidencias</span>
@@ -139,7 +141,15 @@ export default function RevisionGeneral() {
             editando ? <CorregirRevisionGeneral key={activa.id} fila={activa} habilitada={capacidad.habilitada}
               version={fuente.versionReal} motivoBloqueo={capacidad.motivo}
               onCancelar={() => setEditando(false)}
-              onGuardada={async () => { await fuente.recargarReal?.(); setEditando(false); setSeleccionado(null); }} />
+              onGuardada={(cambio) => {
+                if (!fuente.aplicarCorreccionReal) throw new Error('Esta sesión no admite actualización segura de correcciones.');
+                fuente.aplicarCorreccionReal(cambio);
+                setAvisoGuardado(cambio.correccion.valores.vacio === '0'
+                  ? 'Guardado correctamente. El local figura ahora como ocupado y sin metros de fachada de vacío.'
+                  : 'Metros de fachada guardados correctamente. El registro original sigue intacto.');
+                setEditando(false);
+                setSeleccionado(null);
+              }} />
               : <button className="btn s rg-corregir" onClick={() => setEditando(true)}>Preparar corrección</button>
           )}
           <ValorOriginal fila={activa} />

@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react';
 import { useStore } from './store';
 import type { BaseDatos } from '../domain/db';
 import type { Id, Rol } from '../domain/types';
+import type { CambioRevisionGeneralReal } from './revisionGeneralReal';
 
 export type Aplicar = (fn: (db: BaseDatos) => BaseDatos, etiqueta: string, opciones?: { silencioso?: boolean; sinAvisoError?: boolean }) => boolean;
 
@@ -21,6 +22,8 @@ export interface FuenteOficina {
   elegirCampana?: (campanaId: Id) => void;
   /** Recarga verificada desde Supabase después de una operación real restringida. */
   recargarReal?: () => Promise<void>;
+  /** Aplica en memoria solo la corrección ya confirmada por Supabase, sin recargar el censo. */
+  aplicarCorreccionReal?: (cambio: CambioRevisionGeneralReal) => void;
   versionReal?: number;
 }
 

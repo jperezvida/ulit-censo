@@ -22,4 +22,6 @@ q -f "$SQL/20261112_0012_fachada_real_2026.sql"
 q -f "$P/revision_general_2026.sql"
 q -f "$P/lectura_paginada_2026.sql"
 q -f "$P/fachada_real_2026.sql"
-echo '✓ Migraciones 0010 y 0011 verificadas con PostgreSQL 17 y datos ficticios'
+q -f "$SQL/20261113_0013_revision_ocupacion_y_rapidez.sql"
+q -f "$P/revision_ocupacion_rapida_2026.sql"
+echo '✓ Fase 1: migraciones 0010–0013 verificadas con PostgreSQL 17 y datos ficticios'

@@ -6,6 +6,7 @@ import { clienteServidor } from '../../store/clienteSupabase';
 import { AlmacenSupabase } from '../../store/almacenSupabase';
 import { conTiempoMaximo } from '../../store/conTiempoMaximo';
 import { leerEspacioPaginado, LecturaPaginadaNoDisponible } from '../../store/lecturaPaginada';
+import type { CambioRevisionGeneralReal } from '../../store/revisionGeneralReal';
 import { verificarEspacio, personaEspacio } from '../../domain/espacios';
 import type { BaseDatos } from '../../domain/db';
 import type { Rol } from '../../domain/types';
@@ -101,15 +102,35 @@ export default function AplicacionUnica() {
     finally { setCargando(false); }
   };
 
+  // La respuesta de la RPC aporta la entidad completa, versión y auditoría.
+  // No disparar otra lectura de ~9.000 entidades al terminar cada guardado.
+  const aplicarCorreccionReal = useCallback((cambio: CambioRevisionGeneralReal) => {
+    setLectura((anterior) => {
+      if (!anterior || anterior.version + 1 !== cambio.version
+        || !anterior.db.registros[cambio.registroId]) return anterior;
+      return {
+        ...anterior,
+        version: cambio.version,
+        db: {
+          ...anterior.db,
+          correccionesRegistros: {
+            ...(anterior.db.correccionesRegistros ?? {}),
+            [cambio.registroId]: cambio.correccion,
+          },
+        },
+      };
+    });
+  }, []);
+
   const actual = lectura?.db.campanas[campanaId] ? campanaId :
     Object.values(lectura?.db.campanas ?? {}).sort((a,b) => b.anio - a.anio)[0]?.id ?? '';
   const fuente = useMemo(() => lectura && actual ? ({
     db: lectura.db, campanaId: actual, personaId: lectura.personaId,
     roles: [lectura.rol] as Rol[], soloLectura: true as const,
-    versionReal: lectura.version, elegirCampana: setCampanaId, recargarReal: recargar,
+    versionReal: lectura.version, elegirCampana: setCampanaId, recargarReal: recargar, aplicarCorreccionReal,
     // Ninguna escritura genérica sobre datos auténticos. IT1/2026 utiliza RPC específica.
     aplicar: () => false,
-  }) : null, [lectura, actual, recargar]);
+  }) : null, [lectura, actual, recargar, aplicarCorreccionReal]);
 
   if (cargando || !fuente) return <PantallaAcceso
     cargando={cargando} faseCarga={faseCarga} sinSesion={sinSesion} error={error}
