@@ -44,21 +44,43 @@ export function propuestaRevisionGeneral(
   return valores;
 }
 
+export interface BorradorRevisionGeneral {
+  estado: string;
+  fachada: string;
+}
+
 /** Revisión ágil: confirmación explícita, limpieza total y deshacer supervisado. */
-export default function CorregirRevisionGeneral({ fila, habilitada, version, motivoBloqueo, onGuardada, onCancelar }: {
+export default function CorregirRevisionGeneral({ fila, habilitada, version, motivoBloqueo, onGuardada, onCancelar, borrador, onBorradorChange, onGuardandoChange }: {
   fila: FilaRevisionGeneral;
   habilitada: boolean;
   version?: number;
   motivoBloqueo?: string;
   onGuardada: (cambio: CambioRevisionGeneralReal) => void;
   onCancelar: () => void;
+  /** Borradores temporales, conservados al moverse entre fichas en esta sesión. */
+  borrador?: BorradorRevisionGeneral;
+  onBorradorChange?: (borrador: BorradorRevisionGeneral | null) => void;
+  onGuardandoChange?: (guardando: boolean) => void;
 }) {
   const actual = (clave: string) => datoRevisionGeneral(fila.registro, clave, fila.correccion?.valores);
   const estadoActual = actual('vacio');
   const nombreOriginal = actual('nombre');
   const tieneNombreComercial = !!nombreOriginal.trim() && !nombreEsMarcaDeVacio(nombreOriginal);
-  const [estado, setEstado] = useState(estadoActual);
-  const [fachada, setFachada] = useState(actual('fachada'));
+  const fachadaActual = actual('fachada');
+  const [estado, setEstado] = useState(borrador?.estado ?? estadoActual);
+  const [fachada, setFachada] = useState(borrador?.fachada ?? fachadaActual);
+  const actualizarBorrador = (nuevoEstado: string, nuevaFachada: string) => {
+    onBorradorChange?.(nuevoEstado === estadoActual && nuevaFachada === fachadaActual
+      ? null : { estado: nuevoEstado, fachada: nuevaFachada });
+  };
+  const elegirEstado = (nuevoEstado: string) => {
+    setEstado(nuevoEstado);
+    actualizarBorrador(nuevoEstado, fachada);
+  };
+  const editarFachada = (nuevaFachada: string) => {
+    setFachada(nuevaFachada);
+    actualizarBorrador(estado, nuevaFachada);
+  };
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
   const vacio = estado === '1';
@@ -94,25 +116,33 @@ export default function CorregirRevisionGeneral({ fila, habilitada, version, mot
     e.preventDefault();
     if (!puedeGuardar || !version) return;
     setGuardando(true);
+    onGuardandoChange?.(true);
     setError('');
     try {
       const cambio = await guardarCorreccionRevisionGeneral(fila.id, version, valores, motivoAutomatico);
       onGuardada(cambio);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    } finally { setGuardando(false); }
+    } finally {
+      setGuardando(false);
+      onGuardandoChange?.(false);
+    }
   };
 
   const deshacer = async () => {
     if (!puedeDeshacer || !habilitada || !version || guardando) return;
     setGuardando(true);
+    onGuardandoChange?.(true);
     setError('');
     try {
       const cambio = await deshacerLimpiezaVacio(fila.id, version);
       onGuardada(cambio);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    } finally { setGuardando(false); }
+    } finally {
+      setGuardando(false);
+      onGuardandoChange?.(false);
+    }
   };
 
   return <form className="rg-editor" aria-label="Corregir registro supervisadamente" onSubmit={(e) => void guardar(e)}>
@@ -120,12 +150,12 @@ export default function CorregirRevisionGeneral({ fila, habilitada, version, mot
     <p>Confirma el estado, guarda y pasa al siguiente. El Excel importado y el histórico 2025 no se reescriben.</p>
     <div className="rg-opciones" role="group" aria-label="Estado actual confirmado">
       <button type="button" className={"rg-opcion" + (vacio ? " elegida" : "")}
-        aria-pressed={vacio} onClick={() => setEstado('1')} disabled={guardando}>
+        aria-pressed={vacio} onClick={() => elegirEstado('1')} disabled={guardando}>
         Local vacío
       </button>
       <button type="button" className={"rg-opcion" + (!vacio ? " elegida" : "")}
         aria-pressed={!vacio} disabled={guardando || (!tieneNombreComercial && estadoActual !== '0')}
-        onClick={() => setEstado('0')}>
+        onClick={() => elegirEstado('0')}>
         Local ocupado
       </button>
     </div>
@@ -136,7 +166,7 @@ export default function CorregirRevisionGeneral({ fila, habilitada, version, mot
       </label>
       <label><span>Metros de fachada (solo vacíos)</span>
         <input className="input" value={vacio ? fachada : ''}
-          onChange={(e) => setFachada(e.target.value)} disabled={!vacio || guardando}
+          onChange={(e) => editarFachada(e.target.value)} disabled={!vacio || guardando}
           placeholder={vacio ? 'Ej.: 3,5' : 'No corresponde'} inputMode="decimal" />
       </label>
     </div>
@@ -164,7 +194,7 @@ export default function CorregirRevisionGeneral({ fila, habilitada, version, mot
       </button>}
       <button className="btn s" type="button"
         disabled={guardando || (sinCambios && estado === estadoActual)}
-        onClick={onCancelar}>Restablecer</button>
+        onClick={() => { onBorradorChange?.(null); onCancelar(); }}>Restablecer</button>
       <button className="btn s primario" type="submit" disabled={!puedeGuardar}>
         {guardando ? 'Guardando…' : vacio ? 'Confirmar vacío y limpiar · Siguiente' : ocupadoConFachada ? 'Quitar metros y siguiente' : 'Confirmar ocupado · Siguiente'}
       </button>
