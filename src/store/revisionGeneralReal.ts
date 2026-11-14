@@ -19,6 +19,7 @@ export interface CambioRevisionGeneralReal {
   registroId: string;
   version: number;
   correccion: CorreccionRegistro | null;
+  accion?: 'guardar' | 'ocupar' | 'vaciar' | 'deshacer';
 }
 
 const RPC = 'ulit_censo_revision_fase1_2026';
@@ -102,7 +103,7 @@ export async function guardarCorreccionRevisionGeneral(
       || entidad.historial.length !== 0))) {
     throw new Error('El servidor no confirmó la corrección. Comprueba la ficha antes de repetirla.');
   }
-  return { registroId, version: version + 1, correccion: entidad };
+  return { registroId, version: version + 1, correccion: entidad, accion };
 }
 
 
@@ -131,5 +132,5 @@ export async function deshacerLimpiezaVacio(
         || resultado.correccion.campanaId !== CAMPANA_2026))) {
     throw new Error('No se confirmó la restauración. Comprueba la ficha.');
   }
-  return { registroId, version: version + 1, correccion: resultado.correccion ?? null };
+  return { registroId, version: version + 1, correccion: resultado.correccion ?? null, accion: 'deshacer' };
 }
