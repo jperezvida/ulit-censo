@@ -79,7 +79,7 @@ export const CAMPOS_DEL_NEGOCIO = [
 
 /** «LV» no es un comercio. Tampoco valida la existencia de un negocio ocupado. */
 export function nombreEsMarcaDeVacio(nombre: string): boolean {
-  return /^(?:l\\.?\\s*v\\.?|local\\s+vac[ií]o|vac[ií]o|sin\\s+ocupante|sin\\s+actividad)$/iu.test(nombre.trim());
+  return /^(?:l\.?\s*v\.?|local\s+vac[ií]o|vac[ií]o|sin\s+ocupante|sin\s+actividad)$/iu.test(nombre.trim());
 }
 
 /**
@@ -88,11 +88,11 @@ export function nombreEsMarcaDeVacio(nombre: string): boolean {
  * La fuente importada se conserva y permite restauración supervisada.
  */
 export function propuestaVacioLimpio(
-  registro: RegistroOrigen, metros: string,
+  metros: string,
 ): Record<string, string> {
   const normalizados = metros.trim();
   const numero = Number(normalizados.replace(',', '.'));
-  if (!/^\\d{1,5}([,.]\\d{1,3})?$/.test(normalizados) || numero <= 0) {
+  if (!/^\d{1,5}([,.]\d{1,3})?$/.test(normalizados) || numero <= 0) {
     throw new Error('Para confirmar el vacío hay que indicar metros positivos de fachada.');
   }
   const salida: Record<string, string> = { vacio: '1', fachada: normalizados };
