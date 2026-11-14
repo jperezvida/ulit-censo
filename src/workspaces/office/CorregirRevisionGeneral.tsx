@@ -108,6 +108,8 @@ export default function CorregirRevisionGeneral({ fila, habilitada, version, mot
     fila.registro, { ...(fila.correccion?.valores ?? {}), ...valores },
   ), [fila, valores]);
   const sinCambios = Object.keys(valores).length === 0;
+  // Restablecer debe funcionar también si se ha escrito una medida inválida.
+  const hayEdicionSinGuardar = estado !== estadoActual || fachada !== fachadaActual;
   const motivoAutomatico = descripcionAutomaticaCorreccion(valores, fila.correccion?.valores);
   const puedeGuardar = habilitada && !!version && !sinCambios && !guardando
     && (estado === '0' ? (puedeConfirmarOcupado || ocupadoConFachada) : metrosFachadaValidos(fachada));
@@ -193,7 +195,7 @@ export default function CorregirRevisionGeneral({ fila, habilitada, version, mot
         Deshacer corrección
       </button>}
       <button className="btn s" type="button"
-        disabled={guardando || (sinCambios && estado === estadoActual)}
+        disabled={guardando || !hayEdicionSinGuardar}
         onClick={() => { onBorradorChange?.(null); onCancelar(); }}>Restablecer</button>
       <button className="btn s primario" type="submit" disabled={!puedeGuardar}>
         {guardando ? 'Guardando…' : vacio ? 'Confirmar vacío y limpiar · Siguiente' : ocupadoConFachada ? 'Quitar metros y siguiente' : 'Confirmar ocupado · Siguiente'}
