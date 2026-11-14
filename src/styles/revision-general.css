@@ -97,3 +97,13 @@
   .rg-etiquetas { max-width: 50%; }
   .rg-siguiente-pendiente .btn { width: 100%; justify-content: center; }
 }
+
+/* Street View abre panorámica en pestaña nueva sin interrumpir la revisión. */
+.rg-streetview { display: flex; align-items: flex-start; flex-direction: column; gap: 7px; margin-top: 11px; }
+.rg-streetview-enlace { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.rg-streetview-aviso { display: block; max-width: 440px; color: #687e97; font-size: 11px; line-height: 1.45; }
+.rg-streetview-enlace:focus-visible { outline: 3px solid #5ea2ee; outline-offset: 3px; }
+@media (max-width: 600px) {
+  .rg-streetview-enlace { min-height: 40px; }
+  .rg-streetview-aviso { max-width: 100%; }
+}
