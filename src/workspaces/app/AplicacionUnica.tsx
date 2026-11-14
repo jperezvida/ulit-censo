@@ -108,16 +108,16 @@ export default function AplicacionUnica() {
     setLectura((anterior) => {
       if (!anterior || anterior.version + 1 !== cambio.version
         || !anterior.db.registros[cambio.registroId]) return anterior;
+      const correcciones = { ...(anterior.db.correccionesRegistros ?? {}) };
+      if (cambio.correccion === null) {
+        // Deshacer una primera limpieza: no guardar objetos null en la base local.
+        delete correcciones[cambio.registroId];
+      } else {
+        correcciones[cambio.registroId] = cambio.correccion;
+      }
       return {
-        ...anterior,
-        version: cambio.version,
-        db: {
-          ...anterior.db,
-          correccionesRegistros: {
-            ...(anterior.db.correccionesRegistros ?? {}),
-            [cambio.registroId]: cambio.correccion,
-          },
-        },
+        ...anterior, version: cambio.version,
+        db: { ...anterior.db, correccionesRegistros: correcciones },
       };
     });
   }, []);
