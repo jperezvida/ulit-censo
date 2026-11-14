@@ -87,7 +87,7 @@ describe('Street View directo · Fase 1', () => {
     const { db, fila } = escenario();
     fila.direccion = 'Calle del Duque de Ahumada';
     db.calles.leonor.alias = [{ nombre: 'Calle del Duque de Ahumada', tipo: 'alternativo',
-      fuente: 'callejero', fecha: '2026-11-14' }];
+      fuente: 'callejero', porId: 'coordinacion', fecha: '2026-11-14' }];
     expect(streetViewParaRevision(db, CAMPANA, fila)?.origen).toBe('calle');
     db.calles.leonor.municipioId = 'otro';
     expect(streetViewParaRevision(db, CAMPANA, fila)).toBeNull();
