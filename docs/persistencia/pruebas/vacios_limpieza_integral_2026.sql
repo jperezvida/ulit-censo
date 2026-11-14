@@ -69,8 +69,8 @@ begin
     end if;
   end loop;
   if jsonb_array_length(v->'correccion'->'historial')<>0
-    or v->'correccion'::text like '%Comercio antiguo%'
-    or v->'correccion'::text like '%Nota del negocio anterior%' then
+    or (v->'correccion')::text like '%Comercio antiguo%'
+    or (v->'correccion')::text like '%Nota del negocio anterior%' then
     raise exception 'Historial funcional contiene información de ocupante anterior';
   end if;
   if (select valor from ulit_censo.entidad
