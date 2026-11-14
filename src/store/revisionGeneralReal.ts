@@ -1,4 +1,5 @@
 import type { CorreccionRegistro } from '../domain/types';
+import { CAMPOS_DEL_NEGOCIO } from '../domain/revisionGeneral';
 import { clienteServidor } from './clienteSupabase';
 
 /** Espacio real; nunca se usa la escritura genérica para Fase 1. */
@@ -17,7 +18,7 @@ export interface CapacidadRevisionGeneral {
 export interface CambioRevisionGeneralReal {
   registroId: string;
   version: number;
-  correccion: CorreccionRegistro;
+  correccion: CorreccionRegistro | null;
 }
 
 const RPC = 'ulit_censo_revision_fase1_2026';
@@ -35,7 +36,7 @@ export async function capacidadRevisionGeneral(): Promise<CapacidadRevisionGener
       ? 'El guardado supervisado aún no está instalado en el servidor.'
       : 'No se pudo comprobar la autorización de guardado.' };
   const estado = data as CapacidadRevisionGeneral | null;
-  return estado?.habilitada === true && estado.alcance === 'fachada-y-ocupacion'
+  return estado?.habilitada === true && estado.alcance === 'revision-vacios-completa'
     ? estado : { habilitada: false, motivo: estado?.motivo || 'Autorización no verificable.' };
 }
 
@@ -57,12 +58,20 @@ export async function guardarCorreccionRevisionGeneral(
   const fachada = claves.join(',') === 'fachada'
     && /^[0-9]{1,5}([,.][0-9]{1,3})?$/.test((valores.fachada ?? '').trim())
     && Number(valores.fachada.replace(',','.')) > 0;
-  if (!registroId || !Number.isSafeInteger(version) || version < 8 || (!ocupar && !fachada)) {
-    throw new Error('Solo se permiten los metros de fachada o confirmar la ocupación de un local con nombre.');
+  const fachadaLimpieza = valores.fachada ?? '';
+  const vaciar = claves.length === CAMPOS_DEL_NEGOCIO.length + 2
+    && valores.vacio === '1'
+    && /^[0-9]{1,5}([,.][0-9]{1,3})?$/.test(fachadaLimpieza)
+    && Number(fachadaLimpieza.replace(',','.')) > 0
+    && CAMPOS_DEL_NEGOCIO.every((clave) => valores[clave] === '');
+  if (!registroId || !Number.isSafeInteger(version) || version < 8
+    || (!ocupar && !fachada && !vaciar)) {
+    throw new Error('Solo se permiten metros válidos, confirmar ocupado o limpiar un vacío.');
   }
+  const accion = vaciar ? 'vaciar' : ocupar ? 'ocupar' : 'guardar';
   const { data, error } = await cliente.rpc(RPC, {
     p_espacio: ESPACIO_REVISION_2026,
-    p_accion: ocupar ? 'ocupar' : 'guardar',
+    p_accion: accion,
     p_version_esperada: version,
     p_registro_id: registroId,
     p_metros: ocupar ? '' : valores.fachada.trim(),
@@ -78,14 +87,49 @@ export async function guardarCorreccionRevisionGeneral(
     accion?: string;
   } | null;
   const entidad = resultado?.correccion;
-  if (resultado?.registroId !== registroId || Number(resultado.version) !== version + 1
-    || resultado.accion !== (ocupar ? 'ocupar' : 'guardar')
-    || entidad?.id !== registroId || entidad.registroId !== registroId
+  if (!entidad || resultado?.registroId !== registroId
+    || Number(resultado.version) !== version + 1
+    || resultado.accion !== accion
+    || entidad.id !== registroId || entidad.registroId !== registroId
     || entidad.campanaId !== CAMPANA_2026 || !entidad.porId || !entidad.fecha
     || !entidad.valores || !Array.isArray(entidad.historial)
-    || (ocupar ? entidad.valores.vacio !== '0' ||
-      !['',undefined].includes(entidad.valores.fachada) : entidad.valores.fachada !== valores.fachada.trim())) {
+    || (ocupar && entidad.valores.vacio !== '0')
+    || (fachada && entidad.valores.fachada !== valores.fachada.trim())
+    || (vaciar && (entidad.tipoRevision !== 'vaciar'
+      || entidad.valores.vacio !== '1'
+      || entidad.valores.fachada !== valores.fachada.trim()
+      || !CAMPOS_DEL_NEGOCIO.every((clave) => entidad.valores[clave] === '')
+      || entidad.historial.length !== 0))) {
     throw new Error('El servidor no confirmó la corrección. Comprueba la ficha antes de repetirla.');
   }
   return { registroId, version: version + 1, correccion: entidad };
+}
+
+
+/** Revierte solo una limpieza de vacío, mediante el historial técnico protegido.
+ * No solicita ni expone datos anteriores en la interfaz ni en la exportación. */
+export async function deshacerLimpiezaVacio(
+  registroId: string, version: number,
+): Promise<CambioRevisionGeneralReal> {
+  const cliente = clienteServidor();
+  if (!cliente || !registroId || !Number.isSafeInteger(version) || version < 8) {
+    throw new Error('No se puede verificar la autorización para deshacer.');
+  }
+  const { data, error } = await cliente.rpc(RPC, {
+    p_espacio: ESPACIO_REVISION_2026, p_accion: 'deshacer',
+    p_version_esperada: version, p_registro_id: registroId, p_metros: '',
+  });
+  if (error?.code === 'PT409') throw new Error('El censo cambió. Actualiza antes de deshacer.');
+  if (error) throw new Error(error.message.replace(/^ULIT Censo: /, ''));
+  const resultado = data as {
+    version?: number; registroId?: string; accion?: string; correccion?: CorreccionRegistro | null;
+  } | null;
+  if (resultado?.version !== version + 1 || resultado.registroId !== registroId
+    || resultado.accion !== 'deshacer'
+    || (resultado.correccion != null &&
+      (resultado.correccion.registroId !== registroId
+        || resultado.correccion.campanaId !== CAMPANA_2026))) {
+    throw new Error('No se confirmó la restauración. Comprueba la ficha.');
+  }
+  return { registroId, version: version + 1, correccion: resultado.correccion ?? null };
 }
