@@ -4,11 +4,11 @@ import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Search } from '
 import { useContexto } from '../../store/contexto';
 import { useFuenteOficina } from '../../store/fuenteOficina';
 import { capacidadRevisionGeneral, type CapacidadRevisionGeneral } from '../../store/revisionGeneralReal';
-import CorregirRevisionGeneral from './CorregirRevisionGeneral';
+import CorregirRevisionGeneral, { type BorradorRevisionGeneral } from './CorregirRevisionGeneral';
 import { auditarRevisionGeneral, type FilaRevisionGeneral } from '../../domain/revisionGeneral';
 import '../../styles/revision-general.css';
 
-type Filtro = 'incidencias' | 'vacios' | 'ocupados';
+type Filtro = 'incidencias' | 'corregidos' | 'vacios' | 'ocupados';
 const TEXTO_ESTADO = { vacio: 'Vacío', ocupado: 'Ocupado', desconocido: 'Estado por confirmar' };
 
 function ValorOriginal({ fila }: { fila: FilaRevisionGeneral }) {
@@ -41,6 +41,9 @@ export default function RevisionGeneral() {
   const [recorridoIds, setRecorridoIds] = useState<string[] | null>(null);
   const [reinicioFicha, setReinicioFicha] = useState(0);
   const [avisoGuardado, setAvisoGuardado] = useState('');
+  /** Los borradores viven en la bandeja, no en la ficha desmontable al navegar. */
+  const [borradores, setBorradores] = useState<Record<string, BorradorRevisionGeneral>>({});
+  const [guardandoRegistro, setGuardandoRegistro] = useState(false);
   const [capacidad, setCapacidad] = useState<CapacidadRevisionGeneral>({ habilitada: false, motivo: 'Comprobando autorización…' });
   useEffect(() => {
     if (!fuente?.soloLectura || campana?.anio !== 2026) return;
@@ -53,6 +56,7 @@ export default function RevisionGeneral() {
 
   const opciones = [
     { clave: 'incidencias' as const, etiqueta: 'Con incidencias', total: resultado.conIncidencias },
+    { clave: 'corregidos' as const, etiqueta: 'Con corrección', total: resultado.filas.filter((f) => !!f.correccion).length },
     { clave: 'vacios' as const, etiqueta: 'Locales vacíos', total: resultado.filas.filter((f) => f.estado === 'vacio').length },
     { clave: 'ocupados' as const, etiqueta: 'Locales ocupados', total: resultado.filas.filter((f) => f.estado === 'ocupado').length },
   ];
@@ -61,7 +65,9 @@ export default function RevisionGeneral() {
   const texto = busqueda.trim().toLocaleLowerCase('es');
   const filtradas = resultado.filas.filter((f) =>
     (!itinerarioFiltro || f.itinerario === itinerarioFiltro)
-    && (filtro === 'incidencias' ? f.incidencias.length > 0 : filtro === 'vacios' ? f.estado === 'vacio' : f.estado === 'ocupado')
+    && (filtro === 'incidencias' ? f.incidencias.length > 0
+      : filtro === 'corregidos' ? !!f.correccion
+        : filtro === 'vacios' ? f.estado === 'vacio' : f.estado === 'ocupado')
     && (!texto || [f.direccion, f.numero, f.nombre, f.itinerario, f.archivo, String(f.registro.fila), ...f.incidencias.map((i) => i.titulo)]
       .join(' ').toLocaleLowerCase('es').includes(texto))
   );
@@ -73,25 +79,43 @@ export default function RevisionGeneral() {
     : filtradas;
   const indice = Math.max(0, recorrido.findIndex((f) => f.id === seleccionado));
   const activa = recorrido[indice];
+  const indicePendiente = recorrido.findIndex((fila, i) => i > indice && fila.incidencias.length > 0);
+  const siguientePendiente = indicePendiente >= 0
+    ? indicePendiente
+    : recorrido.findIndex((fila, i) => i !== indice && fila.incidencias.length > 0);
   const pasar = (pos: number) => {
-    if (pos >= 0 && pos < recorrido.length) {
-      setSeleccionado(recorrido[pos].id);
-      setReinicioFicha((n) => n + 1);
-    }
+    if (guardandoRegistro || pos < 0 || pos >= recorrido.length) return;
+    setSeleccionado(recorrido[pos].id);
+    if (pos >= limite) setLimite(pos + 20);
+    setReinicioFicha((n) => n + 1);
   };
   const reiniciarRecorrido = () => {
+    if (guardandoRegistro) return;
     setSeleccionado(null);
     setRecorridoIds(null);
     setReinicioFicha((n) => n + 1);
     setLimite(80);
     setAvisoGuardado('');
   };
-  const elegirFiltro = (f: Filtro) => { setFiltro(f); reiniciarRecorrido(); };
+  const elegirFiltro = (f: Filtro) => {
+    if (guardandoRegistro) return;
+    setFiltro(f);
+    reiniciarRecorrido();
+  };
+  const actualizarBorrador = (id: string, borrador: BorradorRevisionGeneral | null) => {
+    setBorradores((anteriores) => {
+      const nuevos = { ...anteriores };
+      if (borrador) nuevos[id] = borrador;
+      else delete nuevos[id];
+      return nuevos;
+    });
+  };
 
   return <main className="pagina rg-pagina">
     <div className="pagina-cab">
       <div>
-        <Link to="/oficina" className="btn s fantasma"><ChevronLeft size={14} /> Volver a Oficina</Link>
+        <Link to="/oficina" className="btn s fantasma" aria-disabled={guardandoRegistro}
+          onClick={(e) => { if (guardandoRegistro) e.preventDefault(); }}><ChevronLeft size={14} /> Volver a Oficina</Link>
         <div className="rotulo" style={{ marginTop: 14 }}>Oficina · {campana.nombre} · Fase 1</div>
         <h1>Revisión general</h1>
         <p>La aplicación detecta las incidencias. Revisa los datos directamente, guarda y continúa con la siguiente; puedes volver atrás.</p>
@@ -99,6 +123,9 @@ export default function RevisionGeneral() {
     </div>
 
     {avisoGuardado && <p className="rg-previa ok" role="status">{avisoGuardado}</p>}
+    {Object.keys(borradores).length > 0 && <p className="rg-borradores" role="status">
+      {Object.keys(borradores).length} ficha(s) con cambios pendientes de guardar. Los borradores se conservan mientras recorres las fichas en esta pantalla.
+    </p>}
     <div className="rg-resumen" role="status">
       <span><b>{resultado.examinadas}</b> registros comprobados</span>
       <span className={resultado.conIncidencias ? 'rg-alerta' : ''}><b>{resultado.conIncidencias}</b> con incidencias</span>
@@ -110,35 +137,42 @@ export default function RevisionGeneral() {
       <div className="rg-filtros" role="group" aria-label="Filtrar revisión general">
         {opciones.map((op) => <button key={op.clave} type="button"
           className={filtro === op.clave ? 'btn s primario' : 'btn s'}
-          aria-pressed={filtro === op.clave} onClick={() => elegirFiltro(op.clave)}>
+          aria-pressed={filtro === op.clave} disabled={guardandoRegistro} onClick={() => elegirFiltro(op.clave)}>
           {op.etiqueta} <b>{op.total}</b>
         </button>)}
       </div>
-      {itinerarios.length > 1 && <select className="input rg-itinerario" aria-label="Filtrar por itinerario" value={itinerarioFiltro}
+      {itinerarios.length > 1 && <select className="input rg-itinerario" aria-label="Filtrar por itinerario"
+        disabled={guardandoRegistro} value={itinerarioFiltro}
         onChange={(e) => { setItinerarioFiltro(e.target.value); reiniciarRecorrido(); }}>
         <option value="">Todos los itinerarios</option>
         {itinerarios.map((codigo) => <option key={codigo} value={codigo}>{codigo} · {resultado.filas.filter((f) => f.itinerario === codigo && f.incidencias.length).length} con incidencias</option>)}
       </select>}
       <label className="rg-buscador"><Search size={15} /><input aria-label="Buscar por calle, negocio, itinerario o fila" placeholder="Buscar calle, negocio o fila…"
-        value={busqueda} onChange={(e) => { setBusqueda(e.target.value); reiniciarRecorrido(); }} /></label>
+        value={busqueda} disabled={guardandoRegistro}
+        onChange={(e) => { setBusqueda(e.target.value); reiniciarRecorrido(); }} /></label>
     </div>
 
     {resultado.examinadas === 0 && <div className="t-info">No hay filas de Excel confirmadas en esta campaña. La revisión comenzará cuando se incorporen sus itinerarios.</div>}
     {resultado.examinadas > 0 && <div className="rg-doscolumnas">
       <section className="rg-listado" aria-label="Registros para revisar">
         <div className="rg-listado-cab">
-          {recorridoIds ? `${filtradas.length} pendientes · ${recorrido.length - filtradas.length} revisadas en esta tanda`
+          {recorridoIds && filtro === 'incidencias'
+            ? `${recorrido.filter((f) => f.incidencias.length > 0).length} pendientes · ${recorrido.filter((f) => f.incidencias.length === 0).length} revisadas en esta tanda`
             : `${filtradas.length} filas en esta vista`}
         </div>
         {recorrido.slice(0, limite).map((f) => <button key={f.id} type="button"
           className={`rg-fila ${activa?.id === f.id ? 'seleccionada' : ''}`}
-          aria-pressed={activa?.id === f.id} onClick={() => { setSeleccionado(f.id); setReinicioFicha((n) => n + 1); }}>
+          aria-pressed={activa?.id === f.id} disabled={guardandoRegistro}
+          onClick={() => { setSeleccionado(f.id); setReinicioFicha((n) => n + 1); }}>
           <span className="rg-fila-arriba"><b>{f.nombre || (f.estado === 'vacio' ? 'Local vacío' : 'Sin nombre')}</b>
-            <span className={f.incidencias.length ? 'rg-chip-alerta' : 'rg-chip-ok'}>{f.incidencias.length ? `${f.incidencias.length} aviso(s)` : 'Sin incidencias'}</span></span>
+            <span className="rg-etiquetas">
+              {borradores[f.id] && <span className="rg-chip-borrador">Sin guardar</span>}
+              <span className={f.incidencias.length ? 'rg-chip-alerta' : 'rg-chip-ok'}>{f.incidencias.length ? `${f.incidencias.length} aviso(s)` : 'Sin incidencias'}</span>
+            </span></span>
           <span className="rg-fila-abajo">{f.direccion}, {f.numero} · {f.itinerario} · fila {f.registro.fila}</span>
         </button>)}
         {recorrido.length === 0 && <div className="t-info">No hay registros con estos filtros.</div>}
-        {recorrido.length > limite && <button className="btn s rg-mas" onClick={() => setLimite((v) => v + 80)}>
+        {recorrido.length > limite && <button className="btn s rg-mas" disabled={guardandoRegistro} onClick={() => setLimite((v) => v + 80)}>
           Mostrar más ({recorrido.length - limite} restantes)
         </button>}
       </section>
@@ -150,11 +184,17 @@ export default function RevisionGeneral() {
               <h2>{activa.nombre || (activa.estado === 'vacio' ? 'Local vacío' : 'Nombre sin consignar')}</h2>
               <p>{activa.direccion}, {activa.numero}</p></div>
             <div className="rg-paginacion">
-              <button className="btn s icono" aria-label="Registro anterior" onClick={() => pasar(indice - 1)} disabled={indice === 0}><ChevronLeft size={15} /></button>
+              <button className="btn s icono" aria-label="Registro anterior" onClick={() => pasar(indice - 1)} disabled={guardandoRegistro || indice === 0}><ChevronLeft size={15} /></button>
               <span>{indice + 1} / {recorrido.length}</span>
-              <button className="btn s icono" aria-label="Registro siguiente" onClick={() => pasar(indice + 1)} disabled={indice === recorrido.length - 1}><ChevronRight size={15} /></button>
+              <button className="btn s icono" aria-label="Registro siguiente" onClick={() => pasar(indice + 1)} disabled={guardandoRegistro || indice === recorrido.length - 1}><ChevronRight size={15} /></button>
             </div>
           </div>
+          {siguientePendiente >= 0 && <div className="rg-siguiente-pendiente">
+            <button type="button" className="btn s" disabled={guardandoRegistro}
+              onClick={() => pasar(siguientePendiente)}>
+              Siguiente con incidencias <ChevronRight size={14} />
+            </button>
+          </div>}
           {activa.incidencias.length ? <div className="rg-incidencias">
             {activa.incidencias.map((inc) => <div className="rg-incidencia" key={inc.tipo}>
               <AlertTriangle size={17} /><div><b>{inc.titulo}</b><p>{inc.detalle}</p></div>
@@ -165,6 +205,9 @@ export default function RevisionGeneral() {
             <CorregirRevisionGeneral key={`${activa.id}-${reinicioFicha}`}
               fila={activa} habilitada={capacidad.habilitada}
               version={fuente.versionReal} motivoBloqueo={capacidad.motivo}
+              borrador={borradores[activa.id]}
+              onBorradorChange={(borrador) => actualizarBorrador(activa.id, borrador)}
+              onGuardandoChange={setGuardandoRegistro}
               onCancelar={() => setReinicioFicha((n) => n + 1)}
               onGuardada={(cambio) => {
                 if (!fuente.aplicarCorreccionReal) throw new Error(
@@ -173,16 +216,22 @@ export default function RevisionGeneral() {
                 // del filtro «Con incidencias».
                 if (!recorridoIds) setRecorridoIds(recorrido.map((f) => f.id));
                 fuente.aplicarCorreccionReal(cambio);
+                actualizarBorrador(activa.id, null);
                 if (cambio.accion === 'deshacer') {
                   setSeleccionado(activa.id);
                   setAvisoGuardado('Corrección deshecha. Se recuperó el estado anterior y puedes revisarlo.');
                   setReinicioFicha((n) => n + 1);
                   return;
                 }
-                const siguiente = recorrido.slice(indice + 1).find((f) => f.incidencias.length > 0);
+                const pendientePosterior = recorrido.slice(indice + 1).find((f) => f.incidencias.length > 0);
+                const siguiente = pendientePosterior ?? recorrido.slice(0, indice).find((f) => f.incidencias.length > 0);
                 if (siguiente) {
                   setSeleccionado(siguiente.id);
-                  setAvisoGuardado('Guardado correctamente. Siguiente incidencia preparada.');
+                  const nuevaPos = recorrido.findIndex((f) => f.id === siguiente.id);
+                  if (nuevaPos >= limite) setLimite(nuevaPos + 20);
+                  setAvisoGuardado(pendientePosterior
+                    ? 'Guardado correctamente. Siguiente incidencia preparada.'
+                    : 'Guardado correctamente. Continuamos con una incidencia anterior pendiente.');
                 } else {
                   setSeleccionado(activa.id);
                   setAvisoGuardado('Guardado. Has llegado al final de esta tanda. Puedes volver a las filas anteriores.');
