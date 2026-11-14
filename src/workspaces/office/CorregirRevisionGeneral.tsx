@@ -63,21 +63,24 @@ export default function CorregirRevisionGeneral({ fila, habilitada, version, mot
   const [error, setError] = useState('');
   const vacio = estado === '1';
   const puedeConfirmarOcupado = estadoActual === '1' && tieneNombreComercial;
+  const ocupadoConFachada = estadoActual === '0' && actual('fachada').trim() !== '';
   const puedeDeshacer = fila.correccion?.tipoRevision === 'vaciar';
   const limpiezaPendiente = fila.incidencias.length > 0;
   const fachadaModificada = fachada.trim() !== actual('fachada');
 
   const valores = useMemo<Record<string, string>>(() => {
     if (estado === '0') {
-      return puedeConfirmarOcupado && estadoActual === '1'
-        ? { vacio: '0', fachada: '' } : {};
+      if (puedeConfirmarOcupado && estadoActual === '1') return { vacio: '0', fachada: '' };
+      // El local YA está ocupado: limpiar únicamente la fachada de local vacío.
+      if (ocupadoConFachada) return { fachada: '' };
+      return {};
     }
     if (estado === '1' && metrosFachadaValidos(fachada)
       && (limpiezaPendiente || estadoActual !== '1' || fachadaModificada)) {
       return propuestaVacioLimpio(fachada);
     }
     return {};
-  }, [estado, estadoActual, puedeConfirmarOcupado, limpiezaPendiente, fachadaModificada, fachada]);
+  }, [estado, estadoActual, puedeConfirmarOcupado, ocupadoConFachada, limpiezaPendiente, fachadaModificada, fachada]);
 
   const tras = useMemo(() => revisarRegistroGeneral(
     fila.registro, { ...(fila.correccion?.valores ?? {}), ...valores },
@@ -85,7 +88,7 @@ export default function CorregirRevisionGeneral({ fila, habilitada, version, mot
   const sinCambios = Object.keys(valores).length === 0;
   const motivoAutomatico = descripcionAutomaticaCorreccion(valores, fila.correccion?.valores);
   const puedeGuardar = habilitada && !!version && !sinCambios && !guardando
-    && (estado === '0' ? puedeConfirmarOcupado : metrosFachadaValidos(fachada));
+    && (estado === '0' ? (puedeConfirmarOcupado || ocupadoConFachada) : metrosFachadaValidos(fachada));
 
   const guardar = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -141,7 +144,9 @@ export default function CorregirRevisionGeneral({ fila, habilitada, version, mot
       Al confirmar se conservarán dirección, número, fecha y metros.
       Se retirarán nombre, actividad, franquicia, redes, reseñas y observaciones del censo vigente.
     </p> : <p className="rg-previa ok">
-      Se conservará «{nombreOriginal}» y se retirarán los indicadores y metros de local vacío.
+      {ocupadoConFachada
+        ? 'Este local ya está ocupado. Se quitarán únicamente los metros de fachada de local vacío; nombre, estado y datos del negocio no cambiarán.'
+        : 'Se conservará el negocio y se retirarán los indicadores y metros de local vacío.'}
     </p>}
     <p className={tras.incidencias.length ? 'rg-previa aviso' : 'rg-previa ok'}>
       {sinCambios ? 'Sin cambios por guardar.' :
@@ -161,7 +166,7 @@ export default function CorregirRevisionGeneral({ fila, habilitada, version, mot
         disabled={guardando || (sinCambios && estado === estadoActual)}
         onClick={onCancelar}>Restablecer</button>
       <button className="btn s primario" type="submit" disabled={!puedeGuardar}>
-        {guardando ? 'Guardando…' : vacio ? 'Confirmar vacío y limpiar · Siguiente' : 'Confirmar ocupado · Siguiente'}
+        {guardando ? 'Guardando…' : vacio ? 'Confirmar vacío y limpiar · Siguiente' : ocupadoConFachada ? 'Quitar metros y siguiente' : 'Confirmar ocupado · Siguiente'}
       </button>
     </div>
   </form>;

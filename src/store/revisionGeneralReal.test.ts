@@ -58,6 +58,22 @@ describe('RPC restringida de revisión y respuesta para actualización instantá
     const mal={...limpio,instagram:'1'};
     await expect(guardarCorreccionRevisionGeneral(REG,10,mal)).rejects.toThrow('Solo se permiten');
   });
+  it('permite limpiar exclusivamente la fachada de un local ya ocupado', async () => {
+    rpc.mockResolvedValueOnce({data:{version:10,registroId:REG,accion:'limpiar-fachada',
+      correccion:correccion({fachada:''})},error:null});
+    const resultado=await guardarCorreccionRevisionGeneral(REG,9,{fachada:''});
+    expect(resultado.accion).toBe('limpiar-fachada');
+    expect(resultado.correccion?.valores.fachada).toBe('');
+    expect(rpc).toHaveBeenCalledWith('ulit_censo_revision_fase1_2026',
+      expect.objectContaining({p_accion:'limpiar-fachada',p_metros:''}));
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+  it('no acepta una respuesta de fachada no limpiada', async () => {
+    rpc.mockResolvedValueOnce({data:{version:10,registroId:REG,accion:'limpiar-fachada',
+      correccion:correccion({fachada:'8'})},error:null});
+    await expect(guardarCorreccionRevisionGeneral(REG,9,{fachada:''}))
+      .rejects.toThrow('no confirmó');
+  });
   it('deshacer limpieza recupera corrección anterior o null sin segunda descarga', async () => {
     rpc.mockResolvedValueOnce({data:{version:10,registroId:REG,accion:'deshacer',
       correccion:null},error:null});
