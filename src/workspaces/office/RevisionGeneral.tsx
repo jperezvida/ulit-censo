@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { AlertTriangle, Camera, CheckCircle2, ChevronLeft, ChevronRight, ExternalLink, Search } from 'lucide-react';
 import { useContexto } from '../../store/contexto';
 import { useFuenteOficina } from '../../store/fuenteOficina';
 import { capacidadRevisionGeneral, type CapacidadRevisionGeneral } from '../../store/revisionGeneralReal';
 import CorregirRevisionGeneral, { type BorradorRevisionGeneral } from './CorregirRevisionGeneral';
 import { auditarRevisionGeneral, type FilaRevisionGeneral } from '../../domain/revisionGeneral';
+import { streetViewParaRevision } from '../../domain/streetViewRevision';
 import '../../styles/revision-general.css';
 
 type Filtro = 'incidencias' | 'corregidos' | 'vacios' | 'ocupados';
@@ -79,6 +80,7 @@ export default function RevisionGeneral() {
     : filtradas;
   const indice = Math.max(0, recorrido.findIndex((f) => f.id === seleccionado));
   const activa = recorrido[indice];
+  const streetView = activa ? streetViewParaRevision(db, campana.id, activa) : null;
   const indicePendiente = recorrido.findIndex((fila, i) => i > indice && fila.incidencias.length > 0);
   const siguientePendiente = indicePendiente >= 0
     ? indicePendiente
@@ -182,7 +184,18 @@ export default function RevisionGeneral() {
           <div className="rg-detalle-cab">
             <div><small>{activa.itinerario} · Fila {activa.registro.fila} · {TEXTO_ESTADO[activa.estado]}{activa.correccion ? ' · Corrección registrada' : ''}</small>
               <h2>{activa.nombre || (activa.estado === 'vacio' ? 'Local vacío' : 'Nombre sin consignar')}</h2>
-              <p>{activa.direccion}, {activa.numero}</p></div>
+              <p>{activa.direccion}, {activa.numero}</p>
+              {streetView && <div className="rg-streetview">
+                <a className="btn s rg-streetview-enlace" href={streetView.url}
+                  target="_blank" rel="noopener noreferrer"
+                  aria-label={streetView.precision === 'verificada'
+                    ? 'Abrir panorama de Street View próximo al local'
+                    : 'Abrir Street View aproximado de la calle'}>
+                  <Camera size={15} /> Ver Street View <ExternalLink size={13} />
+                </a>
+                <small className="rg-streetview-aviso">{streetView.aviso}</small>
+              </div>}
+            </div>
             <div className="rg-paginacion">
               <button className="btn s icono" aria-label="Registro anterior" onClick={() => pasar(indice - 1)} disabled={guardandoRegistro || indice === 0}><ChevronLeft size={15} /></button>
               <span>{indice + 1} / {recorrido.length}</span>
