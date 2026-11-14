@@ -41,13 +41,12 @@ function VistaContinua() {
   const [db, setDb] = useState(datos);
   const [version, setVersion] = useState(9);
   const aplicarCorreccionReal = (cambio: CambioRevisionGeneralReal) => {
-    setDb((prev) => ({
-      ...prev,
-      correccionesRegistros: {
-        ...(prev.correccionesRegistros ?? {}),
-        [cambio.registroId]: cambio.correccion,
-      },
-    }));
+    setDb((prev) => {
+      const correcciones = { ...(prev.correccionesRegistros ?? {}) };
+      if (cambio.correccion) correcciones[cambio.registroId] = cambio.correccion;
+      else delete correcciones[cambio.registroId];
+      return { ...prev, correccionesRegistros: correcciones };
+    });
     setVersion(cambio.version);
   };
   return <FuenteOficinaContext.Provider value={{
