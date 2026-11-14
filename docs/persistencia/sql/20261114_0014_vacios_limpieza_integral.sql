@@ -150,7 +150,7 @@ begin
       raise exception 'ULIT Censo: no hay nombre de negocio confirmado para marcar ocupado'
         using errcode='22023';
     end if;
-  elsif replace(pg_catalog.btrim(v_actual),',','.')
+  elsif p_accion='guardar' and replace(pg_catalog.btrim(v_actual),',','.')
       = replace(pg_catalog.btrim(p_metros),',','.') then
     raise exception 'ULIT Censo: los metros no han cambiado' using errcode='22023';
   end if;
