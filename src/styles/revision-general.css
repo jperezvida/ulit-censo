@@ -55,6 +55,13 @@
 .rg-corregir { margin: 5px 0 12px; }
 .rg-editor { border: 1px solid #d8e3ed; background: #f8fbfe; border-radius: 10px; padding: 15px; margin: 12px 0 17px; }
 .rg-editor h3 { font-size: 15px; margin: 0 0 5px; }
+.rg-opciones { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 9px; margin: 13px 0 15px; }
+.rg-opcion { appearance: none; min-height: 43px; border: 1px solid #cad7e8; border-radius: 9px; background: #fff; color: #35516d; font-size: 13px; font-weight: 700; cursor: pointer; transition: background .15s, border-color .15s, box-shadow .15s; }
+.rg-opcion:hover:not(:disabled) { border-color: #5595db; background: #f5faff; }
+.rg-opcion.elegida { border-color: #176de7; background: #eaf3ff; color: #1054af; box-shadow: inset 0 0 0 1px #176de7; }
+.rg-opcion:focus-visible { outline: 3px solid #83b8ff; outline-offset: 2px; }
+.rg-opcion:disabled { opacity: .55; cursor: not-allowed; }
+
 .rg-editor > p { margin: 3px 0 12px; font-size: 12px; line-height: 1.5; color: #596c83; }
 .rg-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 10px; }
 .rg-campos label, .rg-motivo { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 600; color: #3b5067; }
@@ -71,3 +78,9 @@
 .rg-motivo { margin: 10px 0; }
 .rg-acciones { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 @media (max-width: 520px) { .rg-campos { grid-template-columns: minmax(0,1fr); } }
+
+@media (max-width: 520px) {
+  .rg-opciones { gap: 6px; }
+  .rg-opcion { font-size: 12px; padding: 10px 5px; }
+  .rg-acciones .primario { flex: 1 1 100%; }
+}
