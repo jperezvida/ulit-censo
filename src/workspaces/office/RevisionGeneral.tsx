@@ -173,6 +173,12 @@ export default function RevisionGeneral() {
                 // del filtro «Con incidencias».
                 if (!recorridoIds) setRecorridoIds(recorrido.map((f) => f.id));
                 fuente.aplicarCorreccionReal(cambio);
+                if (cambio.accion === 'deshacer') {
+                  setSeleccionado(activa.id);
+                  setAvisoGuardado('Corrección deshecha. Se recuperó el estado anterior y puedes revisarlo.');
+                  setReinicioFicha((n) => n + 1);
+                  return;
+                }
                 const siguiente = recorrido.slice(indice + 1).find((f) => f.incidencias.length > 0);
                 if (siguiente) {
                   setSeleccionado(siguiente.id);

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { FilaRevisionGeneral } from '../../domain/revisionGeneral';
-import { datoRevisionGeneral, revisarRegistroGeneral } from '../../domain/revisionGeneral';
-import { guardarCorreccionRevisionGeneral, type CambioRevisionGeneralReal } from '../../store/revisionGeneralReal';
+import { datoRevisionGeneral, nombreEsMarcaDeVacio, propuestaVacioLimpio, revisarRegistroGeneral } from '../../domain/revisionGeneral';
+import { deshacerLimpiezaVacio, guardarCorreccionRevisionGeneral, type CambioRevisionGeneralReal } from '../../store/revisionGeneralReal';
 
 const CLASIFICACION = ['grupoActividad', 'grupoComercio', 'subgrupo', 'actividad', 'descripcionActividad'];
 /** Justificación técnica automática: conserva la auditoría sin pedir texto al revisor. */
@@ -44,7 +44,7 @@ export function propuestaRevisionGeneral(
   return valores;
 }
 
-/** Una ficha, tres campos principales y controles opcionales según las incoherencias. */
+/** Revisión ágil: confirmación explícita, limpieza total y deshacer supervisado. */
 export default function CorregirRevisionGeneral({ fila, habilitada, version, motivoBloqueo, onGuardada, onCancelar }: {
   fila: FilaRevisionGeneral;
   habilitada: boolean;
@@ -54,38 +54,42 @@ export default function CorregirRevisionGeneral({ fila, habilitada, version, mot
   onCancelar: () => void;
 }) {
   const actual = (clave: string) => datoRevisionGeneral(fila.registro, clave, fila.correccion?.valores);
-  const [estado, setEstado] = useState(actual('vacio'));
-  const nombre = actual('nombre');
+  const estadoActual = actual('vacio');
+  const nombreOriginal = actual('nombre');
+  const tieneNombreComercial = !!nombreOriginal.trim() && !nombreEsMarcaDeVacio(nombreOriginal);
+  const [estado, setEstado] = useState(estadoActual);
   const [fachada, setFachada] = useState(actual('fachada'));
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
   const vacio = estado === '1';
-  const permitirOcupar = fila.estado === 'vacio' && !!nombre.trim();
+  const puedeConfirmarOcupado = estadoActual === '1' && tieneNombreComercial;
+  const puedeDeshacer = fila.correccion?.tipoRevision === 'vaciar';
+  const limpiezaPendiente = fila.incidencias.length > 0;
+  const fachadaModificada = fachada.trim() !== actual('fachada');
 
-  // Cambio de estado explícito: la decisión la toma una persona cuando existe
-  // un negocio identificado. El servidor conserva nombre y datos del negocio.
   const valores = useMemo<Record<string, string>>(() => {
-    const propuestos: Record<string, string> = {};
-    if (estado === '0' && permitirOcupar) {
-      propuestos.vacio = '0';
-      propuestos.fachada = '';
-    } else if (fachada.trim() !== actual('fachada')) {
-      propuestos.fachada = fachada.trim();
+    if (estado === '0') {
+      return puedeConfirmarOcupado && estadoActual === '1'
+        ? { vacio: '0', fachada: '' } : {};
     }
-    return propuestos;
-  }, [estado, fachada, permitirOcupar, fila]);
+    if (estado === '1' && metrosFachadaValidos(fachada)
+      && (limpiezaPendiente || estadoActual !== '1' || fachadaModificada)) {
+      return propuestaVacioLimpio(fachada);
+    }
+    return {};
+  }, [estado, estadoActual, puedeConfirmarOcupado, limpiezaPendiente, fachadaModificada, fachada]);
 
   const tras = useMemo(() => revisarRegistroGeneral(
     fila.registro, { ...(fila.correccion?.valores ?? {}), ...valores },
   ), [fila, valores]);
-  const sinCambios = estado === actual('vacio')
-    && (estado === '0' || fachada.trim() === actual('fachada'));
+  const sinCambios = Object.keys(valores).length === 0;
   const motivoAutomatico = descripcionAutomaticaCorreccion(valores, fila.correccion?.valores);
+  const puedeGuardar = habilitada && !!version && !sinCambios && !guardando
+    && (estado === '0' ? puedeConfirmarOcupado : metrosFachadaValidos(fachada));
 
   const guardar = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!habilitada || !version || sinCambios || guardando ||
-      (estado === '0' ? !permitirOcupar : !metrosFachadaValidos(fachada))) return;
+    if (!puedeGuardar || !version) return;
     setGuardando(true);
     setError('');
     try {
@@ -96,39 +100,68 @@ export default function CorregirRevisionGeneral({ fila, habilitada, version, mot
     } finally { setGuardando(false); }
   };
 
+  const deshacer = async () => {
+    if (!puedeDeshacer || !habilitada || !version || guardando) return;
+    setGuardando(true);
+    setError('');
+    try {
+      const cambio = await deshacerLimpiezaVacio(fila.id, version);
+      onGuardada(cambio);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally { setGuardando(false); }
+  };
+
   return <form className="rg-editor" aria-label="Corregir registro supervisadamente" onSubmit={(e) => void guardar(e)}>
     <h3>Datos de revisión</h3>
-    <p>Corrige y guarda para pasar al siguiente. El Excel original se conserva intacto.</p>
+    <p>Confirma el estado, guarda y pasa al siguiente. El Excel importado y el histórico 2025 no se reescriben.</p>
+    <div className="rg-opciones" role="group" aria-label="Estado actual confirmado">
+      <button type="button" className={"rg-opcion" + (vacio ? " elegida" : "")}
+        aria-pressed={vacio} onClick={() => setEstado('1')} disabled={guardando}>
+        Local vacío
+      </button>
+      <button type="button" className={"rg-opcion" + (!vacio ? " elegida" : "")}
+        aria-pressed={!vacio} disabled={guardando || (!tieneNombreComercial && estadoActual !== '0')}
+        onClick={() => setEstado('0')}>
+        Local ocupado
+      </button>
+    </div>
     <div className="rg-campos">
-      <label><span>Estado del local</span>
-        <select className="input" value={estado} onChange={(e) => setEstado(e.target.value)} disabled={!permitirOcupar} required>
-          <option value="" disabled>Sin indicar</option>
-          <option value="1">Local vacío</option>
-          <option value="0">Local ocupado</option>
-        </select>
-      </label>
       <label><span>Nombre del negocio</span>
-        <input className="input" value={nombre} disabled placeholder={vacio ? 'Sin nombre' : 'Nombre del negocio'} />
+        <input className="input" value={vacio ? '' : nombreOriginal} disabled
+          placeholder={vacio ? 'Vacío · sin nombre' : 'Nombre del negocio'} />
       </label>
-      <label><span>Metros de fachada</span>
-        <input className="input" value={vacio ? fachada : ''} onChange={(e) => setFachada(e.target.value)} disabled={!vacio}
-          placeholder={vacio ? 'Ej.: 3,5' : 'Debe quedar vacío'} inputMode="decimal" />
+      <label><span>Metros de fachada (solo vacíos)</span>
+        <input className="input" value={vacio ? fachada : ''}
+          onChange={(e) => setFachada(e.target.value)} disabled={!vacio || guardando}
+          placeholder={vacio ? 'Ej.: 3,5' : 'No corresponde'} inputMode="decimal" />
       </label>
     </div>
-
-    {estado === '0' && <p className="rg-previa ok">Se conservará «{nombre}» y se retirarán el 1 de «Local Vacío» y los metros de fachada. No se eliminará la información del negocio.</p>}
-
+    {vacio ? <p className="rg-previa">
+      Al confirmar se conservarán dirección, número, fecha y metros.
+      Se retirarán nombre, actividad, franquicia, redes, reseñas y observaciones del censo vigente.
+    </p> : <p className="rg-previa ok">
+      Se conservará «{nombreOriginal}» y se retirarán los indicadores y metros de local vacío.
+    </p>}
     <p className={tras.incidencias.length ? 'rg-previa aviso' : 'rg-previa ok'}>
       {sinCambios ? 'Sin cambios por guardar.' :
-        `Tras guardar: ${tras.incidencias.length ? `${tras.incidencias.length} aviso(s) pendiente(s)` : 'sin incoherencias detectadas'}.`}
+        'Tras confirmar: ' + (tras.incidencias.length
+          ? tras.incidencias.length + ' aviso(s) pendiente(s)' : 'sin incoherencias detectadas') + '.'}
     </p>
-    {!habilitada && <p className="rg-bloqueo" role="status">{motivoBloqueo || 'El guardado todavía no está autorizado.'}</p>}
+    {!habilitada && <p className="rg-bloqueo" role="status">
+      {motivoBloqueo || 'El guardado aún no está autorizado.'}
+    </p>}
     {error && <p className="t-info error" role="alert">{error}</p>}
     <div className="rg-acciones">
-      <button className="btn s" type="button" onClick={onCancelar} disabled={guardando || sinCambios}>Restablecer</button>
-      <button className="btn s primario" type="submit" disabled={!habilitada || !version || sinCambios || guardando ||
-        (estado === '0' ? !permitirOcupar : !metrosFachadaValidos(fachada))}>
-        {guardando ? 'Guardando…' : vacio ? 'Guardar y siguiente' : 'Confirmar ocupación y seguir'}
+      {puedeDeshacer && <button type="button" className="btn s"
+        onClick={() => void deshacer()} disabled={!habilitada || !version || guardando}>
+        Deshacer corrección
+      </button>}
+      <button className="btn s" type="button"
+        disabled={guardando || (sinCambios && estado === estadoActual)}
+        onClick={onCancelar}>Restablecer</button>
+      <button className="btn s primario" type="submit" disabled={!puedeGuardar}>
+        {guardando ? 'Guardando…' : vacio ? 'Confirmar vacío y limpiar · Siguiente' : 'Confirmar ocupado · Siguiente'}
       </button>
     </div>
   </form>;

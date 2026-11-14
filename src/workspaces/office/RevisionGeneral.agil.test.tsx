@@ -10,7 +10,7 @@ import { FuenteOficinaContext } from '../../store/fuenteOficina';
 import RevisionGeneral from './RevisionGeneral';
 
 vi.mock('../../store/revisionGeneralReal', () => ({
-  capacidadRevisionGeneral: vi.fn(async () => ({ habilitada: true, alcance: 'fachada-y-ocupacion' })),
+  capacidadRevisionGeneral: vi.fn(async () => ({ habilitada: true, alcance: 'revision-vacios-completa' })),
   guardarCorreccionRevisionGeneral: vi.fn(),
 }));
 
@@ -41,13 +41,12 @@ function VistaContinua() {
   const [db, setDb] = useState(datos);
   const [version, setVersion] = useState(9);
   const aplicarCorreccionReal = (cambio: CambioRevisionGeneralReal) => {
-    setDb((prev) => ({
-      ...prev,
-      correccionesRegistros: {
-        ...(prev.correccionesRegistros ?? {}),
-        [cambio.registroId]: cambio.correccion,
-      },
-    }));
+    setDb((prev) => {
+      const correcciones = { ...(prev.correccionesRegistros ?? {}) };
+      if (cambio.correccion) correcciones[cambio.registroId] = cambio.correccion;
+      else delete correcciones[cambio.registroId];
+      return { ...prev, correccionesRegistros: correcciones };
+    });
     setVersion(cambio.version);
   };
   return <FuenteOficinaContext.Provider value={{
@@ -75,11 +74,11 @@ describe('Oficina · flujo continuo de revisión', () => {
     expect(screen.queryByRole('button', { name: 'Preparar corrección' })).not.toBeInTheDocument();
     const detalle = screen.getByRole('region', { name: 'Detalle de la revisión' });
     expect(within(detalle).getByText('Calle A, 2')).toBeInTheDocument();
-    const entrada = within(detalle).getByLabelText('Metros de fachada');
-    await waitFor(() => expect(within(detalle).getByRole('button',{name:'Guardar y siguiente'})).toBeDisabled());
+    const entrada = within(detalle).getByLabelText('Metros de fachada (solo vacíos)');
+    await waitFor(() => expect(within(detalle).getByRole('button',{name:'Confirmar vacío y limpiar · Siguiente'})).toBeDisabled());
     fireEvent.change(entrada, {target: {value:'5'}});
-    await waitFor(() => expect(within(detalle).getByRole('button',{name:'Guardar y siguiente'})).toBeEnabled());
-    fireEvent.click(within(detalle).getByRole('button',{name:'Guardar y siguiente'}));
+    await waitFor(() => expect(within(detalle).getByRole('button',{name:'Confirmar vacío y limpiar · Siguiente'})).toBeEnabled());
+    fireEvent.click(within(detalle).getByRole('button',{name:'Confirmar vacío y limpiar · Siguiente'}));
 
     await waitFor(() => expect(within(detalle).getByText('Calle B, 2')).toBeInTheDocument());
     expect(within(detalle).getByText('2 / 3')).toBeInTheDocument();
@@ -90,7 +89,7 @@ describe('Oficina · flujo continuo de revisión', () => {
     fireEvent.click(within(detalle).getByRole('button',{name:'Registro anterior'}));
     expect(within(detalle).getByText('1 / 3')).toBeInTheDocument();
     expect(within(detalle).getByText('Calle A, 2')).toBeInTheDocument();
-    expect(within(detalle).getByLabelText('Metros de fachada')).toHaveValue('5');
+    expect(within(detalle).getByLabelText('Metros de fachada (solo vacíos)')).toHaveValue('5');
     expect(within(detalle).getByText('No se han detectado contradicciones en esta fila.')).toBeInTheDocument();
     fireEvent.click(within(detalle).getByRole('button',{name:'Registro siguiente'}));
     expect(within(detalle).getByText('Calle B, 2')).toBeInTheDocument();

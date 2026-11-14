@@ -67,7 +67,7 @@ export async function generarXlsxRevisionGeneral(datos: ExportacionRevisionGener
   resumen.getCell('A11').value = 'ATENCIÓN: cifras provisionales de filas de Excel; NO equivalen a locales físicos únicos.';
   resumen.mergeCells('A11:B11');
   resumen.getCell('A11').font = { color: { argb: 'FF85510D' }, italic: true };
-  resumen.getCell('A13').value = 'Las correcciones se aplican en «Datos 2026»; sus valores originales constan en «Origen y correcciones».';
+  resumen.getCell('A13').value = 'Los datos efectivos corregidos figuran en «Datos 2026». La trazabilidad funcional no muestra datos de antiguos ocupantes.';
   resumen.mergeCells('A13:B13');
   resumen.getCell('A13').alignment = { wrapText: true };
   resumen.getRow(13).height = 35;

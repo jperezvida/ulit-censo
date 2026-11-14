@@ -451,6 +451,10 @@ export interface CorreccionRegistro {
   porId: Id;
   fecha: string;
   motivo: string;
+  /** Última operación funcional; la limpieza no incluye los valores del antiguo ocupante. */
+  tipoRevision?: 'fachada' | 'ocupar' | 'vaciar';
+  /** Metadatos de revisión; al confirmar un vacío se limpia esta lista funcional.
+   * El registro técnico de seguridad sigue siendo independiente y protegido. */
   /** Las revisiones anteriores se conservan para revertir y auditar. */
   historial: { fecha: string; porId: Id; motivo: string; valoresAnteriores: Record<string, string> }[];
 }

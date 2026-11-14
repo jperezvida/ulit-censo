@@ -12,6 +12,8 @@ on:
       - 'docs/persistencia/pruebas/fachada_real_2026.sql'
       - 'docs/persistencia/sql/20261113_0013_revision_ocupacion_y_rapidez.sql'
       - 'docs/persistencia/pruebas/revision_ocupacion_rapida_2026.sql'
+      - 'docs/persistencia/sql/20261114_0014_vacios_limpieza_integral.sql'
+      - 'docs/persistencia/pruebas/vacios_limpieza_integral_2026.sql'
       - '.github/workflows/ci-revision-general-sql.yml'
 permissions:
   contents: read

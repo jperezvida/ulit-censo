@@ -46,7 +46,8 @@ describe('Exportación 2026 · datos efectivos de revisión', () => {
     expect(salida.filas[0].Actividad).toBe('');
     expect(salida.filas[0]['Local Vacío']).toBe('1');
     expect(salida.filas[0]['ULIT · Campos corregidos']).toContain('Nombre del negocio');
-    expect(salida.filas[0]['ULIT · Valores originales corregidos']).toContain('Antiguo');
+    expect(salida.columnas).not.toContain('ULIT · Valores originales corregidos');
+    expect(JSON.stringify(salida.filas[0])).not.toContain('Antiguo');
     expect(salida.filas[0]['ULIT · Motivo corrección']).toBe('Cierre confirmado en visita');
     expect(salida.filas[1]['Nombre del negocio']).toBe('Panadería');
     expect(salida.filas[1]['ULIT · Fila del Excel']).toBe('3');
@@ -62,10 +63,19 @@ describe('Exportación 2026 · datos efectivos de revisión', () => {
   });
 
   it('incluye las 28 cabeceras reales del itinerario más trazabilidad', () => {
-    expect(COLUMNAS_REVISION_GENERAL_2026.length).toBe(39);
+    expect(COLUMNAS_REVISION_GENERAL_2026.length).toBe(38);
     expect(COLUMNAS_REVISION_GENERAL_2026).toContain('Local Vacío');
     expect(COLUMNAS_REVISION_GENERAL_2026).toContain('Google My Bussines');
     expect(COLUMNAS_REVISION_GENERAL_2026).toContain('ULIT · Registro origen');
+  });
+
+  it('el nombre LV se deja vacío al exportar un local vacío, sin alterar el Excel original', () => {
+    const db = escenario();
+    db.correccionesRegistros = {};
+    db.registros.r1.datos['Nombre del negocio'] = 'LV';
+    const salida = exportarRevisionGeneral(db, 'c26');
+    expect(salida.filas[0]['Nombre del negocio']).toBe('');
+    expect(db.registros.r1.datos['Nombre del negocio']).toBe('LV');
   });
 
   it('CSV español escapa separador, comillas y fórmulas inyectadas por valores del Excel', () => {

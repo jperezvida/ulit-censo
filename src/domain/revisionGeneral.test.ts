@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { baseVacia } from './db';
 import type { BaseDatos } from './db';
 import type { RegistroOrigen } from './types';
-import { auditarRevisionGeneral, datoRevisionGeneral, revisarRegistroGeneral } from './revisionGeneral';
+import { auditarRevisionGeneral, CAMPOS_DEL_NEGOCIO, datoRevisionGeneral, nombreEsMarcaDeVacio, propuestaVacioLimpio, revisarRegistroGeneral } from './revisionGeneral';
 
 const fila = (id: string, datos: Record<string, string>, resto: Partial<RegistroOrigen> = {}): RegistroOrigen =>
   ({ id, importacionId: 'it1', itinerarioId: 'it1', fila: Number(id.replace(/\D/g, '')) || 1, datos, ...resto });
@@ -33,6 +33,45 @@ function base(): BaseDatos {
 }
 
 describe('Fase 1 · revisión general', () => {
+
+  it('limpia todos los campos del negocio de un LV, incluidos ceros, reseñas y observaciones', () => {
+    const registro = fila('r9', {
+      ...origen('1', 'LV', '8'), Actividad: 'Peluquería',
+      Franquicia: '1', Instagram: '0', 'Nº reseñas Google': '24',
+      'Google My Bussines': '1', 'segu Insta': '900',
+      Observaciones: 'Notas del ocupante',
+    });
+    const copia = structuredClone(registro);
+    const valores = propuestaVacioLimpio('8');
+    expect(valores.vacio).toBe('1');
+    expect(valores.fachada).toBe('8');
+    for (const clave of CAMPOS_DEL_NEGOCIO) {
+      expect(datoRevisionGeneral(registro, clave, valores)).toBe('');
+    }
+    expect(revisarRegistroGeneral(registro, valores).incidencias).toEqual([]);
+    expect(datoRevisionGeneral(registro, 'direccion', valores)).toBe('Calle Mayor');
+    expect(datoRevisionGeneral(registro, 'numero', valores)).toBe('3');
+    expect(registro).toEqual(copia);
+  });
+
+  it('identifica LV y VACÍO como marcadores, nunca como negocios ocupados', () => {
+    for (const palabra of ['LV','L.V.','lv','VACÍO','Vacio','LOCAL VACÍO','Sin ocupante']) {
+      expect(nombreEsMarcaDeVacio(palabra)).toBe(true);
+      expect(revisarRegistroGeneral(fila('r8', origen('0', palabra))).incidencias[0].tipo)
+        .toBe('ocupado-sin-nombre');
+    }
+    expect(nombreEsMarcaDeVacio('Asesoría Nuria Mate')).toBe(false);
+    expect(revisarRegistroGeneral(fila('r9', origen('1', 'LV','8'))).incidencias[0].tipo)
+      .toBe('vacio-con-nombre');
+  });
+
+  it('no permite confirmar un local vacío sin metros positivos', () => {
+    for (const invalido of ['','0','-1','1,2345','abc']) {
+      expect(() => propuestaVacioLimpio(invalido)).toThrow('metros positivos');
+    }
+    expect(propuestaVacioLimpio('5,5').fachada).toBe('5,5');
+  });
+
   it('no denuncia un vacío coherente con fachada y ceros de redes', () => {
     const r = revisarRegistroGeneral(fila('r1', {
       ...origen('1', '', '3,5'),
