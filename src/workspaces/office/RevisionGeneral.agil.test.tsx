@@ -88,6 +88,44 @@ describe('Oficina · flujo continuo de revisión', () => {
     expect(guardarCorreccionRevisionGeneral).not.toHaveBeenCalled();
   });
 
+  it('restablece incluso un borrador inválido sin invocar el servidor', () => {
+    render(<VistaContinua />);
+    const detalle = screen.getByRole('region', { name: 'Detalle de la revisión' });
+    fireEvent.change(within(detalle).getByLabelText('Metros de fachada (solo vacíos)'),
+      { target: { value: 'no válido' } });
+    expect(within(detalle).getByRole('button',
+      { name: 'Confirmar vacío y limpiar · Siguiente' })).toBeDisabled();
+    expect(within(detalle).getByRole('button', { name: 'Restablecer' })).toBeEnabled();
+    fireEvent.click(within(detalle).getByRole('button', { name: 'Restablecer' }));
+    expect(within(detalle).getByLabelText('Metros de fachada (solo vacíos)')).toHaveValue('');
+    expect(guardarCorreccionRevisionGeneral).not.toHaveBeenCalled();
+  });
+
+  it('bloquea cambiar de fila mientras se confirma un guardado en el servidor', async () => {
+    let completar: (cambio: CambioRevisionGeneralReal) => void = () => {};
+    vi.mocked(guardarCorreccionRevisionGeneral).mockImplementationOnce(() =>
+      new Promise<CambioRevisionGeneralReal>((resolve) => { completar = resolve; }));
+    render(<VistaContinua />);
+    const detalle = screen.getByRole('region', { name: 'Detalle de la revisión' });
+    fireEvent.change(within(detalle).getByLabelText('Metros de fachada (solo vacíos)'),
+      { target: { value: '5' } });
+    await waitFor(() => expect(within(detalle).getByRole('button',
+      { name: 'Confirmar vacío y limpiar · Siguiente' })).toBeEnabled());
+    fireEvent.click(within(detalle).getByRole('button',
+      { name: 'Confirmar vacío y limpiar · Siguiente' }));
+    expect(within(detalle).getByRole('button', { name: 'Registro siguiente' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Con corrección/ })).toBeDisabled();
+
+    completar({
+      registroId: 'r1', version: 10,
+      correccion: { id: 'r1', registroId: 'r1', campanaId: CAMPANA,
+        valores: { vacio: '1', fachada: '5' }, motivo: 'Medición', porId: 'admin',
+        fecha: '2026-11-14T16:00:00Z', historial: [] },
+    });
+    await waitFor(() => expect(within(detalle).getByText('Calle B, 2')).toBeInTheDocument());
+    expect(within(detalle).getByRole('button', { name: 'Registro siguiente' })).toBeEnabled();
+  });
+
   it('el filtro Con corrección recupera registros guardados aunque ya no tengan incidencias', async () => {
     render(<VistaContinua />);
     const detalle = screen.getByRole('region', { name: 'Detalle de la revisión' });
