@@ -19,7 +19,7 @@ export interface CambioRevisionGeneralReal {
   registroId: string;
   version: number;
   correccion: CorreccionRegistro | null;
-  accion?: 'guardar' | 'ocupar' | 'vaciar' | 'deshacer';
+  accion?: 'guardar' | 'ocupar' | 'vaciar' | 'deshacer' | 'limpiar-fachada';
 }
 
 const RPC = 'ulit_censo_revision_fase1_2026';
@@ -59,6 +59,7 @@ export async function guardarCorreccionRevisionGeneral(
   const fachada = claves.join(',') === 'fachada'
     && /^[0-9]{1,5}([,.][0-9]{1,3})?$/.test((valores.fachada ?? '').trim())
     && Number(valores.fachada.replace(',','.')) > 0;
+  const limpiarFachadaOcupado = claves.join(',') === 'fachada' && valores.fachada === '';
   const fachadaLimpieza = valores.fachada ?? '';
   const vaciar = claves.length === CAMPOS_DEL_NEGOCIO.length + 2
     && valores.vacio === '1'
@@ -66,10 +67,10 @@ export async function guardarCorreccionRevisionGeneral(
     && Number(fachadaLimpieza.replace(',','.')) > 0
     && CAMPOS_DEL_NEGOCIO.every((clave) => valores[clave] === '');
   if (!registroId || !Number.isSafeInteger(version) || version < 8
-    || (!ocupar && !fachada && !vaciar)) {
+    || (!ocupar && !fachada && !vaciar && !limpiarFachadaOcupado)) {
     throw new Error('Solo se permiten metros válidos, confirmar ocupado o limpiar un vacío.');
   }
-  const accion = vaciar ? 'vaciar' : ocupar ? 'ocupar' : 'guardar';
+  const accion = vaciar ? 'vaciar' : ocupar ? 'ocupar' : limpiarFachadaOcupado ? 'limpiar-fachada' : 'guardar';
   const { data, error } = await cliente.rpc(RPC, {
     p_espacio: ESPACIO_REVISION_2026,
     p_accion: accion,
@@ -96,6 +97,7 @@ export async function guardarCorreccionRevisionGeneral(
     || !entidad.valores || !Array.isArray(entidad.historial)
     || (ocupar && entidad.valores.vacio !== '0')
     || (fachada && entidad.valores.fachada !== valores.fachada.trim())
+    || (limpiarFachadaOcupado && entidad.valores.fachada !== '')
     || (vaciar && (entidad.tipoRevision !== 'vaciar'
       || entidad.valores.vacio !== '1'
       || entidad.valores.fachada !== valores.fachada.trim()
