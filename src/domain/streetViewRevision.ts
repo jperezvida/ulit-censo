@@ -83,8 +83,11 @@ export function streetViewParaRevision(
 
   const vinculados = Object.values(db.vinculos)
     .filter((v) => v.origen.tipo === 'registro' && v.origen.id === fila.id && v.localId)
-    .map((v) => db.locales[v.localId!])
-    .filter((l) => l && l.municipioId === municipio.id && l.procedencia !== 'simulado'
+    .flatMap((v) => {
+      const local = db.locales[v.localId!];
+      return local ? [local] : [];
+    })
+    .filter((l) => l.municipioId === municipio.id && l.procedencia !== 'simulado'
       && coordenadaValida(l.coord));
   const verificado = vinculados.find((l) => !!l.coordVerificada);
   if (verificado?.coord) {
