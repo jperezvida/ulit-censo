@@ -10,7 +10,7 @@ import { PERFIL_CENSO_27, PERFIL_ITINERARIO_28 } from './xlsx/perfilesImportacio
 export type TipoIncidenciaGeneral =
   | 'estado-ausente' | 'estado-invalido' | 'vacio-con-nombre'
   | 'vacio-sin-fachada' | 'vacio-con-clasificacion' | 'vacio-con-franquicia'
-  | 'vacio-con-digital' | 'ocupado-sin-nombre' | 'ocupado-con-fachada';
+  | 'vacio-con-digital' | 'vacio-con-observaciones' | 'ocupado-sin-nombre' | 'ocupado-con-fachada';
 
 export interface IncidenciaGeneral {
   tipo: TipoIncidenciaGeneral;
@@ -38,7 +38,7 @@ export interface ResultadoRevisionGeneral {
 }
 
 const normalizar = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
-const ALIAS = new Map<string, string[]>();
+const ALIAS = new Map<string, string[]>([['observaciones', ['observaciones', 'observacion', 'notas del negocio']]]);
 for (const perfil of [PERFIL_CENSO_27, PERFIL_ITINERARIO_28]) {
   for (const c of perfil.columnas) {
     const actual = ALIAS.get(c.clave) ?? [];
@@ -69,6 +69,37 @@ export function datoRevisionGeneral(r: RegistroOrigen, clave: string, valores?: 
 }
 
 const CLASIFICACION = ['grupoActividad', 'grupoComercio', 'subgrupo', 'actividad', 'descripcionActividad'];
+
+/** Solo información del ocupante: no se borran dirección, portal, fecha ni datos estructurales. */
+export const CAMPOS_DEL_NEGOCIO = [
+  ...PERFIL_ITINERARIO_28.columnas.slice(PERFIL_ITINERARIO_28.columnas.findIndex((c) => c.clave === 'nombre'))
+    .map((c) => c.clave),
+  'observaciones',
+] as const;
+
+/** «LV» no es un comercio. Tampoco valida la existencia de un negocio ocupado. */
+export function nombreEsMarcaDeVacio(nombre: string): boolean {
+  return /^(?:l\\.?\\s*v\\.?|local\\s+vac[ií]o|vac[ií]o|sin\\s+ocupante|sin\\s+actividad)$/iu.test(nombre.trim());
+}
+
+/**
+ * Propuesta explícita de limpiar un vacío. Requiere confirmación humana y metros,
+ * y descarta correcciones anteriores de campos incompatibles con el vacío.
+ * La fuente importada se conserva y permite restauración supervisada.
+ */
+export function propuestaVacioLimpio(
+  registro: RegistroOrigen, metros: string,
+): Record<string, string> {
+  const normalizados = metros.trim();
+  const numero = Number(normalizados.replace(',', '.'));
+  if (!/^\\d{1,5}([,.]\\d{1,3})?$/.test(normalizados) || numero <= 0) {
+    throw new Error('Para confirmar el vacío hay que indicar metros positivos de fachada.');
+  }
+  const salida: Record<string, string> = { vacio: '1', fachada: normalizados };
+  for (const clave of CAMPOS_DEL_NEGOCIO) salida[clave] = '';
+  return salida;
+}
+
 const DIGITAL = [
   'web', 'googleBusiness', 'ventaOnline', 'numResenas', 'respondeResenas',
   'instagram', 'seguidoresInstagram', 'facebook', 'seguidoresFacebook',
@@ -100,7 +131,11 @@ export function revisarRegistroGeneral(r: RegistroOrigen, valores?: Record<strin
   }
 
   if (vacio === '1') {
-    if (nombre) aviso('vacio-con-nombre', 'Local vacío con nombre de negocio', 'Confirmar si sigue ocupado o si se ha conservado el nombre anterior.');
+    if (nombre) aviso('vacio-con-nombre',
+      nombreEsMarcaDeVacio(nombre) ? 'Nombre usado como indicador de vacío' : 'Local vacío con nombre de negocio',
+      nombreEsMarcaDeVacio(nombre)
+        ? '«LV» o «Vacío» debe quedar en blanco en la columna Nombre del negocio.'
+        : 'Confirmar si sigue ocupado o si se ha conservado el nombre anterior.');
     const metros = Number(fachada.replace(',', '.'));
     if (!fachada || !Number.isFinite(metros) || metros <= 0) {
       aviso('vacio-sin-fachada', 'Faltan metros válidos de fachada', 'Un local vacío necesita una longitud de fachada mayor que cero.');
@@ -116,10 +151,14 @@ export function revisarRegistroGeneral(r: RegistroOrigen, valores?: Record<strin
     if (digitales.length) {
       aviso('vacio-con-digital', 'Local vacío con presencia digital', `Hay ${digitales.length} dato(s) positivos de web, Google o redes. Comprobar si pertenecen al ocupante anterior.`);
     }
+    if (dato('observaciones')) {
+      aviso('vacio-con-observaciones', 'Local vacío con observaciones del negocio',
+        'La revisión de vacío retira las observaciones asociadas al ocupante.');
+    }
     return { estado: 'vacio', incidencias };
   }
 
-  if (!nombre) aviso('ocupado-sin-nombre', 'Local ocupado sin nombre', 'Completar el nombre del establecimiento o comprobar que su estado sea correcto.');
+  if (!nombre || nombreEsMarcaDeVacio(nombre)) aviso('ocupado-sin-nombre', 'Local ocupado sin nombre', 'Completar el nombre del establecimiento o comprobar que su estado sea correcto.');
   if (fachada) aviso('ocupado-con-fachada', 'Local ocupado con metros de fachada', 'La columna «Long fachada» se utiliza para los locales vacíos; comprobar si se ha conservado por error.');
   return { estado: 'ocupado', incidencias };
 }
@@ -143,7 +182,8 @@ export function auditarRevisionGeneral(db: BaseDatos, campanaId: string): Result
         itinerario: db.itinerarios[registro.itinerarioId ?? '']?.codigo ?? 'Sin itinerario',
         direccion: datoRevisionGeneral(registro, 'direccion', valores) || 'Sin calle consignada',
         numero: datoRevisionGeneral(registro, 'numero', valores) || 's/n',
-        nombre: datoRevisionGeneral(registro, 'nombre', valores),
+        nombre: nombreEsMarcaDeVacio(datoRevisionGeneral(registro, 'nombre', valores))
+          ? '' : datoRevisionGeneral(registro, 'nombre', valores),
         estado, incidencias, correccion: vigente,
       };
     });
