@@ -29,6 +29,11 @@ function datos(): BaseDatos {
     filas: 3, estado: 'confirmada', resumen: {}, procedencia: 'importado' };
   db.itinerarios.it1 = { id: 'it1', campanaId: CAMPANA, codigo: 'IT1', nombre: 'Primero',
     origen: 'excel', color: '#009', tramos: [], asignadosIds: [], creado: '2026-11-10' };
+  db.calles.calleA = {
+    id: 'calleA', municipioId: 'medina', nombre: 'Calle A', tipoVia: 'Calle',
+    longitudM: 200, procedencia: 'osm', refsFuente: ['osm:way/1'],
+    segmentos: [{ id: 'via1', coords: [[-4.921, 41.310], [-4.920, 41.311]], longitudM: 200 }],
+  };
   for (let i = 1; i <= 3; i++) db.registros[`r${i}`] = {
     id: `r${i}`, importacionId: 'imp', itinerarioId: 'it1', fila: i,
     datos: { Dirección: `Calle ${String.fromCharCode(64 + i)}`, Num: '2',
@@ -67,6 +72,19 @@ describe('Oficina · flujo continuo de revisión', () => {
         porId: 'admin', fecha: '2026-11-13T20:00:00Z', motivo: 'Medición', historial: [],
       },
     }));
+  });
+
+  it('abre Street View directamente en modo panorámica y advierte que la ubicación no es exacta', () => {
+    render(<VistaContinua />);
+    const detalle = screen.getByRole('region', { name: 'Detalle de la revisión' });
+    const enlace = within(detalle).getByRole('link', { name: 'Abrir Street View aproximado de la calle' });
+    const href = enlace.getAttribute('href')!;
+    const destino = new URL(href);
+    expect(destino.searchParams.get('map_action')).toBe('pano');
+    expect(destino.searchParams.has('query')).toBe(false);
+    expect(enlace).toHaveAttribute('target', '_blank');
+    expect(enlace).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(within(detalle).getByText(/NO del portal 2/)).toBeInTheDocument();
   });
 
   it('conserva borradores al ir a otra fila y restablece sin guardar en el servidor', async () => {
