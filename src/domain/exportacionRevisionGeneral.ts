@@ -1,5 +1,5 @@
 import type { BaseDatos } from './db';
-import { auditarRevisionGeneral, datoRevisionGeneral, type FilaRevisionGeneral } from './revisionGeneral';
+import { auditarRevisionGeneral, datoRevisionGeneral, nombreEsMarcaDeVacio, type FilaRevisionGeneral } from './revisionGeneral';
 import { PERFIL_ITINERARIO_28 } from './xlsx/perfilesImportacion';
 
 /**
@@ -16,7 +16,6 @@ export const COLUMNAS_REVISION_GENERAL_2026 = [
   'ULIT · Estado de revisión',
   'ULIT · Incidencias pendientes',
   'ULIT · Campos corregidos',
-  'ULIT · Valores originales corregidos',
   'ULIT · Fecha corrección',
   'ULIT · Responsable corrección',
   'ULIT · Motivo corrección',
@@ -39,16 +38,15 @@ export interface ExportacionRevisionGeneral {
 function filaDeTrabajo(f: FilaRevisionGeneral): Record<string, string> {
   const valores = f.correccion?.valores;
   const salida: Record<string, string> = {};
-  const antes: Record<string, string> = {};
   const cambiados: string[] = [];
   for (const col of PERFIL_ITINERARIO_28.columnas) {
     const original = datoRevisionGeneral(f.registro, col.clave);
     const corregido = datoRevisionGeneral(f.registro, col.clave, valores);
-    salida[col.cabecera] = corregido;
-    if (corregido !== original) {
-      cambiados.push(col.cabecera);
-      antes[col.cabecera] = original;
-    }
+    // «LV»/«VACÍO» no es un nombre de negocio. Su valor de origen permanece
+    // disponible únicamente en el Excel importado, no en el censo de trabajo.
+    salida[col.cabecera] = col.clave === 'nombre'
+      && f.estado === 'vacio' && nombreEsMarcaDeVacio(corregido) ? '' : corregido;
+    if (corregido !== original) cambiados.push(col.cabecera);
   }
   salida['ULIT · Registro origen'] = f.id;
   salida['ULIT · Archivo de origen'] = f.archivo;
@@ -58,7 +56,6 @@ function filaDeTrabajo(f: FilaRevisionGeneral): Record<string, string> {
     f.incidencias.length ? 'Con incidencias' : f.correccion ? 'Corregido; sin avisos automáticos' : 'Sin avisos automáticos';
   salida['ULIT · Incidencias pendientes'] = f.incidencias.map((i) => i.titulo).join(' | ');
   salida['ULIT · Campos corregidos'] = cambiados.join(' | ');
-  salida['ULIT · Valores originales corregidos'] = cambiados.length ? JSON.stringify(antes) : '';
   salida['ULIT · Fecha corrección'] = f.correccion?.fecha ?? '';
   salida['ULIT · Responsable corrección'] = f.correccion?.porId ?? '';
   salida['ULIT · Motivo corrección'] = f.correccion?.motivo ?? '';
