@@ -69,6 +69,94 @@ describe('Oficina · flujo continuo de revisión', () => {
     }));
   });
 
+  it('conserva borradores al ir a otra fila y restablece sin guardar en el servidor', async () => {
+    render(<VistaContinua />);
+    const detalle = screen.getByRole('region', { name: 'Detalle de la revisión' });
+    fireEvent.change(within(detalle).getByLabelText('Metros de fachada (solo vacíos)'),
+      { target: { value: '7,5' } });
+    expect(screen.getByText(/1 ficha\(s\) con cambios pendientes/)).toBeInTheDocument();
+    expect(screen.getByText('Sin guardar')).toBeInTheDocument();
+
+    fireEvent.click(within(detalle).getByRole('button', { name: 'Registro siguiente' }));
+    expect(within(detalle).getByText('Calle B, 2')).toBeInTheDocument();
+    fireEvent.click(within(detalle).getByRole('button', { name: 'Registro anterior' }));
+    expect(within(detalle).getByLabelText('Metros de fachada (solo vacíos)')).toHaveValue('7,5');
+
+    fireEvent.click(within(detalle).getByRole('button', { name: 'Restablecer' }));
+    expect(within(detalle).getByLabelText('Metros de fachada (solo vacíos)')).toHaveValue('');
+    expect(screen.queryByText('Sin guardar')).not.toBeInTheDocument();
+    expect(guardarCorreccionRevisionGeneral).not.toHaveBeenCalled();
+  });
+
+  it('restablece incluso un borrador inválido sin invocar el servidor', () => {
+    render(<VistaContinua />);
+    const detalle = screen.getByRole('region', { name: 'Detalle de la revisión' });
+    fireEvent.change(within(detalle).getByLabelText('Metros de fachada (solo vacíos)'),
+      { target: { value: 'no válido' } });
+    expect(within(detalle).getByRole('button',
+      { name: 'Confirmar vacío y limpiar · Siguiente' })).toBeDisabled();
+    expect(within(detalle).getByRole('button', { name: 'Restablecer' })).toBeEnabled();
+    fireEvent.click(within(detalle).getByRole('button', { name: 'Restablecer' }));
+    expect(within(detalle).getByLabelText('Metros de fachada (solo vacíos)')).toHaveValue('');
+    expect(guardarCorreccionRevisionGeneral).not.toHaveBeenCalled();
+  });
+
+  it('bloquea cambiar de fila mientras se confirma un guardado en el servidor', async () => {
+    let completar: (cambio: CambioRevisionGeneralReal) => void = () => {};
+    vi.mocked(guardarCorreccionRevisionGeneral).mockImplementationOnce(() =>
+      new Promise<CambioRevisionGeneralReal>((resolve) => { completar = resolve; }));
+    render(<VistaContinua />);
+    const detalle = screen.getByRole('region', { name: 'Detalle de la revisión' });
+    fireEvent.change(within(detalle).getByLabelText('Metros de fachada (solo vacíos)'),
+      { target: { value: '5' } });
+    await waitFor(() => expect(within(detalle).getByRole('button',
+      { name: 'Confirmar vacío y limpiar · Siguiente' })).toBeEnabled());
+    fireEvent.click(within(detalle).getByRole('button',
+      { name: 'Confirmar vacío y limpiar · Siguiente' }));
+    expect(within(detalle).getByRole('button', { name: 'Registro siguiente' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Con corrección/ })).toBeDisabled();
+
+    completar({
+      registroId: 'r1', version: 10,
+      correccion: { id: 'r1', registroId: 'r1', campanaId: CAMPANA,
+        valores: { vacio: '1', fachada: '5' }, motivo: 'Medición', porId: 'admin',
+        fecha: '2026-11-14T16:00:00Z', historial: [] },
+    });
+    await waitFor(() => expect(within(detalle).getByText('Calle B, 2')).toBeInTheDocument());
+    expect(within(detalle).getByRole('button', { name: 'Registro siguiente' })).toBeEnabled();
+  });
+
+  it('el filtro Con corrección recupera registros guardados aunque ya no tengan incidencias', async () => {
+    render(<VistaContinua />);
+    const detalle = screen.getByRole('region', { name: 'Detalle de la revisión' });
+    fireEvent.change(within(detalle).getByLabelText('Metros de fachada (solo vacíos)'),
+      { target: { value: '5' } });
+    await waitFor(() => expect(within(detalle).getByRole('button',
+      { name: 'Confirmar vacío y limpiar · Siguiente' })).toBeEnabled());
+    fireEvent.click(within(detalle).getByRole('button', { name: 'Confirmar vacío y limpiar · Siguiente' }));
+    await waitFor(() => expect(within(detalle).getByText('Calle B, 2')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Con corrección/ }));
+    expect(within(detalle).getByText('Calle A, 2')).toBeInTheDocument();
+    expect(within(detalle).getByText('1 / 1')).toBeInTheDocument();
+    expect(within(detalle).getByText('No se han detectado contradicciones en esta fila.')).toBeInTheDocument();
+  });
+
+  it('Siguiente con incidencias salta registros revisados y puede recorrer hacia atrás', async () => {
+    render(<VistaContinua />);
+    const detalle = screen.getByRole('region', { name: 'Detalle de la revisión' });
+    fireEvent.change(within(detalle).getByLabelText('Metros de fachada (solo vacíos)'),
+      { target: { value: '5' } });
+    await waitFor(() => expect(within(detalle).getByRole('button',
+      { name: 'Confirmar vacío y limpiar · Siguiente' })).toBeEnabled());
+    fireEvent.click(within(detalle).getByRole('button', { name: 'Confirmar vacío y limpiar · Siguiente' }));
+    await waitFor(() => expect(within(detalle).getByText('Calle B, 2')).toBeInTheDocument());
+    fireEvent.click(within(detalle).getByRole('button', { name: 'Registro anterior' }));
+    expect(within(detalle).getByText('Calle A, 2')).toBeInTheDocument();
+    fireEvent.click(within(detalle).getByRole('button', { name: /Siguiente con incidencias/ }));
+    expect(within(detalle).getByText('Calle B, 2')).toBeInTheDocument();
+    expect(guardarCorreccionRevisionGeneral).toHaveBeenCalledTimes(1);
+  });
+
   it('muestra editor desde el primer registro; guardar avanza y anterior recupera el corregido', async () => {
     render(<VistaContinua />);
     expect(screen.queryByRole('button', { name: 'Preparar corrección' })).not.toBeInTheDocument();

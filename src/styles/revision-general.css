@@ -84,3 +84,16 @@
   .rg-opcion { font-size: 12px; padding: 10px 5px; }
   .rg-acciones .primario { flex: 1 1 100%; }
 }
+
+/* Bandeja de revisión: cambios aún no guardados y salto a incidencia pendiente. */
+.rg-borradores { margin: 10px 0; padding: 9px 12px; border: 1px solid #edcf98; border-radius: 9px; background: #fffaf0; color: #795116; font-size: 12px; line-height: 1.4; }
+.rg-etiquetas { display: inline-flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 5px; }
+.rg-chip-borrador { flex-shrink: 0; border-radius: 20px; font-size: 11px; padding: 3px 7px; font-weight: 700; background: #fff0d0; color: #794a0b; }
+.rg-siguiente-pendiente { display: flex; justify-content: flex-end; margin: 10px 0 -3px; }
+.rg-siguiente-pendiente .btn { display: inline-flex; align-items: center; gap: 5px; }
+.rg-fila:disabled { cursor: progress; opacity: .77; }
+@media (max-width: 600px) {
+  .rg-fila-arriba { align-items: flex-start; }
+  .rg-etiquetas { max-width: 50%; }
+  .rg-siguiente-pendiente .btn { width: 100%; justify-content: center; }
+}
