@@ -147,7 +147,7 @@ export default function CorregirRevisionGeneral({ fila, habilitada, version, mot
       {ocupadoConFachada
         ? 'Este local ya está ocupado. Se quitarán únicamente los metros de fachada de local vacío; nombre, estado y datos del negocio no cambiarán.'
         : 'Se conservará el negocio y se retirarán los indicadores y metros de local vacío.'}
-    </p>
+    </p>}
     <p className={tras.incidencias.length ? 'rg-previa aviso' : 'rg-previa ok'}>
       {sinCambios ? 'Sin cambios por guardar.' :
         'Tras confirmar: ' + (tras.incidencias.length
