@@ -38,12 +38,12 @@ describe('Oficina · transición supervisada vacío a ocupado', () => {
       fila={fila('Asesoría Nuria Mate')} habilitada version={9}
       onGuardada={onGuardada} onCancelar={vi.fn()} />);
     expect(screen.getByRole('heading', { name: 'Datos de revisión' })).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Estado del local'), { target: { value: '0' } });
-    expect(screen.getByLabelText('Metros de fachada')).toHaveValue('');
-    expect(screen.getByLabelText('Metros de fachada')).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Local ocupado' }));
+    expect(screen.getByLabelText('Metros de fachada (solo vacíos)')).toHaveValue('');
+    expect(screen.getByLabelText('Metros de fachada (solo vacíos)')).toBeDisabled();
     expect(screen.getByLabelText('Nombre del negocio')).toHaveValue('Asesoría Nuria Mate');
     expect(screen.getByText(/sin incoherencias detectadas/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar ocupación y seguir' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar ocupado · Siguiente' }));
     await waitFor(() => expect(onGuardada).toHaveBeenCalledWith(cambio));
     expect(guardarCorreccionRevisionGeneral).toHaveBeenCalledWith(
       'reg-prueba-27',9,{ vacio: '0', fachada: '' },expect.any(String),
@@ -60,10 +60,10 @@ describe('Oficina · transición supervisada vacío a ocupado', () => {
     });
     render(<CorregirRevisionGeneral fila={fila('Asesoría Nuria Mate','5')}
       habilitada version={9} onGuardada={onGuardada} onCancelar={vi.fn()} />);
-    fireEvent.change(screen.getByLabelText('Estado del local'), { target:{value:'0'} });
-    expect(screen.getByLabelText('Metros de fachada')).toHaveValue('');
-    expect(screen.getByText(/se retirarán el 1/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button',{name:'Confirmar ocupación y seguir'}));
+    fireEvent.click(screen.getByRole('button', { name: 'Local ocupado' }));
+    expect(screen.getByLabelText('Metros de fachada (solo vacíos)')).toHaveValue('');
+    expect(screen.getByText(/Se conservará «Asesoría Nuria Mate»/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button',{name:'Confirmar ocupado · Siguiente'}));
     await waitFor(()=>expect(onGuardada).toHaveBeenCalledTimes(1));
     expect(guardarCorreccionRevisionGeneral).toHaveBeenCalledWith(
       'reg-prueba-27',9,{vacio:'0',fachada:''},expect.any(String),
@@ -73,8 +73,8 @@ describe('Oficina · transición supervisada vacío a ocupado', () => {
   it('no permite declarar ocupado un registro sin nombre de negocio', () => {
     render(<CorregirRevisionGeneral fila={fila('')} habilitada version={9}
       onGuardada={vi.fn()} onCancelar={vi.fn()} />);
-    expect(screen.getByLabelText('Estado del local')).toBeDisabled();
-    expect(screen.getByRole('button',{name:'Guardar y siguiente'})).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Local ocupado' })).toBeDisabled();
+    expect(screen.getByRole('button',{name:'Confirmar vacío y limpiar · Siguiente'})).toBeDisabled();
   });
 
   it('sigue permitiendo registrar únicamente metros en un local vacío', async () => {
@@ -87,9 +87,9 @@ describe('Oficina · transición supervisada vacío a ocupado', () => {
     });
     render(<CorregirRevisionGeneral fila={fila('')} habilitada version={9}
       onGuardada={onGuardada} onCancelar={vi.fn()} />);
-    fireEvent.change(screen.getByLabelText('Metros de fachada'),{target:{value:'5'}});
-    fireEvent.click(screen.getByRole('button',{name:'Guardar y siguiente'}));
+    fireEvent.change(screen.getByLabelText('Metros de fachada (solo vacíos)'),{target:{value:'5'}});
+    fireEvent.click(screen.getByRole('button',{name:'Confirmar vacío y limpiar · Siguiente'}));
     await waitFor(()=>expect(onGuardada).toHaveBeenCalledTimes(1));
-    expect(guardarCorreccionRevisionGeneral).toHaveBeenCalledWith('reg-prueba-27',9,{fachada:'5'},expect.any(String));
+    expect(guardarCorreccionRevisionGeneral).toHaveBeenCalledWith('reg-prueba-27',9,expect.objectContaining({fachada:'5',vacio:'1',nombre:'',instagram:''}),expect.any(String));
   });
 });
