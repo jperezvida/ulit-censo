@@ -62,7 +62,7 @@ describe('Oficina · transición supervisada vacío a ocupado', () => {
       habilitada version={9} onGuardada={onGuardada} onCancelar={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'Local ocupado' }));
     expect(screen.getByLabelText('Metros de fachada (solo vacíos)')).toHaveValue('');
-    expect(screen.getByText(/Se conservará «Asesoría Nuria Mate»/)).toBeInTheDocument();
+    expect(screen.getByText(/Se conservará el negocio y se retirarán los indicadores/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button',{name:'Confirmar ocupado · Siguiente'}));
     await waitFor(()=>expect(onGuardada).toHaveBeenCalledTimes(1));
     expect(guardarCorreccionRevisionGeneral).toHaveBeenCalledWith(
