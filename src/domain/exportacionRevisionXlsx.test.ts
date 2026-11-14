@@ -17,7 +17,6 @@ const simulado = (): ExportacionRevisionGeneral => ({
     'ULIT · Estado de revisión': 'Corregido; sin avisos automáticos',
     'ULIT · Incidencias pendientes': '',
     'ULIT · Campos corregidos': 'Nombre del negocio',
-    'ULIT · Valores originales corregidos': '{"Nombre del negocio":"=HYPERLINK(\"https://invalid.example\")"}',
     'ULIT · Fecha corrección': '2026-11-10',
     'ULIT · Responsable corrección': 'revisor',
     'ULIT · Motivo corrección': 'Cierre confirmado en campo',
@@ -41,7 +40,7 @@ describe('Excel nativo · trabajo Medina 2026', () => {
     const idxNombre = PERFIL_ITINERARIO_28.columnas.findIndex((c) => c.clave === 'nombre') + 1;
     expect(datos.getRow(2).getCell(idxNombre).value ?? '').toBe('');
     expect(trazas.getRow(2).getCell(1).value).toBe('reg-ficticio');
-    expect(trazas.getRow(2).getCell(10).value).toBe('revisor');
+    expect(trazas.getRow(2).getCell(9).value).toBe('revisor');
     expect(wb.getWorksheet('Resumen')!.getCell('B3').value).toBe(1);
   });
 
