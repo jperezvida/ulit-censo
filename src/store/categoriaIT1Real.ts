@@ -41,7 +41,7 @@ export async function guardarCategoriaIT1(
       && valores[clave].length <= 300)
     || Object.keys(valores).sort().join(',') !== [...CLAVES_CATEGORIA].sort().join(',')
     || (accion === 'corregir' && (!valores.grupoActividad || !valores.subgrupo))
-    || (!['aceptar','rechazar','corregir'] as string[]).includes(accion)) {
+    || !(['aceptar','rechazar','corregir'] as string[]).includes(accion)) {
     throw new Error('La categoría seleccionada no es válida.');
   }
   const cliente = clienteServidor();
