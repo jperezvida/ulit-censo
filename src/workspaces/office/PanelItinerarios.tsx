@@ -37,6 +37,7 @@ export default function PanelItinerarios() {
             <AlertTriangle size={15} /> Ver {fmt(sinLocal)} filas sin local
           </button>
         )}
+        {campana.anio === 2026 && <button className="btn" onClick={() => nav("/oficina/categorizacion-it1")} title="Revisar una a una las categorías de todos los ocupados de IT1"><Tags size={15}/> Categorizar IT1</button>}
         <button className="btn" onClick={() => nav('/oficina/revision-general')} title="Comprobación automática de coherencia de los Excel incorporados">
           <ClipboardCheck size={15} /> Revisión general
         </button>
