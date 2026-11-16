@@ -56,14 +56,12 @@ export function obtenerCategorizacionItinerario(
   }
   const todas = auditarRevisionGeneral(db, campanaId).filas
     .filter((f) => f.registro.itinerarioId === itinerarioId);
-  const importaciones = Object.values(db.importaciones).filter((i) =>
-    i.itinerarioId === itinerarioId && i.campanaId === campanaId &&
-    i.estado === 'confirmada' && (i.tipo === 'C-excel-itinerario' || i.tipo === 'D-actualizacion'));
-  // Algunas importaciones identifican el itinerario solo mediante las filas.
+  // La pertenencia real al itinerario se acredita por las filas, no por un
+  // enlace a LocalFisico (91 filas de IT1 aún no están conciliadas).
   const ids = new Set(todas.map((f) => f.registro.importacionId));
   const esperadas = Object.values(db.importaciones).filter((i) =>
     ids.has(i.id) && i.campanaId === campanaId && i.estado === 'confirmada');
-  const totalesOrigen = esperadas.length ? esperadas : importaciones;
+  const totalesOrigen = esperadas;
   const faltantes = totalesOrigen.length === 0 || totalesOrigen.some((i) =>
     todas.filter((f) => f.registro.importacionId === i.id).length !== i.filas);
   const ocupadas = todas.filter((f) => f.estado === 'ocupado');
