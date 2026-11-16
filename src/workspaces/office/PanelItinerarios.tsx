@@ -61,7 +61,7 @@ export default function PanelItinerarios() {
       <div className="ofi-tarjetas">
         {its.map((r) => (
           <TarjetaItinerario key={r.itinerarioId} r={r}
-            categoriaReal={categorias[r.itinerarioId]}
+            categoriaReal={r.itinerarioId ? categorias[r.itinerarioId] : undefined}
             onCategorizar={() => nav(`/oficina/categorizacion/${r.itinerarioId}`)}
             quien={r.cierre ? db.personas[r.cierre.porId]?.nombre ?? r.cierre.porId : undefined}
             onAbrir={(q) => nav(`/oficina/it/${r.itinerarioId}${q}`)} />
