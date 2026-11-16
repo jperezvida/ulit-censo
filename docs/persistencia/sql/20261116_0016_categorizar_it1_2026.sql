@@ -2,6 +2,18 @@
 -- Nunca requiere vincular el registro a un local; nunca modifica el Excel original.
 -- El resto de itinerarios, 2025 y las escrituras genéricas permanecen cerrados.
 begin;
+-- Registrar la nueva colección en la lista blanca de entidades de ULIT.
+create or replace function ulit_censo.coleccion_valida(c text)
+returns boolean language sql immutable set search_path = ''
+as $lista$
+  select c = any(array[
+    '_raiz','municipios','calles','campanas','itinerarios','coberturas','situacionesPrevias',
+    'callesRevisadasPlan','locales','negocios','ocupaciones','observaciones','registros','vinculos',
+    'importaciones','revisiones','digital','clasificaciones','franquicias',
+    'oficinaItinerarios','personas','correccionesRegistros','revisionesCategoriaRegistros'
+  ]);
+$lista$;
+
 create or replace function public.ulit_censo_categorizar_it1_2026(
   p_espacio text, p_accion text, p_version_esperada bigint,
   p_registro_id text, p_valores jsonb
