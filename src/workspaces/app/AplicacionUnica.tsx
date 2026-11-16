@@ -148,7 +148,7 @@ export default function AplicacionUnica() {
     versionReal: lectura.version, elegirCampana: setCampanaId, recargarReal: recargar, aplicarCorreccionReal, aplicarRevisionCategoriaReal,
     // Ninguna escritura genérica sobre datos auténticos. IT1/2026 utiliza RPC específica.
     aplicar: () => false,
-  }) : null, [lectura, actual, recargar, aplicarCorreccionReal]);
+  }) : null, [lectura, actual, recargar, aplicarCorreccionReal, aplicarRevisionCategoriaReal]);
 
   if (cargando || !fuente) return <PantallaAcceso
     cargando={cargando} faseCarga={faseCarga} sinSesion={sinSesion} error={error}
