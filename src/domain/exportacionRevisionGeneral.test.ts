@@ -63,7 +63,7 @@ describe('Exportación 2026 · datos efectivos de revisión', () => {
   });
 
   it('incluye las 28 cabeceras reales del itinerario más trazabilidad', () => {
-    expect(COLUMNAS_REVISION_GENERAL_2026.length).toBe(38);
+    expect(COLUMNAS_REVISION_GENERAL_2026.length).toBe(40);
     expect(COLUMNAS_REVISION_GENERAL_2026).toContain('Local Vacío');
     expect(COLUMNAS_REVISION_GENERAL_2026).toContain('Google My Bussines');
     expect(COLUMNAS_REVISION_GENERAL_2026).toContain('ULIT · Registro origen');
@@ -76,6 +76,23 @@ describe('Exportación 2026 · datos efectivos de revisión', () => {
     const salida = exportarRevisionGeneral(db, 'c26');
     expect(salida.filas[0]['Nombre del negocio']).toBe('');
     expect(db.registros.r1.datos['Nombre del negocio']).toBe('LV');
+  });
+
+  it('exporta la categoría nueva del negocio ocupado y deja el Excel original intacto', () => {
+    const db=escenario();
+    db.revisionesCategoriaRegistros = {
+      r2:{id:'r2',registroId:'r2',campanaId:'c26',estado:'corregida',
+        valores:{grupoActividad:'Comercio',grupoComercio:'Alimentación',
+          subgrupo:'Carnes',actividad:'Carnicería',descripcionActividad:''},
+        porId:'responsable',fecha:'2026-11-16T12:00:00Z'},
+    };
+    const antiguo=structuredClone(db.registros.r2);
+    const salida=exportarRevisionGeneral(db,'c26','it2');
+    expect(salida.filas).toHaveLength(1);
+    expect(salida.filas[0].Actividad).toBe('Carnicería');
+    expect(salida.filas[0]['GrActividad']).toBe('Comercio');
+    expect(salida.filas[0]['ULIT · Revisión categoría']).toBe('Corregida');
+    expect(db.registros.r2).toEqual(antiguo);
   });
 
   it('CSV español escapa separador, comillas y fórmulas inyectadas por valores del Excel', () => {
