@@ -92,7 +92,10 @@ function TarjetaItinerario({ r, quien, onAbrir }: { r: ResumenItinerario; quien?
         {r.calles.enCurso ? ` · ${r.calles.enCurso} en curso` : ''}{r.calles.parciales ? ` · ${r.calles.parciales} parciales` : ''}
       </div>
       <Progreso titulo="Trabajo de campo" c={r.campo} etiquetaHechos="registrados" icono={<Store size={13} />} onClick={r.campo.pendientes ? () => onAbrir('?tarea=todos&filtro=sin-visitar') : undefined} />
-      <Progreso titulo="Categorización" c={r.categorizacion} icono={<Tags size={13} />} onClick={() => onAbrir('?tarea=categorizacion&filtro=pendientes')} />
+      <Progreso titulo="Categorización" c={r.categorizacion} icono={<Tags size={13} />}
+        onClick={() => r.codigo === 'IT1'
+          ? onAbrir('/../../../oficina/categoria-it1')
+          : onAbrir('?tarea=categorizacion&filtro=pendientes')} />
       <Progreso titulo="Presencia digital" c={r.digital} icono={<Globe size={13} />} onClick={() => onAbrir('?tarea=digital&filtro=pendientes')} />
       <Progreso titulo="Franquicias" c={r.franquicias} icono={<BadgeCheck size={13} />} onClick={() => onAbrir('?tarea=franquicias&filtro=pendientes')} />
       <button className="ofi-fila-dato ofi-incid" onClick={() => onAbrir('?tarea=incidencias&filtro=pendientes')} disabled={!r.incidencias && !r.errores}>
