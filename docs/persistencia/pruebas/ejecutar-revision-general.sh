@@ -28,4 +28,6 @@ q -f "$SQL/20261114_0014_vacios_limpieza_integral.sql"
 q -f "$P/vacios_limpieza_integral_2026.sql"
 q -f "$SQL/20261114_0015_ocupados_sin_fachada.sql"
 q -f "$P/ocupado_quitar_fachada_2026.sql"
-echo '✓ Fase 1: migraciones 0010–0015 verificadas con PostgreSQL 17 y datos ficticios'
+q -f "$SQL/20261116_0016_categorizacion_filas_2026.sql"
+q -f "$P/categorizacion_filas_2026.sql"
+echo '✓ Fase 1: migraciones 0010–0016 verificadas con PostgreSQL 17 y datos ficticios'

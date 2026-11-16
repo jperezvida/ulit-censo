@@ -3,6 +3,7 @@ import { useStore } from './store';
 import type { BaseDatos } from '../domain/db';
 import type { Id, Rol } from '../domain/types';
 import type { CambioRevisionGeneralReal } from './revisionGeneralReal';
+import type { CambioCategoriaReal } from './categoriaReal';
 
 export type Aplicar = (fn: (db: BaseDatos) => BaseDatos, etiqueta: string, opciones?: { silencioso?: boolean; sinAvisoError?: boolean }) => boolean;
 
@@ -24,6 +25,8 @@ export interface FuenteOficina {
   recargarReal?: () => Promise<void>;
   /** Aplica en memoria solo la corrección ya confirmada por Supabase, sin recargar el censo. */
   aplicarCorreccionReal?: (cambio: CambioRevisionGeneralReal) => void;
+  /** Confirma en memoria únicamente la categoría validada por la RPC, sin recargar todo el censo. */
+  aplicarCategoriaReal?: (cambio: CambioCategoriaReal) => void;
   versionReal?: number;
 }
 

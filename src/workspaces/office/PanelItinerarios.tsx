@@ -1,9 +1,11 @@
 import { useNavigate } from 'react-router-dom';
+import { useMemo } from 'react';
 import { AlertTriangle, ArrowRight, BadgeCheck, ClipboardCheck, Clock, Globe, Lock, Map, Store, Tags } from 'lucide-react';
 import { useContexto } from '../../store/contexto';
 import { useFuenteOficina } from '../../store/fuenteOficina';
 import { ESTADO_OFICINA_TXT } from '../../domain/bloqueo';
 import type { Contador, ResumenItinerario } from '../../domain/oficina';
+import { obtenerCategorizacionItinerario, type ResumenCategorizacion } from '../../domain/categorizacionItinerarios';
 import { Sim, fmt, fmtFecha } from '../../components/ui';
 import { useResumenes } from './contextoOficina';
 import '../../styles/oficina-b2.css';
@@ -14,6 +16,15 @@ export default function PanelItinerarios() {
   const resumenes = useResumenes();
   const nav = useNavigate();
   const fuente = useFuenteOficina();
+  const categorias = useMemo(() => {
+    const out: Record<string, ResumenCategorizacion> = {};
+    if (fuente?.soloLectura && campana?.anio === 2026) {
+      for (const it of Object.values(db.itinerarios).filter((x) => x.campanaId === campana.id)) {
+        out[it.id] = obtenerCategorizacionItinerario(db, campana.id, it.id);
+      }
+    }
+    return out;
+  }, [db, campana?.id, campana?.anio, fuente?.soloLectura]);
   const sinLocal = campana ? (() => {
     const ids = new Set(Object.values(db.importaciones).filter((i) => i.campanaId === campana.id && i.estado === 'confirmada').map((i) => i.id));
     const asociados = new Set(Object.values(db.vinculos).filter((v) => v.origen.tipo === 'registro' && v.localId).map((v) => v.origen.id));
@@ -49,7 +60,11 @@ export default function PanelItinerarios() {
 
       <div className="ofi-tarjetas">
         {its.map((r) => (
-          <TarjetaItinerario key={r.itinerarioId} r={r} quien={r.cierre ? db.personas[r.cierre.porId]?.nombre ?? r.cierre.porId : undefined} onAbrir={(q) => nav(`/oficina/it/${r.itinerarioId}${q}`)} />
+          <TarjetaItinerario key={r.itinerarioId} r={r}
+            categoriaReal={r.itinerarioId ? categorias[r.itinerarioId] : undefined}
+            onCategorizar={() => nav(`/oficina/categorizacion/${r.itinerarioId}`)}
+            quien={r.cierre ? db.personas[r.cierre.porId]?.nombre ?? r.cierre.porId : undefined}
+            onAbrir={(q) => nav(`/oficina/it/${r.itinerarioId}${q}`)} />
         ))}
       </div>
 
@@ -77,7 +92,13 @@ function Progreso({ titulo, c, icono, onClick, etiquetaHechos = 'revisados' }: {
   );
 }
 
-function TarjetaItinerario({ r, quien, onAbrir }: { r: ResumenItinerario; quien?: string; onAbrir: (query: string) => void }) {
+function TarjetaItinerario({ r, quien, onAbrir, categoriaReal, onCategorizar }: {
+  r: ResumenItinerario;
+  quien?: string;
+  onAbrir: (query: string) => void;
+  categoriaReal?: ResumenCategorizacion;
+  onCategorizar: () => void;
+}) {
   const cerrada = r.estado === 'revision-cerrada';
   return (
     <article className={`ofi-tarjeta ${cerrada ? 'cerrada' : ''} ${r.estado === 'validado' ? 'validada' : ''}`} aria-label={`Itinerario ${r.codigo}`}>
@@ -92,7 +113,10 @@ function TarjetaItinerario({ r, quien, onAbrir }: { r: ResumenItinerario; quien?
         {r.calles.enCurso ? ` · ${r.calles.enCurso} en curso` : ''}{r.calles.parciales ? ` · ${r.calles.parciales} parciales` : ''}
       </div>
       <Progreso titulo="Trabajo de campo" c={r.campo} etiquetaHechos="registrados" icono={<Store size={13} />} onClick={r.campo.pendientes ? () => onAbrir('?tarea=todos&filtro=sin-visitar') : undefined} />
-      <Progreso titulo="Categorización" c={r.categorizacion} icono={<Tags size={13} />} onClick={() => onAbrir('?tarea=categorizacion&filtro=pendientes')} />
+      <Progreso titulo="Categorización" c={categoriaReal
+        ? { hechos: categoriaReal.revisados, pendientes: categoriaReal.pendientes }
+        : r.categorizacion} icono={<Tags size={13} />}
+        onClick={categoriaReal ? onCategorizar : () => onAbrir('?tarea=categorizacion&filtro=pendientes')} />
       <Progreso titulo="Presencia digital" c={r.digital} icono={<Globe size={13} />} onClick={() => onAbrir('?tarea=digital&filtro=pendientes')} />
       <Progreso titulo="Franquicias" c={r.franquicias} icono={<BadgeCheck size={13} />} onClick={() => onAbrir('?tarea=franquicias&filtro=pendientes')} />
       <button className="ofi-fila-dato ofi-incid" onClick={() => onAbrir('?tarea=incidencias&filtro=pendientes')} disabled={!r.incidencias && !r.errores}>
@@ -111,8 +135,19 @@ function TarjetaItinerario({ r, quien, onAbrir }: { r: ResumenItinerario; quien?
         </span>
       </div>
       <footer>
-        <button className="btn s primario" onClick={() => onAbrir('?tarea=todos&filtro=pendientes')}>Abrir pendientes <ArrowRight size={13} /></button>
-        <button className="btn s fantasma" onClick={() => onAbrir('?tarea=todos&filtro=todos')}>Todos los registros ({fmt(r.total)})</button>
+        {categoriaReal && categoriaReal.importacionCompleta
+          ? <button className="btn s primario" onClick={onCategorizar}>
+              <Tags size={13} /> Revisar categorías ({fmt(categoriaReal.pendientes)}) <ArrowRight size={13} />
+            </button>
+          : <button className="btn s primario" onClick={() => onAbrir('?tarea=todos&filtro=pendientes')}>
+              Abrir pendientes <ArrowRight size={13} />
+            </button>}
+        {categoriaReal && <span className="muted" style={{ fontSize: 11 }}>
+          {fmt(categoriaReal.registrosTotales)} filas Excel · {fmt(categoriaReal.ocupados)} ocupadas
+        </span>}
+        <button className="btn s fantasma" onClick={() => onAbrir('?tarea=todos&filtro=todos')}>
+          {categoriaReal ? 'Locales conciliados' : 'Todos los registros'} ({fmt(r.total)})
+        </button>
       </footer>
     </article>
   );

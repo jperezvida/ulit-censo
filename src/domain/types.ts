@@ -441,6 +441,26 @@ export interface RegistroOrigen {
   exclusion?: { porId: Id; fecha: string; motivo: string };
 }
 
+/** Validación humana, POR FILA de Excel 2026, antes de conciliar locales físicos.
+ * La clasificación antigua es siempre propuesta, nunca confirmación automática.
+ * Se guarda exclusivamente la ruta del catálogo oficial de 2026.
+ */
+export interface RevisionCategoriaRegistro {
+  id: Id;
+  registroId: Id;
+  campanaId: Id;
+  itinerarioId: Id;
+  estado: 'aceptada' | 'corregida' | 'rechazada';
+  catalogoId: 'clasificacion-2026@v1';
+  nodoId?: Id;
+  descripcion?: string;
+  valores: Record<'grupoActividad'|'grupoComercio'|'subgrupo'|'actividad'|'descripcionActividad', string>;
+  /** Permite invalidar una confirmación si posteriormente cambia el ocupante. */
+  nombreRevisado: string;
+  porId: Id;
+  fecha: string;
+}
+
 /** Corrección supervisada de una fila 2026. NUNCA modifica RegistroOrigen ni sus celdas originales. */
 export interface CorreccionRegistro {
   id: Id;

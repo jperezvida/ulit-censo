@@ -63,10 +63,34 @@ describe('Exportación 2026 · datos efectivos de revisión', () => {
   });
 
   it('incluye las 28 cabeceras reales del itinerario más trazabilidad', () => {
-    expect(COLUMNAS_REVISION_GENERAL_2026.length).toBe(38);
+    expect(COLUMNAS_REVISION_GENERAL_2026.length).toBe(42);
     expect(COLUMNAS_REVISION_GENERAL_2026).toContain('Local Vacío');
     expect(COLUMNAS_REVISION_GENERAL_2026).toContain('Google My Bussines');
     expect(COLUMNAS_REVISION_GENERAL_2026).toContain('ULIT · Registro origen');
+  });
+
+  it('exporta una categorización oficial revisada pero mantiene las columnas importadas', () => {
+    const db = escenario();
+    const fuente = structuredClone(db.registros);
+    db.revisionesCategoriaRegistros!.r2 = {
+      id:'r2', registroId:'r2', itinerarioId:'it2', campanaId:'c26',
+      catalogoId:'clasificacion-2026@v1', estado:'corregida',
+      nodoId:'c26.C.A.pan-y-lacteos.panaderia', descripcion:'',
+      valores:{
+        grupoActividad:'Comercio', grupoComercio:'Alimentación',
+        subgrupo:'Pan y Lácteos', actividad:'Panadería', descripcionActividad:'',
+      },
+      nombreRevisado:'Panadería', porId:'revisor', fecha:'2026-11-16T11:00:00Z',
+    };
+    const salida = exportarRevisionGeneral(db,'c26');
+    expect(salida.filas[1]['GrActividad']).toBe('Comercio');
+    expect(salida.filas[1]['Gr Comercio']).toBe('Alimentación');
+    expect(salida.filas[1]['Subgrupo de actividad']).toBe('Pan y Lácteos');
+    expect(salida.filas[1].Actividad).toBe('Panadería');
+    expect(salida.filas[1]['ULIT · Categorización 2026']).toBe('Corregida por revisor');
+    expect(salida.filas[1]['ULIT · Categoría oficial ID']).toBe('c26.C.A.pan-y-lacteos.panaderia');
+    expect(salida.filas[0]['ULIT · Categorización 2026']).toBe('No aplica');
+    expect(db.registros).toEqual(fuente);
   });
 
   it('el nombre LV se deja vacío al exportar un local vacío, sin alterar el Excel original', () => {
