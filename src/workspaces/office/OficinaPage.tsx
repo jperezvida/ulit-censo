@@ -29,6 +29,7 @@ export default function OficinaPage() {
       <Route path="municipal" element={<EspacioOficina municipal />} />
       <Route path="sin-local" element={<PendientesSinLocal />} />
       <Route path="revision-general" element={<RevisionGeneral />} />
+      <Route path="categoria-it1" element={<CategoriaIT1 />} />
       <Route path="*" element={<Navigate to="/oficina" replace />} />
     </Routes>
   );
