@@ -75,7 +75,7 @@ describe('Oficina · categoría por fila sin aceptar herencias automáticamente'
       subgrupo:'Pan y Lácteos',actividad:'Panadería',descripcionActividad:''},
     nombreRevisado:registroId==='r1'?'Panadería sintética':'Peluquería sintética',
     porId:'admin',fecha:'2026-11-16T11:00:00Z'},
-  })));
+  }));
  });
  it('muestra todos los ocupados y su categoría previa sin aprobarla',async()=>{
   render(<Vista/>);
