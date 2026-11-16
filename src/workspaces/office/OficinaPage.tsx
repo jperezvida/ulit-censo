@@ -3,6 +3,7 @@ import PanelItinerarios from './PanelItinerarios';
 import EspacioOficina from './EspacioOficina';
 import PendientesSinLocal from './PendientesSinLocal';
 import RevisionGeneral from './RevisionGeneral';
+import CategoriaIT1 from './CategoriaIT1';
 
 /** Enlaces antiguos de la bandeja (?vista=…) → vista general municipal con la tarea equivalente. */
 const VISTA_A_TAREA: Record<string, string> = { categorizar: 'categorizacion', digital: 'digital', dudosos: 'incidencias', errores: 'incidencias', duplicados: 'incidencias' };
@@ -28,6 +29,7 @@ export default function OficinaPage() {
       <Route path="municipal" element={<EspacioOficina municipal />} />
       <Route path="sin-local" element={<PendientesSinLocal />} />
       <Route path="revision-general" element={<RevisionGeneral />} />
+      <Route path="categoria-it1" element={<CategoriaIT1 />} />
       <Route path="*" element={<Navigate to="/oficina" replace />} />
     </Routes>
   );

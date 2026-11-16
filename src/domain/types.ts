@@ -441,6 +441,22 @@ export interface RegistroOrigen {
   exclusion?: { porId: Id; fecha: string; motivo: string };
 }
 
+/** Revisión explícita de la clasificación de UNA fila de itinerario 2026.
+ * No implica que el registro esté conciliado con un local físico.
+ * «Aceptada» obliga a conservar la propuesta vista; «rechazada» queda pendiente.
+ * «Corregida» guarda solo los nuevos campos efectivos, nunca los Excel originales. */
+export interface RevisionCategoriaRegistro {
+  id: Id;
+  registroId: Id;
+  campanaId: Id;
+  estado: 'aceptada' | 'rechazada' | 'corregida';
+  /** Categorías canónicas de la fila cuando la persona las cambia; no son categoría histórica. */
+  valores: Record<string, string>;
+  nodoId?: Id;
+  fecha: string;
+  porId: Id;
+}
+
 /** Corrección supervisada de una fila 2026. NUNCA modifica RegistroOrigen ni sus celdas originales. */
 export interface CorreccionRegistro {
   id: Id;

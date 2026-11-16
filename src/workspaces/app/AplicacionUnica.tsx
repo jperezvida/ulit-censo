@@ -7,6 +7,7 @@ import { AlmacenSupabase } from '../../store/almacenSupabase';
 import { conTiempoMaximo } from '../../store/conTiempoMaximo';
 import { leerEspacioPaginado, LecturaPaginadaNoDisponible } from '../../store/lecturaPaginada';
 import type { CambioRevisionGeneralReal } from '../../store/revisionGeneralReal';
+import type { CambioCategoriaIT1 } from '../../store/categoriaIT1Real';
 import { verificarEspacio, personaEspacio } from '../../domain/espacios';
 import type { BaseDatos } from '../../domain/db';
 import type { Rol } from '../../domain/types';
@@ -122,15 +123,32 @@ export default function AplicacionUnica() {
     });
   }, []);
 
+  const aplicarRevisionCategoriaReal = useCallback((cambio: CambioCategoriaIT1) => {
+    setLectura((anterior) => {
+      if (!anterior || anterior.version + 1 !== cambio.version
+        || !anterior.db.registros[cambio.registroId]) return anterior;
+      return {
+        ...anterior, version: cambio.version,
+        db: {
+          ...anterior.db,
+          revisionesCategoriaRegistros: {
+            ...(anterior.db.revisionesCategoriaRegistros ?? {}),
+            [cambio.registroId]: cambio.revision,
+          },
+        },
+      };
+    });
+  }, []);
+
   const actual = lectura?.db.campanas[campanaId] ? campanaId :
     Object.values(lectura?.db.campanas ?? {}).sort((a,b) => b.anio - a.anio)[0]?.id ?? '';
   const fuente = useMemo(() => lectura && actual ? ({
     db: lectura.db, campanaId: actual, personaId: lectura.personaId,
     roles: [lectura.rol] as Rol[], soloLectura: true as const,
-    versionReal: lectura.version, elegirCampana: setCampanaId, recargarReal: recargar, aplicarCorreccionReal,
+    versionReal: lectura.version, elegirCampana: setCampanaId, recargarReal: recargar, aplicarCorreccionReal, aplicarRevisionCategoriaReal,
     // Ninguna escritura genérica sobre datos auténticos. IT1/2026 utiliza RPC específica.
     aplicar: () => false,
-  }) : null, [lectura, actual, recargar, aplicarCorreccionReal]);
+  }) : null, [lectura, actual, recargar, aplicarCorreccionReal, aplicarRevisionCategoriaReal]);
 
   if (cargando || !fuente) return <PantallaAcceso
     cargando={cargando} faseCarga={faseCarga} sinSesion={sinSesion} error={error}
