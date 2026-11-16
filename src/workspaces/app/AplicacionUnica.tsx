@@ -123,6 +123,23 @@ export default function AplicacionUnica() {
     });
   }, []);
 
+  const aplicarRevisionCategoriaReal = useCallback((cambio: CambioCategoriaIT1) => {
+    setLectura((anterior) => {
+      if (!anterior || anterior.version + 1 !== cambio.version
+        || !anterior.db.registros[cambio.registroId]) return anterior;
+      return {
+        ...anterior, version: cambio.version,
+        db: {
+          ...anterior.db,
+          revisionesCategoriaRegistros: {
+            ...(anterior.db.revisionesCategoriaRegistros ?? {}),
+            [cambio.registroId]: cambio.revision,
+          },
+        },
+      };
+    });
+  }, []);
+
   const actual = lectura?.db.campanas[campanaId] ? campanaId :
     Object.values(lectura?.db.campanas ?? {}).sort((a,b) => b.anio - a.anio)[0]?.id ?? '';
   const fuente = useMemo(() => lectura && actual ? ({
