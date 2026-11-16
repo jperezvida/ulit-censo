@@ -45,7 +45,7 @@ function filaDeTrabajo(f: FilaRevisionGeneral, categoria?: RevisionCategoriaRegi
   const cambiados: string[] = [];
   for (const col of PERFIL_ITINERARIO_28.columnas) {
     const original = datoRevisionGeneral(f.registro, col.clave);
-    const corregido = f.estado === 'ocupado' && categoria?.estado === 'corregida'
+    const corregido = f.estado === 'ocupado' && !!categoria
       && (CLAVES_CATEGORIA as readonly string[]).includes(col.clave)
       ? categoria.valores[col.clave] ?? datoRevisionGeneral(f.registro, col.clave, valores)
       : datoRevisionGeneral(f.registro, col.clave, valores);
