@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Search, Tags, XCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Search, XCircle } from 'lucide-react';
 import { useContexto } from '../../store/contexto';
 import { useFuenteOficina } from '../../store/fuenteOficina';
 import { capacidadCategoriaIT1, guardarCategoriaIT1, type CapacidadCategoriaIT1 } from '../../store/categoriaIT1Real';
