@@ -56,7 +56,7 @@ begin
   end if;
   if p_registro_id is null or length(p_registro_id) not between 5 and 350
      or p_valores is null or pg_catalog.jsonb_typeof(p_valores) <> 'object'
-     or pg_catalog.jsonb_object_length(p_valores) <> 5 then
+     or (select count(*) from pg_catalog.jsonb_object_keys(p_valores)) <> 5 then
     raise exception 'ULIT Censo: clasificación incompleta' using errcode='22023';
   end if;
   foreach v_campo in array v_claves loop
@@ -124,7 +124,7 @@ begin
       raise exception 'ULIT Censo: la propuesta cambió; revisa de nuevo' using errcode='PT409';
     end if;
   elsif p_accion='corregir' then
-    if p_valores->>'grupoActividad' not in ('Comercio','Servicios','Hostelería')
+    if p_valores->>'grupoActividad' not in ('Comercio','Servicios','Hostelería y Restauración')
       or pg_catalog.btrim(p_valores->>'subgrupo')=''
       or (p_valores->>'grupoActividad'='Comercio'
         and pg_catalog.btrim(p_valores->>'grupoComercio')='')
