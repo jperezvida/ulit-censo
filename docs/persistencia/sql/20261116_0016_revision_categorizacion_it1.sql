@@ -375,18 +375,55 @@ begin
     and v_ant->'revisionClasificacion'->'valores' = v_categoria then
     raise exception 'ULIT Censo: esta decisión ya está guardada' using errcode='22023';
   end if;
+  -- El primer acto de Fase 3 exige un respaldo íntegro de la versión ACTUAL.
+  -- Las correcciones de Fase 1 no sustituyen esa copia, ya que pueden existir
+  -- desde hace muchas versiones; las siguientes decisiones usan historial atómico.
   if not exists(select 1 from ulit_censo.entidad
-       where espacio_id=p_espacio and coleccion='correccionesRegistros')
-     and not exists(select 1 from ulit_censo.copia
-       where espacio_id=p_espacio and version=v_e.version and bytes>0
-         and sha256 ~ '^[0-9a-f]{64}$') then
-    -- Igual que Fase 1: nunca efectuar primera modificación sin respaldo verificado.
+       where espacio_id=p_espacio and coleccion='correccionesRegistros'
+         and valor ? 'revisionClasificacion') then
     v_copia := public.ulit_censo_crear_copia(
-      p_espacio,'Automática antes de validar primera categoría del IT1');
+      p_espacio,'Automática antes de la primera categorización IT1 2026');
     if not exists(select 1 from ulit_censo.copia
        where id=v_copia and espacio_id=p_espacio and version=v_e.version
-       and sha256 ~ '^[0-9a-f]{64}$' and bytes>0) then
-      raise exception 'ULIT Censo: no se verificó el respaldo' using errcode='42501';
+       and sha256 ~ '^[0-9a-f]{64}
+
+  v_fecha := pg_catalog.to_char(pg_catalog.clock_timestamp() at time zone 'UTC',
+    'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
+  v_nuevo := pg_catalog.jsonb_build_object(
+    'id',p_registro_id,'registroId',p_registro_id,'campanaId',v_camp,
+    'valores',v_valores,'fecha',v_fecha,'porId',v_m.persona_id,
+    'motivo',case when p_accion='rechazar' then 'Clasificación existente rechazada'
+      when p_accion='asignar' then 'Nueva clasificación elegida y confirmada'
+      else 'Clasificación existente comprobada y aceptada' end,
+    'historial',coalesce(v_ant->'historial','[]'::jsonb),
+    'revisionClasificacion',pg_catalog.jsonb_build_object(
+      'estado',case when p_accion='rechazar' then 'rechazada' else 'aceptada' end,
+      'valores',v_categoria,'fecha',v_fecha,'porId',v_m.persona_id
+    )
+  );
+  if v_ant ? 'tipoRevision' then
+    v_nuevo := v_nuevo || pg_catalog.jsonb_build_object('tipoRevision',v_ant->'tipoRevision');
+  end if;
+  update ulit_censo.espacio set escritura_habilitada=true where id=p_espacio;
+  v_version := ulit_censo.aplicar_interno(v_m,p_espacio,p_version_esperada,
+    'Oficina 2026 · revisión clasificación IT1 · '||p_accion,
+    pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object(
+      'c','correccionesRegistros','id',p_registro_id,'v',v_nuevo)));
+  update ulit_censo.espacio set escritura_habilitada=false where id=p_espacio;
+  return pg_catalog.jsonb_build_object('version',v_version,'registroId',p_registro_id,
+    'accion',p_accion,'correccion',v_nuevo);
+end;
+$categoria$;
+
+revoke all on function public.ulit_censo_categoria_it1_2026(text,text,bigint,text,jsonb)
+  from public,anon,service_role;
+grant execute on function public.ulit_censo_categoria_it1_2026(text,text,bigint,text,jsonb)
+  to authenticated;
+commit;
+ and bytes>0
+       and contenido->>'version'=v_e.version::text
+       and contenido->>'espacioId'=p_espacio and contenido->>'tipo'='real') then
+      raise exception 'ULIT Censo: sin respaldo íntegro actual, no se guardó' using errcode='42501';
     end if;
   end if;
 
