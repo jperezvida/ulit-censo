@@ -62,7 +62,7 @@ export function baseVacia(): BaseDatos {
     generado: new Date().toISOString(),
     municipios: {}, calles: {}, campanas: {}, itinerarios: {}, coberturas: {}, situacionesPrevias: {},
     callesRevisadasPlan: {}, locales: {}, negocios: {}, ocupaciones: {}, observaciones: {}, registros: {},
-    correccionesRegistros: {}, vinculos: {}, importaciones: {}, revisiones: {}, digital: {}, clasificaciones: {}, franquicias: {}, oficinaItinerarios: {}, secuencia: 0,
+    correccionesRegistros: {}, revisionesCategoriaRegistros: {}, vinculos: {}, importaciones: {}, revisiones: {}, digital: {}, clasificaciones: {}, franquicias: {}, oficinaItinerarios: {}, secuencia: 0,
     personas: {}, colaSync: [], meta: {},
   };
 }
