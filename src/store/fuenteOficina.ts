@@ -25,6 +25,8 @@ export interface FuenteOficina {
   recargarReal?: () => Promise<void>;
   /** Aplica en memoria solo la corrección ya confirmada por Supabase, sin recargar el censo. */
   aplicarCorreccionReal?: (cambio: CambioRevisionGeneralReal) => void;
+  /** Actualiza en memoria una categoría ya confirmada por la RPC de IT1. */
+  aplicarRevisionCategoriaReal?: (cambio: CambioCategoriaIT1) => void;
   versionReal?: number;
 }
 
