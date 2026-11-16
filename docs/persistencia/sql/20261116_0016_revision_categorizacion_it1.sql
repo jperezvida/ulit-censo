@@ -336,7 +336,7 @@ begin
   end loop;
   if p_accion='asignar' then
     if p_valores is null or pg_catalog.jsonb_typeof(p_valores)<>'object'
-      or pg_catalog.jsonb_object_length(p_valores)<>5
+      or (select count(*) from pg_catalog.jsonb_object_keys(p_valores))<>5
       or pg_catalog.octet_length(p_valores::text)>1300 then
       raise exception 'ULIT Censo: nueva categorización incorrecta' using errcode='22023';
     end if;
