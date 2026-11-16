@@ -26,7 +26,7 @@ export function categoriasEfectivas(
   revision?: RevisionCategoriaRegistro,
 ): ValoresCategoria {
   return Object.fromEntries(CLAVES_CATEGORIA.map((clave) => [clave,
-    revision?.estado === 'corregida' && Object.hasOwn(revision.valores, clave)
+    !!revision && Object.hasOwn(revision.valores, clave)
       ? revision.valores[clave]
       : datoRevisionGeneral(registro.registro, clave, registro.correccion?.valores),
   ])) as ValoresCategoria;
