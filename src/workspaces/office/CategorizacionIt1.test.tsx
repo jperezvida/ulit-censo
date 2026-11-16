@@ -60,12 +60,13 @@ describe('IT1 · aceptación y rechazo humano obligatorios',()=>{
   const detalle=screen.getByRole('region',{name:'Detalle de categorización'});
   expect(within(detalle).getByText('Carnicería Manolo')).toBeInTheDocument();
   expect(within(detalle).getByText('Carnes')).toBeInTheDocument();
-  expect(within(detalle).getByRole('button',{name:/Aceptar categoría y siguiente/})).toBeEnabled();
+  await waitFor(()=>expect(within(detalle).getByRole('button',{name:/Aceptar categoría y siguiente/})).toBeEnabled());
   expect(screen.getByRole('button',{name:/Por revisar/})).toHaveTextContent('2');
   expect(guardarCategoriaIt1).not.toHaveBeenCalled();
  });
  it('Aceptar confirma la categorización previa y pasa automáticamente al siguiente',async()=>{
   render(<App/>);
+  await waitFor(()=>expect(screen.getByRole('button',{name:/Aceptar categoría y siguiente/})).toBeEnabled());
   fireEvent.click(screen.getByRole('button',{name:/Aceptar categoría y siguiente/}));
   await waitFor(()=>expect(screen.getByRole('region',{name:'Detalle de categorización'})
     ).toHaveTextContent('Peluquería Ana'));
@@ -77,6 +78,7 @@ describe('IT1 · aceptación y rechazo humano obligatorios',()=>{
  });
  it('Rechazar deja la ficha pendiente de sustituir, sin borrar los valores existentes',async()=>{
   render(<App/>);
+  await waitFor(()=>expect(screen.getByRole('button',{name:/Rechazar categoría/})).toBeEnabled());
   fireEvent.click(screen.getByRole('button',{name:/Rechazar categoría/}));
   await waitFor(()=>expect(guardarCategoriaIt1).toHaveBeenCalledWith('r2',12,'rechazar',undefined));
   fireEvent.click(screen.getByRole('button',{name:/Rechazadas/}));
