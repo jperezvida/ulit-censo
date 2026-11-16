@@ -3,6 +3,7 @@ import { useStore } from './store';
 import type { BaseDatos } from '../domain/db';
 import type { Id, Rol } from '../domain/types';
 import type { CambioRevisionGeneralReal } from './revisionGeneralReal';
+import type { CambioCategoriaIT1 } from './categoriaIT1Real';
 
 export type Aplicar = (fn: (db: BaseDatos) => BaseDatos, etiqueta: string, opciones?: { silencioso?: boolean; sinAvisoError?: boolean }) => boolean;
 
