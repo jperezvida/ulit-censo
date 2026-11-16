@@ -105,7 +105,9 @@ describe('Oficina · categoría por fila sin aceptar herencias automáticamente'
  });
  it('rechazar obliga a buscar una alternativa; la fila no cuenta como revisada',async()=>{
   render(<Vista/>);
-  fireEvent.click(screen.getByRole('button',{name:/Rechazar existente/}));
+  const rechazar = screen.getByRole('button',{name:/Rechazar existente/});
+  await waitFor(()=>expect(rechazar).toBeEnabled());
+  fireEvent.click(rechazar);
   await waitFor(()=>expect(screen.getByText(/Clasificación anterior rechazada/)).toBeInTheDocument());
   expect(screen.getByText('0 / 2')).toBeInTheDocument();
   expect(screen.getByRole('button',{name:'Elegir peluquería oficial'})).toBeInTheDocument();
