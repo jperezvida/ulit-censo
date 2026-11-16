@@ -451,6 +451,14 @@ export interface CorreccionRegistro {
   porId: Id;
   fecha: string;
   motivo: string;
+  /** Validación humana de los 5 campos de clasificación de la fila (IT1, 2026).
+   * Si el snapshot difiere de los valores efectivos, vuelve a estado pendiente. */
+  revisionClasificacion?: {
+    estado: 'aceptada' | 'rechazada';
+    valores: Record<string, string>;
+    fecha: string;
+    porId: Id;
+  };
   /** Última operación funcional; la limpieza no incluye los valores del antiguo ocupante. */
   tipoRevision?: 'fachada' | 'ocupar' | 'vaciar';
   /** Metadatos de revisión; al confirmar un vacío se limpia esta lista funcional.

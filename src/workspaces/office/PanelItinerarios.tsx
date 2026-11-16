@@ -3,6 +3,7 @@ import { AlertTriangle, ArrowRight, BadgeCheck, ClipboardCheck, Clock, Globe, Lo
 import { useContexto } from '../../store/contexto';
 import { useFuenteOficina } from '../../store/fuenteOficina';
 import { ESTADO_OFICINA_TXT } from '../../domain/bloqueo';
+import { revisionCategorizacionIt1 } from '../../domain/revisionCategorizacionIt1';
 import type { Contador, ResumenItinerario } from '../../domain/oficina';
 import { Sim, fmt, fmtFecha } from '../../components/ui';
 import { useResumenes } from './contextoOficina';
@@ -21,6 +22,7 @@ export default function PanelItinerarios() {
   })() : 0;
   if (!campana) return null;
   const its = resumenes.filter((r) => r.itinerarioId);
+  const categoriaIt1 = campana.anio === 2026 ? revisionCategorizacionIt1(db,campana.id) : null;
   const fuera = resumenes.find((r) => !r.itinerarioId);
   return (
     <div className="ofi-inicio scroll-fino">
@@ -37,6 +39,7 @@ export default function PanelItinerarios() {
             <AlertTriangle size={15} /> Ver {fmt(sinLocal)} filas sin local
           </button>
         )}
+        {campana.anio === 2026 && <button className="btn" onClick={() => nav("/oficina/categorizacion-it1")} title="Revisar una a una las categorías de todos los ocupados de IT1"><Tags size={15}/> Categorizar IT1</button>}
         <button className="btn" onClick={() => nav('/oficina/revision-general')} title="Comprobación automática de coherencia de los Excel incorporados">
           <ClipboardCheck size={15} /> Revisión general
         </button>
@@ -49,7 +52,14 @@ export default function PanelItinerarios() {
 
       <div className="ofi-tarjetas">
         {its.map((r) => (
-          <TarjetaItinerario key={r.itinerarioId} r={r} quien={r.cierre ? db.personas[r.cierre.porId]?.nombre ?? r.cierre.porId : undefined} onAbrir={(q) => nav(`/oficina/it/${r.itinerarioId}${q}`)} />
+          <TarjetaItinerario key={r.itinerarioId} r={r}
+            quien={r.cierre ? db.personas[r.cierre.porId]?.nombre ?? r.cierre.porId : undefined}
+            onAbrir={(q) => nav(`/oficina/it/${r.itinerarioId}${q}`)}
+            onCategorizacion={r.codigo==='IT1' && categoriaIt1
+              ? () => nav('/oficina/categorizacion-it1') : undefined}
+            categoriaIt1={r.codigo==='IT1' && categoriaIt1
+              ? {hechos:categoriaIt1.aceptadas,pendientes:categoriaIt1.pendientes} : undefined}
+          />
         ))}
       </div>
 
@@ -77,7 +87,7 @@ function Progreso({ titulo, c, icono, onClick, etiquetaHechos = 'revisados' }: {
   );
 }
 
-function TarjetaItinerario({ r, quien, onAbrir }: { r: ResumenItinerario; quien?: string; onAbrir: (query: string) => void }) {
+function TarjetaItinerario({ r, quien, onAbrir, onCategorizacion, categoriaIt1 }: { r: ResumenItinerario; quien?: string; onAbrir: (query: string) => void; onCategorizacion?: () => void; categoriaIt1?: Contador }) {
   const cerrada = r.estado === 'revision-cerrada';
   return (
     <article className={`ofi-tarjeta ${cerrada ? 'cerrada' : ''} ${r.estado === 'validado' ? 'validada' : ''}`} aria-label={`Itinerario ${r.codigo}`}>
@@ -92,7 +102,8 @@ function TarjetaItinerario({ r, quien, onAbrir }: { r: ResumenItinerario; quien?
         {r.calles.enCurso ? ` · ${r.calles.enCurso} en curso` : ''}{r.calles.parciales ? ` · ${r.calles.parciales} parciales` : ''}
       </div>
       <Progreso titulo="Trabajo de campo" c={r.campo} etiquetaHechos="registrados" icono={<Store size={13} />} onClick={r.campo.pendientes ? () => onAbrir('?tarea=todos&filtro=sin-visitar') : undefined} />
-      <Progreso titulo="Categorización" c={r.categorizacion} icono={<Tags size={13} />} onClick={() => onAbrir('?tarea=categorizacion&filtro=pendientes')} />
+      <Progreso titulo="Categorización" c={categoriaIt1 ?? r.categorizacion} icono={<Tags size={13} />}
+        onClick={onCategorizacion ?? (() => onAbrir('?tarea=categorizacion&filtro=pendientes'))} />
       <Progreso titulo="Presencia digital" c={r.digital} icono={<Globe size={13} />} onClick={() => onAbrir('?tarea=digital&filtro=pendientes')} />
       <Progreso titulo="Franquicias" c={r.franquicias} icono={<BadgeCheck size={13} />} onClick={() => onAbrir('?tarea=franquicias&filtro=pendientes')} />
       <button className="ofi-fila-dato ofi-incid" onClick={() => onAbrir('?tarea=incidencias&filtro=pendientes')} disabled={!r.incidencias && !r.errores}>
