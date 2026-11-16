@@ -9,6 +9,7 @@ import { rutaActividad } from '../../domain/taxonomy';
 import { validarSeleccion } from '../../domain/clasificacion';
 import { BuscadorClasificacion, type Eleccion } from './BuscadorClasificacion';
 import { capacidadCategorizacionIt1, guardarCategoriaIt1, type AccionCategoria } from '../../store/categorizacionIt1Real';
+import type { CapacidadRevisionGeneral } from '../../store/revisionGeneralReal';
 import { streetViewParaRevision } from '../../domain/streetViewRevision';
 import '../../styles/categorizacion-it1.css';
 
@@ -60,7 +61,7 @@ export default function CategorizacionIt1() {
   const [guardando,setGuardando] = useState(false);
   const [error,setError] = useState('');
   const [mensaje,setMensaje] = useState('');
-  const [capacidad,setCapacidad] = useState({habilitada:false,motivo:'Comprobando permiso…'});
+  const [capacidad,setCapacidad] = useState<CapacidadRevisionGeneral>({habilitada:false,motivo:'Comprobando permiso…'});
   useEffect(()=>{
     if (!fuente?.soloLectura || campana?.anio!==2026) return;
     let vigente=true;
