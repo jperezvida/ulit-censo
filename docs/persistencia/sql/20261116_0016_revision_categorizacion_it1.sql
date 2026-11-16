@@ -385,8 +385,12 @@ begin
       p_espacio,'Automática antes de la primera categorización IT1 2026');
     if not exists(select 1 from ulit_censo.copia
        where id=v_copia and espacio_id=p_espacio and version=v_e.version
-       and sha256 ~ '^[0-9a-f]{64}
-
+       and length(sha256)=64 and sha256 ~ '^[0-9a-f]+$' and bytes>0
+       and contenido->>'version'=v_e.version::text
+       and contenido->>'espacioId'=p_espacio and contenido->>'tipo'='real') then
+      raise exception 'ULIT Censo: sin respaldo íntegro actual, no se guardó' using errcode='42501';
+    end if;
+  end if;
   v_fecha := pg_catalog.to_char(pg_catalog.clock_timestamp() at time zone 'UTC',
     'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
   v_nuevo := pg_catalog.jsonb_build_object(
