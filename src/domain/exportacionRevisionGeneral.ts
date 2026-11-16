@@ -1,4 +1,6 @@
 import type { BaseDatos } from './db';
+import type { RevisionCategoriaRegistro } from './types';
+import { CLAVES_CATEGORIA } from './revisionCategoriaIT1';
 import { auditarRevisionGeneral, datoRevisionGeneral, nombreEsMarcaDeVacio, type FilaRevisionGeneral } from './revisionGeneral';
 import { PERFIL_ITINERARIO_28 } from './xlsx/perfilesImportacion';
 
@@ -19,6 +21,8 @@ export const COLUMNAS_REVISION_GENERAL_2026 = [
   'ULIT · Fecha corrección',
   'ULIT · Responsable corrección',
   'ULIT · Motivo corrección',
+  'ULIT · Revisión categoría',
+  'ULIT · Fecha revisión categoría',
 ] as const;
 
 export interface ExportacionRevisionGeneral {
@@ -35,13 +39,16 @@ export interface ExportacionRevisionGeneral {
   };
 }
 
-function filaDeTrabajo(f: FilaRevisionGeneral): Record<string, string> {
+function filaDeTrabajo(f: FilaRevisionGeneral, categoria?: RevisionCategoriaRegistro): Record<string, string> {
   const valores = f.correccion?.valores;
   const salida: Record<string, string> = {};
   const cambiados: string[] = [];
   for (const col of PERFIL_ITINERARIO_28.columnas) {
     const original = datoRevisionGeneral(f.registro, col.clave);
-    const corregido = datoRevisionGeneral(f.registro, col.clave, valores);
+    const corregido = f.estado === 'ocupado' && categoria?.estado === 'corregida'
+      && (CLAVES_CATEGORIA as readonly string[]).includes(col.clave)
+      ? categoria.valores[col.clave] ?? datoRevisionGeneral(f.registro, col.clave, valores)
+      : datoRevisionGeneral(f.registro, col.clave, valores);
     // «LV»/«VACÍO» no es un nombre de negocio. Su valor de origen permanece
     // disponible únicamente en el Excel importado, no en el censo de trabajo.
     salida[col.cabecera] = col.clave === 'nombre'
@@ -59,6 +66,11 @@ function filaDeTrabajo(f: FilaRevisionGeneral): Record<string, string> {
   salida['ULIT · Fecha corrección'] = f.correccion?.fecha ?? '';
   salida['ULIT · Responsable corrección'] = f.correccion?.porId ?? '';
   salida['ULIT · Motivo corrección'] = f.correccion?.motivo ?? '';
+  salida['ULIT · Revisión categoría'] = f.estado !== 'ocupado' ? 'No aplica'
+    : categoria?.estado === 'aceptada' ? 'Aceptada'
+    : categoria?.estado === 'corregida' ? 'Corregida'
+    : categoria?.estado === 'rechazada' ? 'Rechazada (pendiente)' : 'Pendiente de revisión';
+  salida['ULIT · Fecha revisión categoría'] = categoria?.fecha ?? '';
   return salida;
 }
 
@@ -77,7 +89,9 @@ export function exportarRevisionGeneral(
     .filter((f) => !itinerarioId || f.registro.itinerarioId === itinerarioId);
   return {
     columnas: COLUMNAS_REVISION_GENERAL_2026,
-    filas: auditadas.map(filaDeTrabajo),
+    filas: auditadas.map((fila) => filaDeTrabajo(fila,
+      db.revisionesCategoriaRegistros?.[fila.id]?.campanaId === campanaId
+        ? db.revisionesCategoriaRegistros[fila.id] : undefined)),
     resumen: {
       filas: auditadas.length,
       vacios: auditadas.filter((f) => f.estado === 'vacio').length,
