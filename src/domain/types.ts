@@ -457,7 +457,7 @@ export interface RevisionCategoriaRegistro {
   porId: Id;
 }
 
- NUNCA modifica RegistroOrigen ni sus celdas originales. */
+/** Corrección supervisada de una fila 2026. NUNCA modifica RegistroOrigen ni sus celdas originales. */
 export interface CorreccionRegistro {
   id: Id;
   registroId: Id;
