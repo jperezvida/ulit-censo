@@ -121,8 +121,7 @@ begin
       else 'Descripción'
     end;
     v_efectivo := coalesce(v_corr->'valores'->>v_campo,
-      case when v_prev->>'estado'='corregida'
-        then v_prev->'valores'->>v_campo end,
+      v_prev->'valores'->>v_campo,
       v_reg->'original'->v_campo->>'v',
       v_reg->'datos'->>v_original, '');
     v_actual := v_actual || pg_catalog.jsonb_build_object(v_campo,pg_catalog.btrim(v_efectivo));
