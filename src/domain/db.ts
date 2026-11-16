@@ -27,6 +27,8 @@ export interface BaseDatos {
   registros: Record<Id, RegistroOrigen>;
   /** Vista corregida de una fila original, nunca sobrescribe los valores importados. */
   correccionesRegistros?: Record<Id, CorreccionRegistro>;
+  /** Aceptaciones/cambios supervisados por fila 2026. Independiente de la conciliación. */
+  revisionesCategoriaRegistros?: Record<Id, RevisionCategoriaRegistro>;
   vinculos: Record<Id, VinculoHistorico>;
   importaciones: Record<Id, Importacion>;
   /** clave: campana|local */
