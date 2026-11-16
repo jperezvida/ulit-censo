@@ -16,6 +16,8 @@ on:
       - 'docs/persistencia/pruebas/vacios_limpieza_integral_2026.sql'
       - 'docs/persistencia/sql/20261114_0015_ocupados_sin_fachada.sql'
       - 'docs/persistencia/pruebas/ocupado_quitar_fachada_2026.sql'
+      - 'docs/persistencia/sql/20261116_0016_categorizar_it1_2026.sql'
+      - 'docs/persistencia/pruebas/categorizar_it1_2026.sql'
       - '.github/workflows/ci-revision-general-sql.yml'
 permissions:
   contents: read
