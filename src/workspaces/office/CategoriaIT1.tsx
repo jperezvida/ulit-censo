@@ -6,7 +6,7 @@ import { useFuenteOficina } from '../../store/fuenteOficina';
 import { capacidadCategoriaIT1, guardarCategoriaIT1, type CapacidadCategoriaIT1 } from '../../store/categoriaIT1Real';
 import {
   categoriaTexto, categoriasDelCatalogo, OPCIONES_CATEGORIAS_2026,
-  prepararRevisionCategoriaIT1, type FilaCategoriaIT1,
+  prepararRevisionCategoriaIT1,
 } from '../../domain/revisionCategoriaIT1';
 import '../../styles/categoria-it1.css';
 
