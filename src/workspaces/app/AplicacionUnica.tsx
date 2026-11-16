@@ -7,6 +7,7 @@ import { AlmacenSupabase } from '../../store/almacenSupabase';
 import { conTiempoMaximo } from '../../store/conTiempoMaximo';
 import { leerEspacioPaginado, LecturaPaginadaNoDisponible } from '../../store/lecturaPaginada';
 import type { CambioRevisionGeneralReal } from '../../store/revisionGeneralReal';
+import type { CambioCategoriaIT1 } from '../../store/categoriaIT1Real';
 import { verificarEspacio, personaEspacio } from '../../domain/espacios';
 import type { BaseDatos } from '../../domain/db';
 import type { Rol } from '../../domain/types';
