@@ -1,5 +1,5 @@
 import type {
-  Calle, Campana, ClasificacionCampana, CorreccionRegistro, Cobertura, EstadoOficinaItinerario, FranquiciaCampana, Id, Importacion, Itinerario, LocalFisico,
+  Calle, Campana, ClasificacionCampana, CorreccionRegistro, RevisionCategoriaRegistro, Cobertura, EstadoOficinaItinerario, FranquiciaCampana, Id, Importacion, Itinerario, LocalFisico,
   Municipio, Negocio, Observacion, Ocupacion, PendienteSync, Persona, RegistroOrigen, Revision, RevisionDigital,
   SituacionPrevia, VinculoHistorico,
 } from './types';
