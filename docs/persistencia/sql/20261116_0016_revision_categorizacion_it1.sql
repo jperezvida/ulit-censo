@@ -348,13 +348,13 @@ begin
         raise exception 'ULIT Censo: faltan campos válidos de categorización' using errcode='22023';
       end if;
     end loop;
-    if (p_valores->>'grupoActividad') not in ('Comercio','Servicios','Hostelería')
+    if (p_valores->>'grupoActividad') not in ('Comercio','Servicios','Hostelería y Restauración')
       or pg_catalog.btrim(p_valores->>'subgrupo')=''
       or ((p_valores->>'grupoActividad')='Comercio'
         and pg_catalog.btrim(p_valores->>'grupoComercio')='')
       or ((p_valores->>'grupoActividad')<>'Comercio'
         and pg_catalog.btrim(p_valores->>'grupoComercio')<>'')
-      or ((p_valores->>'actividad')='' and (p_valores->>'descripcionActividad')='') then
+      then
       raise exception 'ULIT Censo: clasificación incompleta o incoherente' using errcode='22023';
     end if;
     v_categoria := p_valores;
