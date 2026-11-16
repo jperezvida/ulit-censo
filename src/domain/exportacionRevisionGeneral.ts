@@ -1,6 +1,8 @@
 import type { BaseDatos } from './db';
 import { auditarRevisionGeneral, datoRevisionGeneral, nombreEsMarcaDeVacio, type FilaRevisionGeneral } from './revisionGeneral';
 import { PERFIL_ITINERARIO_28 } from './xlsx/perfilesImportacion';
+import { categoriaEfectivaFila } from './categorizacionItinerarios';
+import { ID_CATALOGO_2026 } from './catalogo2026';
 
 /**
  * Salida de TRABAJO de los Excel 2026: una fila de salida por fila de importación confirmada.
@@ -19,6 +21,10 @@ export const COLUMNAS_REVISION_GENERAL_2026 = [
   'ULIT · Fecha corrección',
   'ULIT · Responsable corrección',
   'ULIT · Motivo corrección',
+  'ULIT · Categorización 2026',
+  'ULIT · Categoría oficial ID',
+  'ULIT · Responsable categorización',
+  'ULIT · Fecha categorización',
 ] as const;
 
 export interface ExportacionRevisionGeneral {
@@ -35,7 +41,13 @@ export interface ExportacionRevisionGeneral {
   };
 }
 
-function filaDeTrabajo(f: FilaRevisionGeneral): Record<string, string> {
+function filaDeTrabajo(db: BaseDatos, f: FilaRevisionGeneral): Record<string, string> {
+  const categoria = categoriaEfectivaFila(db, f);
+  const revision = db.revisionesCategoriaRegistros?.[f.id];
+  const vigente = revision?.nombreRevisado === f.nombre
+    && revision.catalogoId === ID_CATALOGO_2026
+    && revision.campanaId === db.importaciones[f.registro.importacionId]?.campanaId
+    && f.estado === 'ocupado' ? revision : undefined;
   const valores = f.correccion?.valores;
   const salida: Record<string, string> = {};
   const cambiados: string[] = [];
@@ -45,7 +57,10 @@ function filaDeTrabajo(f: FilaRevisionGeneral): Record<string, string> {
     // «LV»/«VACÍO» no es un nombre de negocio. Su valor de origen permanece
     // disponible únicamente en el Excel importado, no en el censo de trabajo.
     salida[col.cabecera] = col.clave === 'nombre'
-      && f.estado === 'vacio' && nombreEsMarcaDeVacio(corregido) ? '' : corregido;
+      && f.estado === 'vacio' && nombreEsMarcaDeVacio(corregido) ? '' :
+      Object.prototype.hasOwnProperty.call(categoria,col.clave) && vigente
+        && vigente.estado !== 'rechazada'
+        ? categoria[col.clave as keyof typeof categoria] : corregido;
     if (corregido !== original) cambiados.push(col.cabecera);
   }
   salida['ULIT · Registro origen'] = f.id;
@@ -59,6 +74,12 @@ function filaDeTrabajo(f: FilaRevisionGeneral): Record<string, string> {
   salida['ULIT · Fecha corrección'] = f.correccion?.fecha ?? '';
   salida['ULIT · Responsable corrección'] = f.correccion?.porId ?? '';
   salida['ULIT · Motivo corrección'] = f.correccion?.motivo ?? '';
+  salida['ULIT · Categorización 2026'] = f.estado === 'vacio' ? 'No aplica'
+    : vigente ? {aceptada:'Aceptada por revisor', corregida:'Corregida por revisor',
+      rechazada:'Rechazada; pendiente'}[vigente.estado] : 'Pendiente de revisar';
+  salida['ULIT · Categoría oficial ID'] = vigente?.estado === 'rechazada' ? '' : vigente?.nodoId ?? '';
+  salida['ULIT · Responsable categorización'] = vigente?.porId ?? '';
+  salida['ULIT · Fecha categorización'] = vigente?.fecha ?? '';
   return salida;
 }
 
@@ -77,7 +98,7 @@ export function exportarRevisionGeneral(
     .filter((f) => !itinerarioId || f.registro.itinerarioId === itinerarioId);
   return {
     columnas: COLUMNAS_REVISION_GENERAL_2026,
-    filas: auditadas.map(filaDeTrabajo),
+    filas: auditadas.map((f) => filaDeTrabajo(db, f)),
     resumen: {
       filas: auditadas.length,
       vacios: auditadas.filter((f) => f.estado === 'vacio').length,
