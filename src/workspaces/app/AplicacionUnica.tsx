@@ -145,7 +145,7 @@ export default function AplicacionUnica() {
   const fuente = useMemo(() => lectura && actual ? ({
     db: lectura.db, campanaId: actual, personaId: lectura.personaId,
     roles: [lectura.rol] as Rol[], soloLectura: true as const,
-    versionReal: lectura.version, elegirCampana: setCampanaId, recargarReal: recargar, aplicarCorreccionReal,
+    versionReal: lectura.version, elegirCampana: setCampanaId, recargarReal: recargar, aplicarCorreccionReal, aplicarRevisionCategoriaReal,
     // Ninguna escritura genérica sobre datos auténticos. IT1/2026 utiliza RPC específica.
     aplicar: () => false,
   }) : null, [lectura, actual, recargar, aplicarCorreccionReal]);
