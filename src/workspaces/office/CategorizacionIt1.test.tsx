@@ -55,8 +55,8 @@ describe('IT1 · aceptación y rechazo humano obligatorios',()=>{
  });
  it('los ocupados con categoría se muestran, pero ninguno aparece aceptado de antemano',async()=>{
   render(<App/>);
-  expect(screen.getByText(/2 ocupados/)).toBeInTheDocument();
-  expect(screen.getByText(/1 vacíos, no se categorizan/)).toBeInTheDocument();
+  expect(document.querySelector('.ci-resumen')).toHaveTextContent('2 ocupados');
+  expect(document.querySelector('.ci-resumen')).toHaveTextContent('1 vacíos, no se categorizan');
   const detalle=screen.getByRole('region',{name:'Detalle de categorización'});
   expect(within(detalle).getByText('Carnicería Manolo')).toBeInTheDocument();
   expect(within(detalle).getByText('Carnes')).toBeInTheDocument();
