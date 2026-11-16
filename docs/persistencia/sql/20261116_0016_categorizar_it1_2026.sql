@@ -135,8 +135,8 @@ begin
     end if;
   end if;
   if v_prev is not null and v_prev->'valores'=p_valores
-     and v_prev->>'estado'=case p_accion when 'aceptar' then 'aceptada'
-       when 'rechazar' then 'rechazada' else 'corregida' end then
+     and v_prev->>'estado'=(case p_accion when 'aceptar' then 'aceptada'
+       when 'rechazar' then 'rechazada' else 'corregida' end) then
     raise exception 'ULIT Censo: esta decisión ya está guardada' using errcode='22023';
   end if;
 
