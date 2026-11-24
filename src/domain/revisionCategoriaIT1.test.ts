@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { baseVacia } from './db';
-import { categoriasDelCatalogo, categoriaTexto, OPCIONES_CATEGORIAS_2026,
-  prepararRevisionCategoriaIT1 } from './revisionCategoriaIT1';
+import { categoriasDelCatalogo, categoriasFrecuentes, categoriaTexto, claveCategoria2026,
+  OPCIONES_CATEGORIAS_2026, prepararRevisionCategoriaIT1, repartirPasosCategoria,
+} from './revisionCategoriaIT1';
 
 function fixture() {
   const db = baseVacia();
@@ -80,5 +81,46 @@ describe('Categorización IT1 · no omitir registros sin conciliar',()=>{
     expect(f.efectivos.actividad).toBe('Carnicería');
     expect(f.confirmada).toBe(true);
     expect(db.registros.r2.datos.Actividad).toBe('Reparaciones');
+  });
+});
+
+describe('Categorización IT1 · reparto en dos pasos',()=>{
+  const carniceria=()=>categoriasDelCatalogo(
+    OPCIONES_CATEGORIAS_2026.find(o=>o.etiqueta.includes('Carnicería'))!.id);
+  it('57 al paso 1 y 9 al paso 2; ninguno guardado sin confirmación del servidor',()=>{
+    const filas=repartirPasosCategoria(prepararRevisionCategoriaIT1(fixture(),'c26'),[]);
+    expect(filas.filter(f=>f.paso===1&&f.pendiente)).toHaveLength(57);
+    expect(filas.filter(f=>f.paso===2&&f.pendiente)).toHaveLength(9);
+    expect(filas.filter(f=>f.confirmada)).toHaveLength(0);
+  });
+  it('rechazar mueve al paso 2 (en cola o guardado); aceptar deja de estar pendiente sin contar como guardado',()=>{
+    const db=fixture();
+    const filas=prepararRevisionCategoriaIT1(db,'c26');
+    const [r1,r2]=filas;
+    const cola=[{registroId:'r1',accion:'rechazar' as const,valores:r1.efectivos},
+      {registroId:'r2',accion:'aceptar' as const,valores:r2.efectivos}];
+    const p=repartirPasosCategoria(filas,cola);
+    expect(p[0]).toMatchObject({paso:2,pendiente:true,confirmada:false});
+    expect(p[1]).toMatchObject({paso:1,pendiente:false,confirmada:false});
+    db.revisionesCategoriaRegistros!.r1={id:'r1',registroId:'r1',campanaId:'c26',estado:'rechazada',
+      valores:r1.efectivos,porId:'responsable',fecha:'2026-11-24T10:00:00Z'};
+    const guardado=repartirPasosCategoria(prepararRevisionCategoriaIT1(db,'c26'),[]);
+    expect(guardado[0]).toMatchObject({paso:2,pendiente:true,confirmada:false});
+    // Elegir nueva categoría en cola: deja de estar pendiente y muestra la elegida.
+    const corr=repartirPasosCategoria(prepararRevisionCategoriaIT1(db,'c26'),
+      [{registroId:'r1',accion:'corregir',valores:carniceria()}]);
+    expect(corr[0]).toMatchObject({paso:2,pendiente:false,confirmada:false});
+    expect(corr[0].visibles.actividad).toBe('Carnicería');
+    expect(corr[0].existentes.subgrupo).toBe('Reparaciones');
+  });
+  it('las frecuentes salen de categorías coherentes con el catálogo y excluyen las rechazadas',()=>{
+    const db=fixture();
+    const v=carniceria();
+    expect(claveCategoria2026(v)).toBeDefined();
+    for (const id of ['r58','r59']) db.revisionesCategoriaRegistros![id]={id,registroId:id,
+      campanaId:'c26',estado:'corregida',valores:v,porId:'responsable',fecha:'2026-11-24T10:00:00Z'};
+    expect(categoriasFrecuentes(prepararRevisionCategoriaIT1(db,'c26'))[0]).toBe(claveCategoria2026(v));
+    for (const id of ['r58','r59']) db.revisionesCategoriaRegistros![id].estado='rechazada';
+    expect(categoriasFrecuentes(prepararRevisionCategoriaIT1(db,'c26'))).not.toContain(claveCategoria2026(v));
   });
 });
