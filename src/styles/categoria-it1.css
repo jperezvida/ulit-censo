@@ -41,3 +41,34 @@
 .categoria-advertencia { background:#fff4e5; color:#8a5b16; border-radius:8px; padding:9px 12px; }
 .categoria-aviso { color:#277347; font-size:12px; }
 @media(max-width:790px){ .categoria-columnas { grid-template-columns:1fr; } .categoria-lista { max-height:260px; } .categoria-detalle { padding:16px; } .categoria-buscar { margin-left:0; width:100%; } .categoria-buscar input { flex:1; } }
+
+/* Dos pasos: validar lo existente · categorizar lo pendiente */
+.categoria-resumen-cola b { color:#986013; }
+.categoria-rechazo { display:inline-flex; font-size:11px; font-weight:700; border-radius:12px; padding:3px 8px; background:#fdecec; color:#9b2c2c; }
+.categoria-pasos { display:grid; grid-template-columns:1fr 1fr; gap:10px; max-width:860px; margin-bottom:12px; }
+.categoria-paso { display:flex; gap:12px; align-items:center; text-align:left; padding:12px 14px; border:1px solid #dce5ee; border-radius:12px; background:white; color:#17304f; cursor:pointer; }
+.categoria-paso small { display:block; color:#62748c; font-size:12px; margin-top:2px; }
+.categoria-paso.activo { border-color:#2680e8; background:#eaf4ff; box-shadow:inset 0 0 0 1px #2680e8; }
+.categoria-paso-num { display:inline-grid; place-items:center; flex:none; width:28px; height:28px; border-radius:50%; background:#e7edf3; font-weight:700; }
+.categoria-paso.activo .categoria-paso-num { background:#2680e8; color:white; }
+.categoria-tarjeta { max-width:860px; background:white; border:1px solid #dce5ee; border-radius:14px; padding:22px 24px; outline:none; }
+.categoria-tarjeta:focus-visible { box-shadow:0 0 0 3px #bcd9fb; }
+.categoria-progreso { height:6px; border-radius:4px; background:#e7edf3; overflow:hidden; }
+.categoria-progreso > div { height:100%; background:#2f9e62; transition:width .15s ease-out; }
+.categoria-progreso-t { margin:8px 0 14px; font-size:13px; color:#536781; }
+.categoria-negocio { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+.categoria-negocio small { color:#657d95; font-size:12px; }
+.categoria-negocio h2 { font-size:22px; margin:6px 0 4px; }
+.categoria-negocio p { margin:0; color:#506986; }
+.categoria-it1 kbd { font:inherit; font-size:11px; padding:1px 6px; border:1px solid #cfdae6; border-bottom-width:2px; border-radius:5px; background:#f7fafd; color:#3b5372; }
+.categoria-teclas { font-size:12px; color:#64748b; margin:12px 0 0; }
+.categoria-referencia { margin:14px 0 8px; padding:9px 12px; border-radius:8px; background:#f7fafd; color:#506986; font-size:13px; }
+.categoria-propuesta { display:flex; gap:8px; align-items:flex-start; margin:8px 0 10px; padding:10px 12px; border-radius:8px; background:#fff6e8; color:#7a4f0f; font-size:13px; }
+.categoria-propuesta svg { flex:none; margin-top:2px; }
+.categoria-fin { display:flex; gap:12px; align-items:flex-start; color:#267148; padding:8px 0; }
+.categoria-fin p { color:#506986; margin:4px 0 12px; }
+.categoria-buscar-negocio { max-width:860px; margin-top:14px; font-size:13px; color:#536781; }
+.categoria-buscar-negocio summary { cursor:pointer; padding:6px 0; }
+.categoria-buscar-negocio .input { margin:8px 0; width:100%; }
+.categoria-buscar-negocio .categoria-item { border:1px solid #e7edf3; border-radius:8px; margin-bottom:6px; }
+@media(max-width:790px){ .categoria-pasos { grid-template-columns:1fr; } .categoria-tarjeta { padding:16px; } .categoria-negocio { flex-direction:column; } }

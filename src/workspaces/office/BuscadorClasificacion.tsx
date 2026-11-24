@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { Clock, Lightbulb } from 'lucide-react';
+import { Clock, Lightbulb, Star } from 'lucide-react';
 import { useStore } from '../../store/store';
 import { useFuenteOficina } from '../../store/fuenteOficina';
-import { buscarClasificacion, sugerirPorNombre, type OpcionClasificacion, type Resultado } from '../../domain/buscador';
+import { buscarClasificacion, opcionPorClave, sugerirPorNombre, type OpcionClasificacion, type Resultado } from '../../domain/buscador';
 import '../../styles/clasificacion.css';
 
 /**
@@ -21,15 +21,17 @@ export interface Eleccion {
 }
 
 interface Item extends OpcionClasificacion {
-  seccion: 'nombre' | 'reciente' | 'resultado';
+  seccion: 'nombre' | 'frecuente' | 'reciente' | 'resultado';
   motivo?: string;
 }
 
 /** Referencia estable: una lista nueva en cada render recalcularía la lista y perdería la selección. */
 const SIN_RECIENTES: string[] = [];
+const SIN_FRECUENTES: string[] = [];
 
 export function BuscadorClasificacion({
   catalogo, nombreNegocio, inicial = '', onElegir, onCancelar, flotante = false, autoFocus = true, etiqueta = 'Buscar actividad',
+  frecuentes = SIN_FRECUENTES, marcarPropuestaUnica = false, rechazadas = SIN_FRECUENTES,
 }: {
   catalogo: string;
   /** Nombre comercial: para proponer clasificaciones (nunca se aplican solas). */
@@ -41,6 +43,18 @@ export function BuscadorClasificacion({
   flotante?: boolean;
   autoFocus?: boolean;
   etiqueta?: string;
+  /** Claves de opciones frecuentes en el ámbito de trabajo (se muestran con la búsqueda vacía). */
+  frecuentes?: string[];
+  /**
+   * Con la búsqueda vacía y UNA sola propuesta por el nombre (no ambigua), dejarla marcada:
+   * se ve resaltada y solo se aplica si la persona pulsa Enter o hace clic. Nunca se aplica sola.
+   */
+  marcarPropuestaUnica?: boolean;
+  /**
+   * Claves de opciones equivalentes a una categoría ya RECHAZADA para este negocio:
+   * pueden elegirse a mano, pero nunca quedan marcadas por defecto y se señalan como rechazadas.
+   */
+  rechazadas?: string[];
 }) {
   // En un espacio de trabajo no se leen ni guardan las preferencias de la demostración (recientes y usos).
   const fuente = useFuenteOficina();
@@ -70,6 +84,11 @@ export function BuscadorClasificacion({
         out.push(...s.sugerencias.map((x) => ({ ...x, seccion: 'nombre' as const })));
         amb = s.ambiguo;
       }
+      for (const clave of frecuentes) {
+        if (out.length >= 8 || out.some((o) => o.clave === clave)) continue;
+        const o = opcionPorClave(catalogo, clave);
+        if (o) out.push({ ...o, seccion: 'frecuente', motivo: 'frecuente en el itinerario' });
+      }
       const r = buscarClasificacion(catalogo, '', { recientes, usos, limite: 6 }).resultados;
       out.push(...r.filter((x) => !out.some((o) => o.clave === x.clave)).map((x) => ({ ...x, seccion: 'reciente' as const })));
     } else {
@@ -78,13 +97,17 @@ export function BuscadorClasificacion({
       amb = r.ambiguo;
     }
     return { items: out, ambiguo: amb };
-  }, [catalogo, q, nombreNegocio, recientes, usos]);
+  }, [catalogo, q, nombreNegocio, recientes, usos, frecuentes]);
 
   // Selección por defecto: la primera, salvo que sea ambiguo o solo haya propuestas/recientes.
+  // Con `marcarPropuestaUnica`, una propuesta por el nombre única queda marcada (no aplicada).
   useEffect(() => {
-    setSel(!ambiguo && items.length && items[0].seccion === 'resultado' ? 0 : -1);
+    const propuestaUnica = marcarPropuestaUnica && !ambiguo && items[0]?.seccion === 'nombre'
+      && items.filter((i) => i.seccion === 'nombre').length === 1
+      && !rechazadas.includes(items[0].clave);
+    setSel(propuestaUnica || (!ambiguo && items.length && items[0].seccion === 'resultado') ? 0 : -1);
     setAviso(null);
-  }, [items, ambiguo]);
+  }, [items, ambiguo, marcarPropuestaUnica, rechazadas]);
 
   useLayoutEffect(() => {
     if (!flotante || !input.current) return;
@@ -181,10 +204,13 @@ export function BuscadorClasificacion({
                 <span className="bc-op-t">
                   {o.seccion === 'nombre' && <Lightbulb size={12} aria-label="Propuesta por el nombre" />}
                   {o.seccion === 'reciente' && <Clock size={12} aria-label="Usada recientemente" />}
+                  {o.seccion === 'frecuente' && <Star size={12} aria-label="Frecuente en el itinerario" />}
                   <b>{o.etiqueta}</b>
                   {o.tipo === 'subgrupo' && o.requiereDescripcion && <span className="tag">sin actividad · con descripción</span>}
                   {o.tipo === 'ejemplo' && <span className="tag">descripción</span>}
                   {o.seccion === 'nombre' && <span className="tag naranja">propuesta: {o.motivo}</span>}
+                  {o.seccion === 'frecuente' && <span className="tag">frecuente</span>}
+                  {rechazadas.includes(o.clave) && <span className="tag rojo">rechazada en el Excel</span>}
                 </span>
                 <span className="bc-ruta">{o.ruta}{o.seccion === 'resultado' && o.motivo ? ` · ${o.motivo}` : ''}</span>
               </li>
