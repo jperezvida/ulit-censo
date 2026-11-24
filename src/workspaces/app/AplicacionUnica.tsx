@@ -167,8 +167,6 @@ export default function AplicacionUnica() {
       colaCategoriaRef.current = crearColaCategoriaIT1(
         lectura.version, guardarCategoriaIT1, aplicarRevisionCategoriaReal, setEstadoColaCategoriaIT1,
       );
-    } else if (!colaCategoriaRef.current.consultar().pendientes.length) {
-      colaCategoriaRef.current.sincronizarVersion(lectura.version);
     }
     return colaCategoriaRef.current.encolar(decision);
   }, [lectura, aplicarRevisionCategoriaReal]);
