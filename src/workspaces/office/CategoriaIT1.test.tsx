@@ -8,6 +8,10 @@ import { FuenteOficinaContext } from '../../store/fuenteOficina';
 import { guardarCategoriaIT1, type CambioCategoriaIT1 } from '../../store/categoriaIT1Real';
 import { crearColaCategoriaIT1, type EstadoColaCategoriaIT1 } from '../../store/colaCategoriaIT1';
 import CategoriaIT1 from './CategoriaIT1';
+import { sugerirPorNombre } from '../../domain/buscador';
+import { ID_CATALOGO_2026 } from '../../domain/catalogo2026';
+import { categoriasDelCatalogo, OPCIONES_CATEGORIAS_2026,
+  type ValoresCategoria } from '../../domain/revisionCategoriaIT1';
 
 vi.mock('../../store/categoriaIT1Real', () => ({
   capacidadCategoriaIT1: vi.fn(async () => ({
@@ -64,6 +68,14 @@ function fixture66(): BaseDatos {
   }
   return db;
 }
+
+/** Celdas del Excel para una categoría del catálogo 2026 (datos ficticios). */
+function celdas(v: ValoresCategoria): Record<string,string> {
+  return {GrActividad:v.grupoActividad,'Gr Comercio':v.grupoComercio,
+    'Subgrupo de actividad':v.subgrupo,Actividad:v.actividad,'Descripción':v.descripcionActividad};
+}
+const carniceria=()=>categoriasDelCatalogo(
+  OPCIONES_CATEGORIAS_2026.find((o)=>o.etiqueta.includes('Carnicería'))!.id);
 
 function Pantalla({ inicial=fixture }: { inicial?: () => BaseDatos }) {
   const [db,setDb]=useState(inicial);
@@ -132,7 +144,7 @@ describe('Oficina · categorización IT1 en dos pasos',()=>{
     // Avance inmediato: el paso 1 queda completado mientras la RPC sigue pendiente.
     expect(within(paso1()).getByText('Paso 1 completado.')).toBeInTheDocument();
     expect(resumen()).toHaveTextContent('1 decisiones por guardar');
-    expect(resumen()).toHaveTextContent('0 de 2 guardadas en el servidor');
+    expect(resumen()).toHaveTextContent('0 de 2 con categoría finalizada');
     expect(guardarCategoriaIT1).toHaveBeenCalledWith('r1',20,'aceptar',
       expect.objectContaining({grupoActividad:'Servicios'}));
     await act(async()=>resolver({registroId:'r1',version:21,revision:{
@@ -141,7 +153,7 @@ describe('Oficina · categorización IT1 en dos pasos',()=>{
         subgrupo:'Reparaciones',actividad:'Reparaciones',descripcionActividad:''},
       porId:'responsable',fecha:'2026-11-24T17:00:00Z',
     }}));
-    await waitFor(()=>expect(resumen()).toHaveTextContent('1 de 2 guardadas en el servidor'));
+    await waitFor(()=>expect(resumen()).toHaveTextContent('1 de 2 con categoría finalizada'));
     expect(resumen()).toHaveTextContent('0 decisiones por guardar');
     // Aceptada: no vuelve a aparecer como pendiente en ningún paso.
     expect(botonPaso(1)).toHaveTextContent('Completado');
@@ -158,8 +170,9 @@ describe('Oficina · categorización IT1 en dos pasos',()=>{
       expect.objectContaining({subgrupo:'Reparaciones'}));
     expect(botonPaso(2)).toHaveTextContent('Quedan 2');
     await waitFor(()=>expect(resumen()).toHaveTextContent('0 decisiones por guardar'));
-    // Rechazar no es categorizar: nada cuenta como guardado.
-    expect(resumen()).toHaveTextContent('0 de 2 guardadas en el servidor');
+    // El rechazo es una decisión guardada en el servidor, pero no finaliza la categorización.
+    expect(resumen()).toHaveTextContent('1 decisiones guardadas en el servidor (1 rechazos)');
+    expect(resumen()).toHaveTextContent('0 de 2 con categoría finalizada');
     fireEvent.click(botonPaso(2));
     expect(within(paso2()).getByText('Antenas Eiras')).toBeInTheDocument();
     expect(within(paso2()).getByText(/rechazada, solo como referencia/)).toHaveTextContent('Servicios › Reparaciones');
@@ -180,7 +193,7 @@ describe('Oficina · categorización IT1 en dos pasos',()=>{
     expect(within(paso1()).getByText('Bar Ficticio')).toBeInTheDocument();
     await waitFor(()=>expect(guardarCategoriaIT1).toHaveBeenLastCalledWith('r1',21,'aceptar',
       expect.objectContaining({subgrupo:'Reparaciones'})));
-    await waitFor(()=>expect(resumen()).toHaveTextContent('1 de 3 guardadas en el servidor'));
+    await waitFor(()=>expect(resumen()).toHaveTextContent('1 de 3 con categoría finalizada'));
     expect(botonPaso(2)).toHaveTextContent('Quedan 1');
   });
 
@@ -191,9 +204,9 @@ describe('Oficina · categorización IT1 en dos pasos',()=>{
     tecla('Enter');
     await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent('Guardado detenido: sin conexión'));
     expect(resumen()).toHaveTextContent('1 decisiones por guardar');
-    expect(resumen()).toHaveTextContent('0 de 2 guardadas en el servidor');
+    expect(resumen()).toHaveTextContent('0 de 2 con categoría finalizada');
     fireEvent.click(screen.getByRole('button',{name:'Reintentar guardado'}));
-    await waitFor(()=>expect(resumen()).toHaveTextContent('1 de 2 guardadas en el servidor'));
+    await waitFor(()=>expect(resumen()).toHaveTextContent('1 de 2 con categoría finalizada'));
     expect(screen.queryByText(/Guardado detenido/)).not.toBeInTheDocument();
   });
 
@@ -213,7 +226,7 @@ describe('Oficina · categorización IT1 en dos pasos',()=>{
     await waitFor(()=>expect(guardarCategoriaIT1).toHaveBeenCalledWith('r2',20,'corregir',
       expect.objectContaining({subgrupo:expect.stringMatching(/Peluquer/)})));
     expect(within(paso2()).getByText('Paso 2 completado.')).toBeInTheDocument();
-    await waitFor(()=>expect(resumen()).toHaveTextContent('1 de 2 guardadas en el servidor'));
+    await waitFor(()=>expect(resumen()).toHaveTextContent('1 de 2 con categoría finalizada'));
   });
 
   it('los rechazados se categorizan en el paso 2 sin perder decisiones al cambiar de paso', async()=>{
@@ -232,7 +245,7 @@ describe('Oficina · categorización IT1 en dos pasos',()=>{
     expect(within(paso2()).getByText('Peluquería Sol')).toBeInTheDocument();
     await waitFor(()=>expect(guardarCategoriaIT1).toHaveBeenCalledWith('r1',21,'corregir',
       expect.objectContaining({actividad:'Carnicería'})));
-    await waitFor(()=>expect(resumen()).toHaveTextContent('1 de 2 guardadas en el servidor'));
+    await waitFor(()=>expect(resumen()).toHaveTextContent('1 de 2 con categoría finalizada'));
   });
 
   it('IT1 real ficticio: 66 ocupados, 57 en el paso 1 y 9 en el paso 2; navegación inmediata', async()=>{
@@ -243,7 +256,7 @@ describe('Oficina · categorización IT1 en dos pasos',()=>{
     expect(botonPaso(1)).toHaveTextContent('Quedan 57');
     expect(botonPaso(2)).toHaveTextContent('Quedan 9');
     expect(resumen()).toHaveTextContent('66 pendientes de revisar');
-    expect(resumen()).toHaveTextContent('0 de 66 guardadas en el servidor');
+    expect(resumen()).toHaveTextContent('0 de 66 con categoría finalizada');
     const tiempos: number[]=[];
     for (let i=1;i<=10;i++) {
       const t0=performance.now();
@@ -255,9 +268,77 @@ describe('Oficina · categorización IT1 en dos pasos',()=>{
     expect(botonPaso(1)).toHaveTextContent('Quedan 47');
     expect(botonPaso(2)).toHaveTextContent('Quedan 14');
     expect(resumen()).toHaveTextContent('61 pendientes de revisar');
-    expect(resumen()).toHaveTextContent('0 de 66 guardadas en el servidor');
+    expect(resumen()).toHaveTextContent('0 de 66 con categoría finalizada');
     tecla('ArrowLeft');
     expect(within(paso1()).getByText('Negocio ficticio 10')).toBeInTheDocument();
     expect(within(paso1()).getByText('Rechazada · por guardar')).toBeInTheDocument();
+  });
+
+  it('contadores: el rechazo guardado no es categoría finalizada; al corregir pasa a finalizada', async()=>{
+    render(<Pantalla/>);
+    await listo();
+    expect(resumen()).toHaveTextContent('0 decisiones guardadas en el servidor');
+    tecla('n');
+    await waitFor(()=>expect(resumen()).toHaveTextContent('1 decisiones guardadas en el servidor (1 rechazos)'));
+    expect(resumen()).toHaveTextContent('0 de 2 con categoría finalizada');
+    expect(resumen()).toHaveTextContent('2 pendientes de revisar');
+    fireEvent.click(botonPaso(2));
+    const buscador=within(paso2()).getByRole('combobox');
+    fireEvent.change(buscador,{target:{value:'carniceria'}});
+    fireEvent.keyDown(buscador,{key:'Enter'});
+    await waitFor(()=>expect(resumen()).toHaveTextContent('1 de 2 con categoría finalizada'));
+    // La última decisión de ese negocio ya no es un rechazo: sigue siendo 1 decisión guardada.
+    expect(resumen()).toHaveTextContent('1 decisiones guardadas en el servidor');
+    expect(resumen()).not.toHaveTextContent('rechazos');
+  });
+
+  it('frecuentes: no salen de originales pendientes, sí de categorías aceptadas en el servidor', async()=>{
+    const db=()=>{ const d=fixture(); d.registros.r1={...d.registros.r1,
+      datos:{...d.registros.r1.datos,...celdas(carniceria())}}; return d; };
+    render(<Pantalla inicial={db}/>);
+    await listo();
+    fireEvent.click(botonPaso(2));
+    // Carnicería solo existe como original sin revisar: no se propone como frecuente.
+    expect(within(paso2()).queryByText('frecuente')).not.toBeInTheDocument();
+    fireEvent.click(botonPaso(1));
+    tecla('Enter');
+    await waitFor(()=>expect(resumen()).toHaveTextContent('1 de 2 con categoría finalizada'));
+    fireEvent.click(botonPaso(2));
+    const op=within(paso2()).getByRole('option',{name:/Carnicería/});
+    expect(op).toHaveTextContent('frecuente');
+    expect(op).toHaveAttribute('aria-selected','false');
+  });
+
+  it('una categoría del Excel rechazada no vuelve a aparecer marcada en el paso 2', async()=>{
+    const sug=sugerirPorNombre(ID_CATALOGO_2026,'Peluquería Sol').sugerencias;
+    expect(sug).toHaveLength(1);
+    const peluqueria=categoriasDelCatalogo(sug[0].nodoId,sug[0].descripcion??'');
+    const db=()=>{ const d=fixture(); d.registros.r1={...d.registros.r1,
+      datos:{...d.registros.r1.datos,'Nombre del negocio':'Peluquería Sol',...celdas(peluqueria)}};
+      delete d.registros.r2; return d; };
+    render(<Pantalla inicial={db}/>);
+    await listo();
+    expect(within(paso1()).getByRole('heading',{level:3})).toHaveTextContent(/Peluquer/);
+    tecla('n');
+    fireEvent.click(botonPaso(2));
+    const t=paso2();
+    expect(within(t).getByText('Peluquería Sol')).toBeInTheDocument();
+    expect(within(t).getByRole('note')).toHaveTextContent(/categoría rechazada del Excel: no se marca/);
+    expect(within(t).queryByRole('option',{selected:true})).not.toBeInTheDocument();
+    expect(within(t).getByRole('option',{name:/Peluquer/})).toHaveTextContent('rechazada en el Excel');
+    fireEvent.keyDown(within(t).getByRole('combobox'),{key:'Enter'});
+    // Enter sin elección explícita no guarda nada: solo consta el rechazo.
+    await waitFor(()=>expect(resumen()).toHaveTextContent('0 decisiones por guardar'));
+    expect(guardarCategoriaIT1).toHaveBeenCalledTimes(1);
+    expect(guardarCategoriaIT1).toHaveBeenCalledWith('r1',20,'rechazar',expect.anything());
+    expect(within(paso2()).getByText('Peluquería Sol')).toBeInTheDocument();
+  });
+
+  it('un negocio sin categoría en el Excel sí recibe la propuesta marcada (sin rechazo previo)', async()=>{
+    render(<Pantalla/>);
+    await listo();
+    fireEvent.click(botonPaso(2));
+    expect(within(paso2()).getByRole('option',{selected:true})).toHaveTextContent(/Peluquería/);
+    expect(within(paso2()).queryByText('rechazada en el Excel')).not.toBeInTheDocument();
   });
 });

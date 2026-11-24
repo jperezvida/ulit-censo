@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { baseVacia } from './db';
 import { categoriasDelCatalogo, categoriasFrecuentes, categoriaTexto, claveCategoria2026,
-  OPCIONES_CATEGORIAS_2026, prepararRevisionCategoriaIT1, repartirPasosCategoria,
+  mismaCategoria, opcionEquivaleA, OPCIONES_CATEGORIAS_2026, prepararRevisionCategoriaIT1,
+  repartirPasosCategoria,
 } from './revisionCategoriaIT1';
 
 function fixture() {
@@ -113,14 +114,38 @@ describe('Categorización IT1 · reparto en dos pasos',()=>{
     expect(corr[0].visibles.actividad).toBe('Carnicería');
     expect(corr[0].existentes.subgrupo).toBe('Reparaciones');
   });
-  it('las frecuentes salen de categorías coherentes con el catálogo y excluyen las rechazadas',()=>{
+  it('las frecuentes solo cuentan decisiones aceptadas o corregidas confirmadas por el servidor',()=>{
     const db=fixture();
     const v=carniceria();
-    expect(claveCategoria2026(v)).toBeDefined();
-    for (const id of ['r58','r59']) db.revisionesCategoriaRegistros![id]={id,registroId:id,
-      campanaId:'c26',estado:'corregida',valores:v,porId:'responsable',fecha:'2026-11-24T10:00:00Z'};
-    expect(categoriasFrecuentes(prepararRevisionCategoriaIT1(db,'c26'))[0]).toBe(claveCategoria2026(v));
-    for (const id of ['r58','r59']) db.revisionesCategoriaRegistros![id].estado='rechazada';
-    expect(categoriasFrecuentes(prepararRevisionCategoriaIT1(db,'c26'))).not.toContain(claveCategoria2026(v));
+    const clave=claveCategoria2026(v)!;
+    expect(clave).toBeDefined();
+    // Originales pendientes de revisar con una categoría coherente: NO cuentan.
+    for (const n of [1,2,3]) Object.assign(db.registros['r'+n].datos,{GrActividad:v.grupoActividad,
+      'Gr Comercio':v.grupoComercio,'Subgrupo de actividad':v.subgrupo,Actividad:v.actividad});
+    const filas=prepararRevisionCategoriaIT1(db,'c26');
+    expect(claveCategoria2026(filas[0].existentes)).toBe(clave);
+    expect(categoriasFrecuentes(filas)).toEqual([]);
+    // Aceptada en el servidor: cuenta.
+    const rev=(id:string,estado:'aceptada'|'rechazada'|'corregida',valores=v)=>{
+      db.revisionesCategoriaRegistros![id]={id,registroId:id,campanaId:'c26',estado,
+        valores,porId:'responsable',fecha:'2026-11-24T10:00:00Z'}; };
+    rev('r1','aceptada',filas[0].existentes);
+    expect(categoriasFrecuentes(prepararRevisionCategoriaIT1(db,'c26'))).toEqual([clave]);
+    // Rechazada: no cuenta, aunque la categoría sea coherente.
+    rev('r1','rechazada',filas[0].existentes);
+    expect(categoriasFrecuentes(prepararRevisionCategoriaIT1(db,'c26'))).toEqual([]);
+    // Corregida en el paso 2: cuenta.
+    rev('r58','corregida');
+    expect(categoriasFrecuentes(prepararRevisionCategoriaIT1(db,'c26'))).toEqual([clave]);
+  });
+  it('reconoce la opción equivalente a una categoría rechazada (ignora la descripción)',()=>{
+    const v=carniceria();
+    const op=OPCIONES_CATEGORIAS_2026.find(o=>o.etiqueta.includes('Carnicería'))!;
+    expect(opcionEquivaleA(op.id,v)).toBe(true);
+    expect(opcionEquivaleA(op.id,{...v,descripcionActividad:'otra'})).toBe(true);
+    expect(mismaCategoria(v,{...v,actividad:'carniceria '})).toBe(true);
+    const otra=OPCIONES_CATEGORIAS_2026.find(o=>!o.etiqueta.includes('Carnicería')&&!o.requiereDescripcion)!;
+    expect(opcionEquivaleA(otra.id,v)).toBe(false);
+    expect(opcionEquivaleA('a1-comercio',v)).toBe(false);
   });
 });

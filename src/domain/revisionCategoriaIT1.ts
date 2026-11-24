@@ -4,6 +4,7 @@ import { auditarRevisionGeneral, datoRevisionGeneral, type FilaRevisionGeneral }
 import { NODOS_2026, rutaActividad, TAXONOMIA_POR_ID } from './taxonomy';
 import { resolverNiveles, validarSeleccion } from './clasificacion';
 import { ID_CATALOGO_2026 } from './catalogo2026';
+import { normalizar } from './text';
 
 /** Los campos reales del Excel 2026; no incluir franquicia ni presencia digital. */
 export const CLAVES_CATEGORIA = [
@@ -128,14 +129,39 @@ export function claveCategoria2026(v: ValoresCategoria): string | undefined {
   }
 }
 
-/** Categorías más frecuentes del itinerario (sin contar las rechazadas). Solo para proponer. */
+/**
+ * Categorías más frecuentes del itinerario, SOLO a partir de decisiones confirmadas por el
+ * servidor (aceptadas o corregidas). Las clasificaciones originales pendientes de revisar y las
+ * rechazadas no cuentan: lo no validado no debe reforzarse como propuesta.
+ */
 export function categoriasFrecuentes(filas: FilaCategoriaIT1[], limite = 5): string[] {
   const usos = new Map<string, number>();
   for (const f of filas) {
-    if ((!f.tienePropuesta && !f.confirmada) || f.revision?.estado === 'rechazada') continue;
+    const estado = f.revision?.estado;
+    if (!f.confirmada || (estado !== 'aceptada' && estado !== 'corregida')) continue;
     const clave = claveCategoria2026(f.efectivos);
     if (clave) usos.set(clave, (usos.get(clave) ?? 0) + 1);
   }
   return [...usos].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, limite).map(([clave]) => clave);
+}
+
+const nivel = (x: string) => normalizar(x ?? '').trim();
+/** Misma categoría (grupo, grupo de comercio, subgrupo y actividad), sin mirar la descripción. */
+export function mismaCategoria(a: ValoresCategoria, b: ValoresCategoria): boolean {
+  return (['grupoActividad', 'grupoComercio', 'subgrupo', 'actividad'] as const)
+    .every((k) => nivel(a[k]) === nivel(b[k]));
+}
+
+/**
+ * ¿La opción del catálogo (nodo + descripción) equivale a la categoría indicada?
+ * Se usa para no volver a proponer como marcada una categoría ya rechazada.
+ */
+export function opcionEquivaleA(nodoId: string, v: ValoresCategoria): boolean {
+  const nodo = TAXONOMIA_POR_ID[nodoId];
+  if (!nodo || nodo.catalogo !== ID_CATALOGO_2026) return false;
+  const ruta = rutaActividad(nodoId);
+  const n = (x: number) => ruta.find((r) => r.nivel === x)?.nombre ?? '';
+  return mismaCategoria({ grupoActividad: n(1), grupoComercio: n(2), subgrupo: n(3),
+    actividad: n(4), descripcionActividad: '' }, v);
 }

@@ -7,7 +7,7 @@ import { capacidadCategoriaIT1, type CapacidadCategoriaIT1 } from '../../store/c
 import type { DecisionCategoriaIT1 } from '../../store/colaCategoriaIT1';
 import {
   CLAVES_CATEGORIA, categoriaTexto, categoriasDelCatalogo, categoriasFrecuentes,
-  claveCategoria2026, prepararRevisionCategoriaIT1, repartirPasosCategoria,
+  opcionEquivaleA, prepararRevisionCategoriaIT1, repartirPasosCategoria,
   type FilaPasoCategoria,
 } from '../../domain/revisionCategoriaIT1';
 import { sugerirPorNombre } from '../../domain/buscador';
@@ -61,7 +61,11 @@ export default function CategoriaIT1() {
   }, [repartidas, saltados]);
   const total1 = repartidas.filter((f) => f.tienePropuesta).length;
   const total2 = repartidas.filter((f) => f.paso === 2).length;
-  const guardadas = filas.filter((f) => f.confirmada).length;
+  // Solo datos confirmados por el servidor: «decisión guardada» incluye rechazos;
+  // «finalizada» exige una categoría aceptada o corregida (nunca un rechazo).
+  const decisionesGuardadas = filas.filter((f) => !!f.revision).length;
+  const rechazosGuardados = filas.filter((f) => f.revision?.estado === 'rechazada').length;
+  const finalizadas = filas.filter((f) => f.confirmada).length;
 
   const [paso, setPaso] = useState<Paso>(() => pendientes1.length || !pendientes2.length ? 1 : 2);
   /** Fichas decididas en esta sesión (para volver atrás), y la ficha que se está viendo. */
@@ -91,12 +95,19 @@ export default function CategoriaIT1() {
     : !fuente?.encolarCategoriaIT1 || !capacidad.habilitada
       ? capacidad.motivo || 'El guardado no está autorizado por el servidor.' : '';
 
+  const idFicha2 = paso === 2 ? actual?.fila.id : undefined;
+  /** Categoría del Excel rechazada para esta ficha: no se vuelve a proponer marcada. */
+  const rechazadaFicha = paso === 2 && actual?.tienePropuesta ? actual.existentes : undefined;
   const propuesta = useMemo(() => actual && paso === 2
-    ? sugerirPorNombre(ID_CATALOGO_2026, actual.fila.nombre) : null, [actual?.fila.id, paso]);
-  const claveRechazada = actual && paso === 2 && actual.tienePropuesta
-    ? claveCategoria2026(actual.existentes) : undefined;
-  const frecuentesFicha = useMemo(() => claveRechazada
-    ? frecuentes.filter((k) => k !== claveRechazada) : frecuentes, [frecuentes, claveRechazada]);
+    ? sugerirPorNombre(ID_CATALOGO_2026, actual.fila.nombre) : null, [idFicha2]);
+  const rechazadas = useMemo(() => rechazadaFicha && propuesta
+    ? propuesta.sugerencias.filter((o) => opcionEquivaleA(o.nodoId, rechazadaFicha)).map((o) => o.clave)
+    : [], [idFicha2, propuesta]);
+  // Se fijan al abrir la ficha: si una confirmación del servidor cambiara la lista mientras la
+  // persona la recorre, la opción marcada podría moverse y Enter aplicaría otra distinta.
+  const frecuentesFicha = useMemo(() => rechazadaFicha
+    ? frecuentes.filter((k) => !opcionEquivaleA(k, rechazadaFicha)) : frecuentes, [idFicha2]);
+  const propuestaRechazada = !!propuesta && propuesta.sugerencias.length === 1 && rechazadas.length === 1;
 
   // Foco en la ficha al cambiar de paso: Enter/N/← funcionan sin hacer clic antes.
   useEffect(() => {
@@ -228,7 +239,8 @@ export default function CategoriaIT1() {
     <div className="categoria-resumen" role="status" aria-label="Estado del guardado">
       <span><b>{pendientes1.length + pendientes2.length}</b> pendientes de revisar</span>
       <span className={cola.length ? 'categoria-resumen-cola' : ''}><b>{cola.length}</b> decisiones por guardar</span>
-      <span><b>{guardadas}</b> de {filas.length} guardadas en el servidor</span>
+      <span title="Última decisión guardada de cada negocio, incluidos los rechazos"><b>{decisionesGuardadas}</b> decisiones guardadas en el servidor{rechazosGuardados ? ` (${rechazosGuardados} rechazos)` : ''}</span>
+      <span><b>{finalizadas}</b> de {filas.length} con categoría finalizada</span>
     </div>
     {errorCola && <p role="alert" className="categoria-advertencia">Guardado detenido: {errorCola}. Las decisiones no confirmadas siguen en la cola y no cuentan como guardadas. <button className="btn s" onClick={() => fuente?.reintentarColaCategoriaIT1?.()}>Reintentar guardado</button></p>}
 
@@ -308,12 +320,14 @@ export default function CategoriaIT1() {
             <p className="categoria-referencia">Categoría elegida: <b>{categoriaTexto(actual.visibles)}</b></p>}
           {propuesta && propuesta.sugerencias.length > 0 && <p className="categoria-propuesta" role="note">
             <Lightbulb size={15}/>
-            {propuesta.sugerencias.length === 1
+            {propuestaRechazada
+              ? <span>El nombre sugiere <b>{propuesta.sugerencias[0].ruta}</b>, que es la categoría rechazada del Excel: no se marca. Busca la correcta.</span>
+              : propuesta.sugerencias.length === 1
               ? <span>Propuesta por el nombre: <b>{propuesta.sugerencias[0].ruta}</b>. Pulsa <kbd>Enter</kbd> para confirmarla o escribe para buscar otra.</span>
               : <span>{propuesta.sugerencias.length} propuestas por el nombre: elige una con <kbd>↑</kbd>/<kbd>↓</kbd> y <kbd>Enter</kbd>.</span>}
           </p>}
           <BuscadorClasificacion key={actual.fila.id} catalogo={ID_CATALOGO_2026}
-            nombreNegocio={actual.fila.nombre} frecuentes={frecuentesFicha} marcarPropuestaUnica
+            nombreNegocio={actual.fila.nombre} frecuentes={frecuentesFicha} marcarPropuestaUnica rechazadas={rechazadas}
             etiqueta={`Categoría para ${actual.fila.nombre || 'el negocio'}`}
             onElegir={(e) => elegirPaso2(e)}/>
           <div className="categoria-acciones">

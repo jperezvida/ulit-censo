@@ -4,6 +4,7 @@ import { FuenteOficinaContext } from '../../store/fuenteOficina';
 import { baseVacia } from '../../domain/db';
 import { ID_CATALOGO_2026 } from '../../domain/catalogo2026';
 import { OPCIONES_CATEGORIAS_2026 } from '../../domain/revisionCategoriaIT1';
+import { sugerirPorNombre } from '../../domain/buscador';
 import { BuscadorClasificacion } from './BuscadorClasificacion';
 
 const carniceria = OPCIONES_CATEGORIAS_2026.find((o) => o.etiqueta.includes('Carnicería'))!.id;
@@ -39,5 +40,16 @@ describe('BuscadorClasificacion · propuestas y frecuentes', () => {
     expect(op).toHaveAttribute('aria-selected', 'false');
     fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
     expect(onElegir).not.toHaveBeenCalled();
+  });
+  it('una propuesta equivalente a la categoría rechazada se señala, no se marca y solo se elige a mano', () => {
+    const clave = sugerirPorNombre(ID_CATALOGO_2026, 'Peluquería Sol').sugerencias[0].clave;
+    const onElegir = montar({ nombreNegocio: 'Peluquería Sol', marcarPropuestaUnica: true, rechazadas: [clave] });
+    const op = screen.getByRole('option', { name: /Peluquería/ });
+    expect(op).toHaveAttribute('aria-selected', 'false');
+    expect(op).toHaveTextContent('rechazada en el Excel');
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
+    expect(onElegir).not.toHaveBeenCalled();
+    fireEvent.click(op);
+    expect(onElegir).toHaveBeenCalledTimes(1);
   });
 });

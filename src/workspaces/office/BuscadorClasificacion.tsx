@@ -31,7 +31,7 @@ const SIN_FRECUENTES: string[] = [];
 
 export function BuscadorClasificacion({
   catalogo, nombreNegocio, inicial = '', onElegir, onCancelar, flotante = false, autoFocus = true, etiqueta = 'Buscar actividad',
-  frecuentes = SIN_FRECUENTES, marcarPropuestaUnica = false,
+  frecuentes = SIN_FRECUENTES, marcarPropuestaUnica = false, rechazadas = SIN_FRECUENTES,
 }: {
   catalogo: string;
   /** Nombre comercial: para proponer clasificaciones (nunca se aplican solas). */
@@ -50,6 +50,11 @@ export function BuscadorClasificacion({
    * se ve resaltada y solo se aplica si la persona pulsa Enter o hace clic. Nunca se aplica sola.
    */
   marcarPropuestaUnica?: boolean;
+  /**
+   * Claves de opciones equivalentes a una categoría ya RECHAZADA para este negocio:
+   * pueden elegirse a mano, pero nunca quedan marcadas por defecto y se señalan como rechazadas.
+   */
+  rechazadas?: string[];
 }) {
   // En un espacio de trabajo no se leen ni guardan las preferencias de la demostración (recientes y usos).
   const fuente = useFuenteOficina();
@@ -98,10 +103,11 @@ export function BuscadorClasificacion({
   // Con `marcarPropuestaUnica`, una propuesta por el nombre única queda marcada (no aplicada).
   useEffect(() => {
     const propuestaUnica = marcarPropuestaUnica && !ambiguo && items[0]?.seccion === 'nombre'
-      && items.filter((i) => i.seccion === 'nombre').length === 1;
+      && items.filter((i) => i.seccion === 'nombre').length === 1
+      && !rechazadas.includes(items[0].clave);
     setSel(propuestaUnica || (!ambiguo && items.length && items[0].seccion === 'resultado') ? 0 : -1);
     setAviso(null);
-  }, [items, ambiguo, marcarPropuestaUnica]);
+  }, [items, ambiguo, marcarPropuestaUnica, rechazadas]);
 
   useLayoutEffect(() => {
     if (!flotante || !input.current) return;
@@ -204,6 +210,7 @@ export function BuscadorClasificacion({
                   {o.tipo === 'ejemplo' && <span className="tag">descripción</span>}
                   {o.seccion === 'nombre' && <span className="tag naranja">propuesta: {o.motivo}</span>}
                   {o.seccion === 'frecuente' && <span className="tag">frecuente</span>}
+                  {rechazadas.includes(o.clave) && <span className="tag rojo">rechazada en el Excel</span>}
                 </span>
                 <span className="bc-ruta">{o.ruta}{o.seccion === 'resultado' && o.motivo ? ` · ${o.motivo}` : ''}</span>
               </li>
