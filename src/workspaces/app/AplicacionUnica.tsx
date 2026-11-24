@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { FuenteOficinaContext } from '../../store/fuenteOficina';
 import PantallaAcceso from './PantallaAcceso';
@@ -7,7 +7,9 @@ import { AlmacenSupabase } from '../../store/almacenSupabase';
 import { conTiempoMaximo } from '../../store/conTiempoMaximo';
 import { leerEspacioPaginado, LecturaPaginadaNoDisponible } from '../../store/lecturaPaginada';
 import type { CambioRevisionGeneralReal } from '../../store/revisionGeneralReal';
-import type { CambioCategoriaIT1 } from '../../store/categoriaIT1Real';
+import { guardarCategoriaIT1, type CambioCategoriaIT1 } from '../../store/categoriaIT1Real';
+import { crearColaCategoriaIT1, type DecisionCategoriaIT1,
+  type EstadoColaCategoriaIT1 } from '../../store/colaCategoriaIT1';
 import { verificarEspacio, personaEspacio } from '../../domain/espacios';
 import type { BaseDatos } from '../../domain/db';
 import type { Rol } from '../../domain/types';
@@ -35,8 +37,26 @@ export default function AplicacionUnica() {
   const [correo, setCorreo] = useState('');
   const [contrasena, setContrasena] = useState('');
   const [campanaId, setCampanaId] = useState('');
+  const colaCategoriaRef = useRef<ReturnType<typeof crearColaCategoriaIT1> | null>(null);
+  const [estadoColaCategoriaIT1, setEstadoColaCategoriaIT1] = useState<EstadoColaCategoriaIT1>({
+    pendientes: [], error: '',
+  });
+
+  // No permitir cerrar o recargar la pestaña con operaciones todavía sin verificar.
+  useEffect(() => {
+    const aviso = (event: BeforeUnloadEvent) => {
+      if (!colaCategoriaRef.current?.consultar().pendientes.length) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', aviso);
+    return () => window.removeEventListener('beforeunload', aviso);
+  }, []);
 
   const recargar = useCallback(async () => {
+    if (colaCategoriaRef.current?.consultar().pendientes.length) {
+      throw new Error('Hay categorías pendientes de guardar. No recargues hasta confirmarlas.');
+    }
     const cliente = clienteServidor();
     if (!cliente) throw new Error('No está configurada la conexión institucional a Supabase.');
     setFaseCarga('Comprobando sesión segura…');
@@ -69,6 +89,7 @@ export default function AplicacionUnica() {
         !['administrador','coordinador','revisor','investigador'].includes(info.rol)) {
       throw new Error('La cuenta no tiene acceso a un espacio auténtico verificable.');
     }
+    colaCategoriaRef.current?.sincronizarVersion(info.version);
     setLectura({ db, rol: info.rol as Rol, personaId: info.personaId, version: info.version });
   }, []);
 
@@ -140,15 +161,31 @@ export default function AplicacionUnica() {
     });
   }, []);
 
+  const encolarCategoriaIT1 = useCallback((decision: DecisionCategoriaIT1): boolean => {
+    if (!lectura || !['administrador', 'coordinador'].includes(lectura.rol)) return false;
+    if (!colaCategoriaRef.current) {
+      colaCategoriaRef.current = crearColaCategoriaIT1(
+        lectura.version, guardarCategoriaIT1, aplicarRevisionCategoriaReal, setEstadoColaCategoriaIT1,
+      );
+    }
+    return colaCategoriaRef.current.encolar(decision);
+  }, [lectura, aplicarRevisionCategoriaReal]);
+
+  const reintentarColaCategoriaIT1 = useCallback(() => {
+    colaCategoriaRef.current?.reintentar();
+  }, []);
+
   const actual = lectura?.db.campanas[campanaId] ? campanaId :
     Object.values(lectura?.db.campanas ?? {}).sort((a,b) => b.anio - a.anio)[0]?.id ?? '';
   const fuente = useMemo(() => lectura && actual ? ({
     db: lectura.db, campanaId: actual, personaId: lectura.personaId,
     roles: [lectura.rol] as Rol[], soloLectura: true as const,
     versionReal: lectura.version, elegirCampana: setCampanaId, recargarReal: recargar, aplicarCorreccionReal, aplicarRevisionCategoriaReal,
+    estadoColaCategoriaIT1, encolarCategoriaIT1, reintentarColaCategoriaIT1,
     // Ninguna escritura genérica sobre datos auténticos. IT1/2026 utiliza RPC específica.
     aplicar: () => false,
-  }) : null, [lectura, actual, recargar, aplicarCorreccionReal, aplicarRevisionCategoriaReal]);
+  }) : null, [lectura, actual, recargar, aplicarCorreccionReal, aplicarRevisionCategoriaReal,
+    estadoColaCategoriaIT1, encolarCategoriaIT1, reintentarColaCategoriaIT1]);
 
   if (cargando || !fuente) return <PantallaAcceso
     cargando={cargando} faseCarga={faseCarga} sinSesion={sinSesion} error={error}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -6,6 +6,7 @@ import { baseVacia } from '../../domain/db';
 import type { BaseDatos } from '../../domain/db';
 import { FuenteOficinaContext } from '../../store/fuenteOficina';
 import { guardarCategoriaIT1, type CambioCategoriaIT1 } from '../../store/categoriaIT1Real';
+import { crearColaCategoriaIT1, type EstadoColaCategoriaIT1 } from '../../store/colaCategoriaIT1';
 import CategoriaIT1 from './CategoriaIT1';
 
 vi.mock('../../store/categoriaIT1Real', () => ({
@@ -45,6 +46,10 @@ function fixture(): BaseDatos {
 function Pantalla() {
   const [db,setDb]=useState(fixture);
   const [version,setVersion]=useState(20);
+  const [estadoColaCategoriaIT1,setEstadoColaCategoriaIT1]=useState<EstadoColaCategoriaIT1>({
+    pendientes:[],error:'',
+  });
+  const colaRef=useRef<ReturnType<typeof crearColaCategoriaIT1> | null>(null);
   const aplicarRevisionCategoriaReal=(cambio: CambioCategoriaIT1)=>{
     setDb((prev)=>({...prev,revisionesCategoriaRegistros:{
       ...(prev.revisionesCategoriaRegistros??{}),
@@ -52,9 +57,17 @@ function Pantalla() {
     }}));
     setVersion(cambio.version);
   };
+  const encolarCategoriaIT1: NonNullable<import('../../store/fuenteOficina').FuenteOficina['encolarCategoriaIT1']> = (decision) => {
+    if (!colaRef.current) colaRef.current=crearColaCategoriaIT1(
+      version,guardarCategoriaIT1,aplicarRevisionCategoriaReal,setEstadoColaCategoriaIT1,
+    );
+    return colaRef.current.encolar(decision);
+  };
   return <FuenteOficinaContext.Provider value={{
     db,campanaId:'c26',personaId:'responsable',roles:['coordinador'],
     soloLectura:true,aplicar:()=>false,versionReal:version,aplicarRevisionCategoriaReal,
+    estadoColaCategoriaIT1, encolarCategoriaIT1,
+    reintentarColaCategoriaIT1:()=>colaRef.current?.reintentar(),
   }}><MemoryRouter><CategoriaIT1/></MemoryRouter></FuenteOficinaContext.Provider>;
 }
 
@@ -86,6 +99,28 @@ describe('Oficina · revisión categorización IT1',()=>{
       expect.objectContaining({grupoActividad:'Servicios'}));
     expect(within(detalle).getByText('Sin categorización')).toBeInTheDocument();
     expect(within(detalle).getByText('Elegir categoría correcta')).toBeInTheDocument();
+  });
+
+
+  it('Enter adelanta la siguiente ficha aunque la RPC siga pendiente', async()=>{
+    let resolver!: (cambio:CambioCategoriaIT1)=>void;
+    vi.mocked(guardarCategoriaIT1).mockImplementationOnce(
+      () => new Promise<CambioCategoriaIT1>((resolve)=>{ resolver=resolve; }));
+    render(<Pantalla/>);
+    const detalle=screen.getByRole('region',{name:'Revisión de la categoría'});
+    await waitFor(()=>expect(within(detalle).getByRole('button',
+      {name:/Aceptar categoría y siguiente/})).toBeEnabled());
+    fireEvent.keyDown(document.body,{key:'Enter'});
+    expect(within(detalle).getByText('Tienda Nueva')).toBeInTheDocument();
+    expect(screen.getByText(/Guardando 1 decisión/)).toBeInTheDocument();
+    expect(within(detalle).getByText('Elegir categoría correcta')).toBeInTheDocument();
+    resolver({registroId:'r1',version:21,revision:{
+      id:'r1',registroId:'r1',campanaId:'c26',estado:'aceptada',
+      valores:{grupoActividad:'Servicios',grupoComercio:'',
+        subgrupo:'Reparaciones',actividad:'Reparaciones',descripcionActividad:''},
+      porId:'responsable',fecha:'2026-11-24T17:00:00Z',
+    }});
+    await waitFor(()=>expect(screen.queryByText(/Guardando 1 decisión/)).not.toBeInTheDocument());
   });
 
   it('No es correcta registra el rechazo y obliga a elegir nueva categoría', async()=>{

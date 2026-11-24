@@ -4,6 +4,7 @@ import type { BaseDatos } from '../domain/db';
 import type { Id, Rol } from '../domain/types';
 import type { CambioRevisionGeneralReal } from './revisionGeneralReal';
 import type { CambioCategoriaIT1 } from './categoriaIT1Real';
+import type { DecisionCategoriaIT1, EstadoColaCategoriaIT1 } from './colaCategoriaIT1';
 
 export type Aplicar = (fn: (db: BaseDatos) => BaseDatos, etiqueta: string, opciones?: { silencioso?: boolean; sinAvisoError?: boolean }) => boolean;
 
@@ -27,6 +28,10 @@ export interface FuenteOficina {
   aplicarCorreccionReal?: (cambio: CambioRevisionGeneralReal) => void;
   /** Actualiza en memoria una categoría ya confirmada por la RPC de IT1. */
   aplicarRevisionCategoriaReal?: (cambio: CambioCategoriaIT1) => void;
+  /** Decisiones pendientes de persistir; NUNCA equivale a confirmación del servidor. */
+  estadoColaCategoriaIT1?: EstadoColaCategoriaIT1;
+  encolarCategoriaIT1?: (decision: DecisionCategoriaIT1) => boolean;
+  reintentarColaCategoriaIT1?: () => void;
   versionReal?: number;
 }
 

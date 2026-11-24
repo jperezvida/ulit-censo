@@ -63,6 +63,17 @@ export function Shell() {
         <span className="btn s oscuro-borde" aria-disabled="true" title="Campo móvil: aún no habilitado con datos reales"><Smartphone size={16}/></span>
       </div>
     </header>
+    {!!fuente?.estadoColaCategoriaIT1?.pendientes.length && (
+      <div role="status" style={{ padding: '8px 16px', background: '#f7f9fc',
+        borderBottom: '1px solid #d6dce5', fontSize: 13 }}>
+        <b>{fuente.estadoColaCategoriaIT1.pendientes.length} categorías por guardar.</b>
+        {fuente.estadoColaCategoriaIT1.error
+          ? <> Error de sincronización: {fuente.estadoColaCategoriaIT1.error}.
+            <button className="btn s" style={{ marginLeft: 10 }}
+              onClick={() => fuente.reintentarColaCategoriaIT1?.()}>Reintentar</button></>
+          : <> Se están guardando en orden. No cierres la pestaña hasta que marque 0.</>}
+      </div>
+    )}
     <main className="contenido"><Outlet /></main>
     <nav className="nav-inferior" aria-label="Espacios">
       {AREAS.map(({to,txt,icono:I}) => <NavLink key={to} to={to} className={({isActive})=>isActive?'on':''}>
