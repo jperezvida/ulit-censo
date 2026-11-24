@@ -149,7 +149,7 @@ export default function CategoriaIT1() {
     </div>
     <p className="categoria-nota">Se incluyen todos los registros ocupados de IT1, aunque aún no estén vinculados a un local físico. Los vacíos quedan excluidos. El Excel original no se modifica. Pulsa <kbd>Enter</kbd> para confirmar y avanzar.</p>
     {errorCola && <p role="alert" className="categoria-advertencia">Guardado detenido: {errorCola}. Las decisiones no confirmadas siguen en cola. <button className="btn s" onClick={() => fuente?.reintentarColaCategoriaIT1?.()}>Reintentar guardado</button></p>}
-    {!!cola.length && !errorCola && <p role="status" className="categoria-aviso">Guardando {cola.length} decisión(es) en orden. No cierres la pestaña hasta que marque 0.</p>
+    {!!cola.length && !errorCola && <p role="status" className="categoria-aviso">Guardando {cola.length} decisión(es) en orden. No cierres la pestaña hasta que marque 0.</p>}
     <div className="categoria-filtros" role="group" aria-label="Filtrar categorización">
       {(['pendientes','revisados','todos'] as const).map((op) =>
         <button type="button" className={vista === op ? 'btn s primario' : 'btn s'}
