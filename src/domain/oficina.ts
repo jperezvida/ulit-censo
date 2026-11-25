@@ -9,6 +9,7 @@ import { catalogoDeCampana, clasificar } from './clasificacion';
 import { AVISO_SIN_CLASIFICAR, avisosClasificacion } from './avisosClasificacion';
 import { revisionFranquicia } from './franquicias';
 import { prepararRevisionCategoriaIT1 } from './revisionCategoriaIT1';
+import { prepararFranquiciasIT1 } from './revisionFranquiciaIT1';
 import { problemasDigitales, type EstadoDigital } from './digital';
 import { estadoTramo, progresoItinerario } from './planificacion';
 import type { ClasificacionCampana, Confianza, EstadoOficinaItinerario, FranquiciaCampana, Id, Itinerario, LocalFisico, Negocio, Observacion, Revision } from './types';
@@ -193,6 +194,8 @@ export interface ResumenItinerario {
   categorizacion: Contador; // locales físicos ocupados registrados; estado de Oficina independiente
   /** Filas ocupadas del Excel IT1 revisadas y confirmadas por RPC. Nunca valida locales físicos. */
   categorizacionExcel?: Contador;
+  /** Franquicias confirmadas por fila del Excel, independientes de locales físicos. */
+  franquiciasExcel?: Contador;
   digital: Contador; // ocupados registrados
   franquicias: Contador; // ocupados registrados
   incidencias: number;
@@ -239,6 +242,11 @@ export function resumenItinerarios(db: BaseDatos, campanaId: Id, filas: FilaOfic
     hechos: registrosIT1.filter((f) => f.confirmada).length,
     pendientes: registrosIT1.filter((f) => !f.confirmada).length,
   } : undefined;
+  const franquiciasIT1 = registrosIT1.length ? prepararFranquiciasIT1(db,campanaId) : [];
+  const franquiciasExcel: Contador | undefined = franquiciasIT1.length ? {
+    hechos: franquiciasIT1.filter((f) => f.confirmada).length,
+    pendientes: franquiciasIT1.filter((f) => !f.confirmada).length,
+  } : undefined;
   for (const it of itinerarios) {
     const propias = filas.filter((f) => f.itinerarioIds.includes(it.id));
     const p = progresoItinerario(db, it);
@@ -252,6 +260,7 @@ export function resumenItinerarios(db: BaseDatos, campanaId: Id, filas: FilaOfic
       },
       ...resumenDeFilas(propias),
       ...(it.codigo === 'IT1' && categorizacionExcel ? { categorizacionExcel } : {}),
+      ...(it.codigo === 'IT1' && franquiciasExcel ? { franquiciasExcel } : {}),
     });
   }
   const fuera = filas.filter((f) => !f.itinerarioIds.length);

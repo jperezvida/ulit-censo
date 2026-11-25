@@ -49,7 +49,7 @@ export default function PanelItinerarios() {
 
       <div className="ofi-tarjetas">
         {its.map((r) => (
-          <TarjetaItinerario key={r.itinerarioId} r={r} quien={r.cierre ? db.personas[r.cierre.porId]?.nombre ?? r.cierre.porId : undefined} onAbrir={(q) => nav(`/oficina/it/${r.itinerarioId}${q}`)} onCategorizarIT1={() => nav('/oficina/categoria-it1')} />
+          <TarjetaItinerario key={r.itinerarioId} r={r} quien={r.cierre ? db.personas[r.cierre.porId]?.nombre ?? r.cierre.porId : undefined} onAbrir={(q) => nav(`/oficina/it/${r.itinerarioId}${q}`)} onCategorizarIT1={() => nav('/oficina/categoria-it1')} onFranquiciaIT1={() => nav('/oficina/franquicia-it1')} />
         ))}
       </div>
 
@@ -77,7 +77,7 @@ function Progreso({ titulo, c, icono, onClick, etiquetaHechos = 'revisados' }: {
   );
 }
 
-function TarjetaItinerario({ r, quien, onAbrir, onCategorizarIT1 }: { r: ResumenItinerario; quien?: string; onAbrir: (query: string) => void; onCategorizarIT1: () => void }) {
+function TarjetaItinerario({ r, quien, onAbrir, onCategorizarIT1, onFranquiciaIT1 }: { r: ResumenItinerario; quien?: string; onAbrir: (query: string) => void; onCategorizarIT1: () => void; onFranquiciaIT1: () => void }) {
   const cerrada = r.estado === 'revision-cerrada';
   return (
     <article className={`ofi-tarjeta ${cerrada ? 'cerrada' : ''} ${r.estado === 'validado' ? 'validada' : ''}`} aria-label={`Itinerario ${r.codigo}`}>
@@ -106,7 +106,15 @@ function TarjetaItinerario({ r, quien, onAbrir, onCategorizarIT1 }: { r: Resumen
           ? onCategorizarIT1()
           : onAbrir('?tarea=categorizacion&filtro=pendientes')} />}
       <Progreso titulo="Presencia digital" c={r.digital} icono={<Globe size={13} />} onClick={() => onAbrir('?tarea=digital&filtro=pendientes')} />
-      <Progreso titulo="Franquicias" c={r.franquicias} icono={<BadgeCheck size={13} />} onClick={() => onAbrir('?tarea=franquicias&filtro=pendientes')} />
+      {r.franquiciasExcel ? <>
+        <Progreso titulo="Franquicias del Excel" c={r.franquiciasExcel} icono={<BadgeCheck size={13} />} onClick={onFranquiciaIT1} />
+        <div className="muted" style={{ fontSize: 12, padding: '3px 0 9px' }}>
+          Revisión de franquicias en locales físicos: <b>{fmt(r.franquicias.hechos)} de {fmt(r.franquicias.hechos+r.franquicias.pendientes)}</b>
+          {' · '}<button type="button" className="btn s fantasma" style={{padding:'0 3px',fontSize:12}}
+            onClick={()=>onAbrir('?tarea=franquicias&filtro=pendientes')}>Ver seguimiento de locales</button>
+        </div>
+      </> : <Progreso titulo="Franquicias" c={r.franquicias} icono={<BadgeCheck size={13} />}
+        onClick={() => onAbrir('?tarea=franquicias&filtro=pendientes')} />}
       <button className="ofi-fila-dato ofi-incid" onClick={() => onAbrir('?tarea=incidencias&filtro=pendientes')} disabled={!r.incidencias && !r.errores}>
         <span><AlertTriangle size={13} /> Incidencias y contradicciones</span>
         <span>

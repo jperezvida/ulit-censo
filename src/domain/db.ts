@@ -1,5 +1,5 @@
 import type {
-  Calle, Campana, ClasificacionCampana, CorreccionRegistro, RevisionCategoriaRegistro, Cobertura, EstadoOficinaItinerario, FranquiciaCampana, Id, Importacion, Itinerario, LocalFisico,
+  Calle, Campana, ClasificacionCampana, CorreccionRegistro, RevisionCategoriaRegistro, RevisionFranquiciaRegistro, Cobertura, EstadoOficinaItinerario, FranquiciaCampana, Id, Importacion, Itinerario, LocalFisico,
   Municipio, Negocio, Observacion, Ocupacion, PendienteSync, Persona, RegistroOrigen, Revision, RevisionDigital,
   SituacionPrevia, VinculoHistorico,
 } from './types';
@@ -29,6 +29,8 @@ export interface BaseDatos {
   correccionesRegistros?: Record<Id, CorreccionRegistro>;
   /** Aceptaciones/cambios supervisados por fila 2026. Independiente de la conciliación. */
   revisionesCategoriaRegistros?: Record<Id, RevisionCategoriaRegistro>;
+  /** Decisiones de franquicia por fila del Excel 2026, independientes de los locales físicos. */
+  revisionesFranquiciaRegistros?: Record<Id, RevisionFranquiciaRegistro>;
   vinculos: Record<Id, VinculoHistorico>;
   importaciones: Record<Id, Importacion>;
   /** clave: campana|local */
@@ -62,7 +64,7 @@ export function baseVacia(): BaseDatos {
     generado: new Date().toISOString(),
     municipios: {}, calles: {}, campanas: {}, itinerarios: {}, coberturas: {}, situacionesPrevias: {},
     callesRevisadasPlan: {}, locales: {}, negocios: {}, ocupaciones: {}, observaciones: {}, registros: {},
-    correccionesRegistros: {}, revisionesCategoriaRegistros: {}, vinculos: {}, importaciones: {}, revisiones: {}, digital: {}, clasificaciones: {}, franquicias: {}, oficinaItinerarios: {}, secuencia: 0,
+    correccionesRegistros: {}, revisionesCategoriaRegistros: {}, revisionesFranquiciaRegistros: {}, vinculos: {}, importaciones: {}, revisiones: {}, digital: {}, clasificaciones: {}, franquicias: {}, oficinaItinerarios: {}, secuencia: 0,
     personas: {}, colaSync: [], meta: {},
   };
 }

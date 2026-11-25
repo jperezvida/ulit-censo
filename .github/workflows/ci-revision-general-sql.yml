@@ -18,6 +18,8 @@ on:
       - 'docs/persistencia/pruebas/ocupado_quitar_fachada_2026.sql'
       - 'docs/persistencia/sql/20261116_0016_categorizar_it1_2026.sql'
       - 'docs/persistencia/pruebas/categorizar_it1_2026.sql'
+      - 'docs/persistencia/sql/20261125_0017_franquicias_it1_2026.sql'
+      - 'docs/persistencia/pruebas/franquicias_it1_2026.sql'
       - '.github/workflows/ci-revision-general-sql.yml'
 permissions:
   contents: read

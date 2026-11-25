@@ -1,5 +1,5 @@
 import type { BaseDatos } from './db';
-import type { RevisionCategoriaRegistro } from './types';
+import type { RevisionCategoriaRegistro, RevisionFranquiciaRegistro } from './types';
 import { CLAVES_CATEGORIA } from './revisionCategoriaIT1';
 import { auditarRevisionGeneral, datoRevisionGeneral, nombreEsMarcaDeVacio, type FilaRevisionGeneral } from './revisionGeneral';
 import { PERFIL_ITINERARIO_28 } from './xlsx/perfilesImportacion';
@@ -23,6 +23,8 @@ export const COLUMNAS_REVISION_GENERAL_2026 = [
   'ULIT · Motivo corrección',
   'ULIT · Revisión categoría',
   'ULIT · Fecha revisión categoría',
+  'ULIT · Revisión franquicia',
+  'ULIT · Fecha revisión franquicia',
 ] as const;
 
 export interface ExportacionRevisionGeneral {
@@ -39,16 +41,19 @@ export interface ExportacionRevisionGeneral {
   };
 }
 
-function filaDeTrabajo(f: FilaRevisionGeneral, categoria?: RevisionCategoriaRegistro): Record<string, string> {
+function filaDeTrabajo(f: FilaRevisionGeneral, categoria?: RevisionCategoriaRegistro, franquicia?: RevisionFranquiciaRegistro): Record<string, string> {
   const valores = f.correccion?.valores;
   const salida: Record<string, string> = {};
   const cambiados: string[] = [];
   for (const col of PERFIL_ITINERARIO_28.columnas) {
     const original = datoRevisionGeneral(f.registro, col.clave);
-    const corregido = f.estado === 'ocupado' && !!categoria
-      && (CLAVES_CATEGORIA as readonly string[]).includes(col.clave)
-      ? categoria.valores[col.clave] ?? datoRevisionGeneral(f.registro, col.clave, valores)
-      : datoRevisionGeneral(f.registro, col.clave, valores);
+    const efectivo = datoRevisionGeneral(f.registro, col.clave, valores);
+    const corregido = f.estado === 'ocupado' && col.clave === 'franquicia'
+      && (franquicia?.estado === 'aceptada' || franquicia?.estado === 'corregida')
+      ? (franquicia.respuesta === 'si' ? '1' : '0')
+      : f.estado === 'ocupado' && !!categoria
+        && (CLAVES_CATEGORIA as readonly string[]).includes(col.clave)
+        ? categoria.valores[col.clave] ?? efectivo : efectivo;
     // «LV»/«VACÍO» no es un nombre de negocio. Su valor de origen permanece
     // disponible únicamente en el Excel importado, no en el censo de trabajo.
     salida[col.cabecera] = col.clave === 'nombre'
@@ -71,6 +76,12 @@ function filaDeTrabajo(f: FilaRevisionGeneral, categoria?: RevisionCategoriaRegi
     : categoria?.estado === 'corregida' ? 'Corregida'
     : categoria?.estado === 'rechazada' ? 'Rechazada (pendiente)' : 'Pendiente de revisión';
   salida['ULIT · Fecha revisión categoría'] = categoria?.fecha ?? '';
+  salida['ULIT · Revisión franquicia'] = f.estado !== 'ocupado' ? 'No aplica'
+    : franquicia?.estado === 'aceptada' ? (franquicia.masiva ? 'Aceptada (confirmación masiva)' : 'Aceptada')
+    : franquicia?.estado === 'corregida' ? 'Corregida'
+    : franquicia?.estado === 'rechazada' ? 'Rechazada (pendiente)'
+    : 'Pendiente de revisión';
+  salida['ULIT · Fecha revisión franquicia'] = franquicia?.fecha ?? '';
   return salida;
 }
 
@@ -91,7 +102,9 @@ export function exportarRevisionGeneral(
     columnas: COLUMNAS_REVISION_GENERAL_2026,
     filas: auditadas.map((fila) => filaDeTrabajo(fila,
       db.revisionesCategoriaRegistros?.[fila.id]?.campanaId === campanaId
-        ? db.revisionesCategoriaRegistros[fila.id] : undefined)),
+        ? db.revisionesCategoriaRegistros[fila.id] : undefined,
+      db.revisionesFranquiciaRegistros?.[fila.id]?.campanaId === campanaId
+        ? db.revisionesFranquiciaRegistros[fila.id] : undefined)),
     resumen: {
       filas: auditadas.length,
       vacios: auditadas.filter((f) => f.estado === 'vacio').length,

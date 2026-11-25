@@ -63,7 +63,9 @@ describe('Exportación 2026 · datos efectivos de revisión', () => {
   });
 
   it('incluye las 28 cabeceras reales del itinerario más trazabilidad', () => {
-    expect(COLUMNAS_REVISION_GENERAL_2026.length).toBe(40);
+    expect(COLUMNAS_REVISION_GENERAL_2026.length).toBe(42);
+    expect(COLUMNAS_REVISION_GENERAL_2026).toContain('ULIT · Revisión franquicia');
+    expect(COLUMNAS_REVISION_GENERAL_2026).toContain('ULIT · Fecha revisión franquicia');
     expect(COLUMNAS_REVISION_GENERAL_2026).toContain('Local Vacío');
     expect(COLUMNAS_REVISION_GENERAL_2026).toContain('Google My Bussines');
     expect(COLUMNAS_REVISION_GENERAL_2026).toContain('ULIT · Registro origen');
