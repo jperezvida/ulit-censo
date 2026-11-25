@@ -11,6 +11,7 @@ import {
   CAMPOS_DIGITALES_EXCEL, REDES_RADAR,
   negociosPilotoRadar, enlacesBusquedaRadar, interpretarPresenciaExcel,
   leerBorradoresRadar, guardarBorradoresRadar, resumenPilotoRadar,
+  normalizarPerfilRadar, enlaceCandidatoRadar, validarHallazgosRadar, nombreCompatibleRadar,
   type BorradoresRadar, type BorradorRadar, type HallazgoRadar, type RedRadar,
 } from '../../domain/radarDigitalIT1';
 import '../../styles/radar-digital.css';
@@ -28,9 +29,17 @@ const etiquetaExcel=(valor:string) => {
   const estado=interpretarPresenciaExcel(valor);
   return estado==='si'?'Sí':estado==='no'?'No':'Sin dato';
 };
-const enlace=(url:string, texto:string) => <a href={url} target="_blank" rel="noopener noreferrer">
-  {texto}<ExternalLink size={13} aria-hidden="true"/>
-</a>;
+const enlace=(url:string, texto:string) => {
+  try {
+    const u=new URL(url);
+    if(u.protocol!=='https:' || u.username || u.password) throw Error('Enlace inseguro');
+    return <a href={u.toString()} target="_blank" rel="noopener noreferrer">
+      {texto}<ExternalLink size={13} aria-hidden="true"/>
+    </a>;
+  } catch {
+    return <span className="radar-falta">{texto}: enlace descartado por seguridad</span>;
+  }
+};
 
 function exportarJSON(data:unknown){
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json;charset=utf-8'});
@@ -48,7 +57,7 @@ export default function RadarDigitalIT1() {
   const [seleccion,setSeleccion]=useState(0);
   const [borradores,setBorradores]=useState<BorradoresRadar>(
     ()=>campana?leerBorradoresRadar(campana.id):{});
-  const [analizando,setAnalizando]=useState(false);
+  const [analizandoId,setAnalizandoId]=useState<string|null>(null);
   const [error,setError]=useState('');
   const [avisoLocal,setAvisoLocal]=useState(false);
 
@@ -62,24 +71,65 @@ export default function RadarDigitalIT1() {
   const resumen=resumenPilotoRadar(negocios,borradores);
   const buscar=n?enlacesBusquedaRadar(n):null;
 
-  const actualizar=(id:string,cambio:Partial<BorradorRadar>)=>{
-    const previo=borradores[id]??VACIO;
-    const siguiente={...borradores,[id]:{
-      ...previo,...cambio,actualizado:new Date().toISOString(),
-    }};
-    setBorradores(siguiente);
-    if(campana && !guardarBorradoresRadar(campana.id,siguiente)) setAvisoLocal(true);
+  const actualizar=(id:string,cambio:Partial<BorradorRadar> |
+      ((vigente:BorradorRadar)=>Partial<BorradorRadar>|null))=>{
+    setBorradores((anterior)=>{
+      const previo=anterior[id]??VACIO;
+      const aplicado=typeof cambio==='function'?cambio(previo):cambio;
+      if(!aplicado) return anterior;
+      const siguiente={...anterior,[id]:{
+        ...previo,...aplicado,actualizado:new Date().toISOString(),
+      }};
+      if(campana && !guardarBorradoresRadar(campana.id,siguiente)) setAvisoLocal(true);
+      return siguiente;
+    });
+  };
+  const confirmarLote=()=>{
+    if(!n || !draft.hallazgo) return;
+    actualizar(n.id,validarHallazgosRadar(draft));
+  };
+  const confirmarWebManual=()=>{
+    if(!n || !draft.sitioWeb.trim()) return;
+    try {
+      const url=new URL(draft.sitioWeb.trim());
+      if(url.protocol!=='https:' || !url.hostname.includes('.') || url.username || url.password)
+        throw Error('URL no válida');
+      actualizar(n.id,{webValidada:!draft.webValidada,estado:'pendiente'});
+      setError('');
+    } catch {
+      setError('Comprueba e introduce una dirección HTTPS completa antes de validar la web.');
+    }
+  };
+  const pegarEnlace=async()=>{
+    try {
+      if(!navigator.clipboard?.readText) throw Error('not supported');
+      const texto=await navigator.clipboard.readText();
+      if(!texto.trim()) throw Error('empty');
+      webCambio(texto.trim());
+    } catch {
+      setError('No se pudo leer el portapapeles. Pega el enlace en el campo con Ctrl+V.');
+    }
+  };
+  const actualizarPerfil=(red:RedRadar,texto:string)=>{
+    if(!n) return;
+    actualizar(n.id,{
+      perfilesManuales:{...draft.perfilesManuales,[red]:texto},
+      redesValidadas:{...draft.redesValidadas,[red]:false},
+      estado:'pendiente',
+    });
   };
   const webCambio=(valor:string)=>{
     if(!n) return;
     actualizar(n.id,{
       sitioWeb:valor, hallazgo:undefined, webValidada:false,
-      redesValidadas:{}, estado:'pendiente',
+      redesValidadas:{...Object.fromEntries(REDES_RADAR.map(red=>[red,
+        !!draft.perfilesManuales?.[red] && draft.redesValidadas[red]===true]))},
+      ventaOnline:'pendiente',estado:'pendiente',
     });
     setError('');
   };
   const analizar=async()=>{
-    if(!n || !draft.sitioWeb.trim() || analizando) return;
+    if(!n || !draft.sitioWeb.trim() || analizandoId) return;
     setError('');
     let url:string;
     try{
@@ -89,7 +139,7 @@ export default function RadarDigitalIT1() {
         throw new Error('Debe ser una dirección HTTPS pública.');
       url=parse.toString();
     }catch{return setError('Introduce una URL HTTPS pública válida.');}
-    setAnalizando(true);
+    setAnalizandoId(n.id);
     try {
       const cliente=clienteServidor();
       const sesion=await cliente?.auth.getSession();
@@ -104,14 +154,39 @@ export default function RadarDigitalIT1() {
       if(!respuesta.ok || !payload.hallazgo)
         throw Error(payload.error||'No se ha podido leer la web.');
       // No sobreescribir la selección del usuario: resultado vinculado al registro de partida.
-      actualizar(n.id,{
+      const solicitado=draft.sitioWeb.trim();
+      actualizar(n.id,(vigente)=>vigente.sitioWeb.trim()!==solicitado ? null : ({
         sitioWeb:url,hallazgo:payload.hallazgo,webValidada:false,
-        redesValidadas:{},estado:'pendiente',
-      });
+        redesValidadas:Object.fromEntries(REDES_RADAR.map(red=>[
+          red, !!vigente.perfilesManuales?.[red] && vigente.redesValidadas[red]===true,
+        ])),estado:'pendiente',
+      }));
     }catch(e){setError(e instanceof Error?e.message:'Análisis no disponible.');}
-    finally{setAnalizando(false);}
+    finally{setAnalizandoId(null);}
   };
 
+  const compatibilidad=n&&draft.hallazgo
+    ? nombreCompatibleRadar(n.nombre,draft.hallazgo.titulo) : null;
+  const candidatos=REDES_RADAR.map(red=>({red,datos:enlaceCandidatoRadar(draft,red)}));
+  const porValidar=candidatos.filter(({red,datos})=>!!datos && draft.redesValidadas[red]!==true).length +
+    (draft.hallazgo&&!draft.webValidada?1:0);
+  const irSiguientePendiente=()=>{
+    const siguiente=negocios.findIndex((item,i)=>
+      i>seleccion && borradores[item.id]?.estado!=='revisado');
+    const primerPendiente=negocios.findIndex(item=>borradores[item.id]?.estado!=='revisado');
+    setSeleccion(siguiente>=0?siguiente:primerPendiente>=0?primerPendiente:
+      Math.min(seleccion+1,negocios.length-1));
+    setError('');
+  };
+  const terminarInvestigacion=()=>{
+    if(!n) return;
+    const terminada=draft.estado!=='revisado';
+    actualizar(n.id,{estado:terminada?'revisado':'pendiente'});
+    if(terminada){
+      const siguiente=negocios.findIndex((item,i)=>i>seleccion && borradores[item.id]?.estado!=='revisado');
+      if(siguiente>=0){setSeleccion(siguiente);setError('');}
+    }
+  };
   const listaResultados=negocios.map((negocio,i)=>({
     id:negocio.id,nombre:negocio.nombre,
     datosExcel:negocio.datosExcel,
@@ -183,10 +258,13 @@ export default function RadarDigitalIT1() {
                   placeholder="https://www.ejemplo.es" autoComplete="off"
                   onChange={e=>webCambio(e.target.value)}
                   onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();void analizar();}}}/>
-                <button type="button" className="btn primario" disabled={analizando||!draft.sitioWeb.trim()}
+                <button type="button" className="btn radar-pegar" onClick={()=>void pegarEnlace()}>
+                  Pegar enlace
+                </button>
+                <button type="button" className="btn primario" disabled={!!analizandoId||!draft.sitioWeb.trim()}
                   onClick={()=>void analizar()}>
-                  {analizando?<LoaderCircle size={16} className="radar-giro"/>:<ScanSearch size={16}/>}
-                  {analizando?'Analizando…':'Analizar web'}
+                  {analizandoId===n.id?<LoaderCircle size={16} className="radar-giro"/>:<ScanSearch size={16}/>}
+                  {analizandoId===n.id?'Analizando…':'Analizar web'}
                 </button>
               </div>
               <p className="radar-ayuda">El análisis es puntual, sin rastreo masivo: una sola web HTTPS que tú has elegido. Algunas webs pueden bloquear la lectura.</p>
@@ -195,48 +273,99 @@ export default function RadarDigitalIT1() {
 
             <div className="radar-bloque">
               <h3><span>2</span> Revisar evidencias encontradas</h3>
-              {!draft.hallazgo
-                ? <p className="radar-sin-evidencia">Aún no hay resultados de análisis. También puedes investigar manualmente con los enlaces de búsqueda.</p>
-                : <>
-                  <div className="radar-resultado">
-                    <Globe2 size={16}/>
+              {draft.hallazgo ? <>
+                <div className="radar-modelo">
+                  <div className="radar-modelo-fuente">
+                    <span className="radar-modelo-etiqueta">Fuente consultada</span>
                     {enlace(draft.hallazgo.urlFinal,'Página analizada')}
-                    <label><input type="checkbox" checked={draft.webValidada}
+                    {draft.hallazgo.analizadoEn && <small>
+                      Analizada: {new Date(draft.hallazgo.analizadoEn).toLocaleString('es-ES')}
+                    </small>}
+                  </div>
+                  {draft.hallazgo.titulo && <p className="radar-modelo-titulo">
+                    Título de la página: <b>{draft.hallazgo.titulo}</b>
+                  </p>}
+                  {compatibilidad===true && <p className="radar-concordancia">El nombre aparece en el título: indicio orientativo.</p>}
+                  {compatibilidad===false && <p className="radar-discrepancia">
+                    El título no coincide claramente con el nombre del comercio. Comprueba la dirección.
+                  </p>}
+                  <label className="radar-verificar">
+                    <input type="checkbox" checked={draft.webValidada}
                       onChange={e=>actualizar(n.id,{webValidada:e.target.checked,estado:'pendiente'})}/>
-                      Web oficial verificada por mí</label>
-                  </div>
-                  {REDES_RADAR.map(red=>{
-                    const item=draft.hallazgo?.redes[red];
-                    const Icono=REDES[red].icono;
-                    return <div className="radar-resultado" key={red}>
-                      <Icono size={16}/>
-                      <b>{REDES[red].nombre}</b>
-                      {item ? <>
-                        {enlace(item,'Perfil enlazado desde la web')}
-                        <label><input type="checkbox" checked={draft.redesValidadas[red]===true}
-                          onChange={e=>actualizar(n.id,{
-                            redesValidadas:{...draft.redesValidadas,[red]:e.target.checked},
-                            estado:'pendiente',
-                          })}/> Confirmado</label>
-                      </> : <span className="radar-falta">No aparece enlazado; no significa que no exista</span>}
-                    </div>;
-                  })}
-                  <div className="radar-venta">
-                    <b>Posible venta online</b>
-                    {draft.hallazgo.indiciosVenta.length
-                      ? <p>{draft.hallazgo.indiciosVenta.join(' · ')}</p>
-                      : <p>No se han detectado indicios; no implica que no venda.</p>}
-                    <label>Comprobación humana
-                      <select value={draft.ventaOnline} onChange={e=>actualizar(n.id,{
-                        ventaOnline:e.target.value as BorradorRadar['ventaOnline'],estado:'pendiente',
-                      })}>
-                        <option value="pendiente">Pendiente</option>
-                        <option value="si">Sí, permite comprar online</option>
-                        <option value="no">No vende online</option>
-                      </select>
-                    </label>
-                  </div>
-                </>}
+                    Web oficial verificada por mí
+                  </label>
+                </div>
+                <div className="radar-lote">
+                  <span><b>{porValidar}</b> propuestas sin confirmar</span>
+                  <button type="button" className="btn primario" disabled={porValidar===0}
+                    onClick={confirmarLote}>
+                    <CheckCircle2 size={16}/> Confirmar web y enlaces comprobados
+                  </button>
+                </div>
+                <p className="radar-ayuda">La confirmación agrupada es una decisión tuya: abre los enlaces antes de aceptarlos.</p>
+              </> : <div className="radar-sin-evidencia">
+                <p>Sin análisis automático. Puedes comprobar la web y los perfiles manualmente.</p>
+                {draft.sitioWeb.trim() && <div className="radar-sin-analisis-acciones">
+                  {(() => {
+                    try {
+                      const u=new URL(draft.sitioWeb);
+                      return u.protocol==='https:' && u.hostname.includes('.') ? enlace(u.toString(),'Abrir web candidata') : null;
+                    } catch { return null; }
+                  })()}
+                  <button type="button" className="btn s" onClick={confirmarWebManual}>
+                    {draft.webValidada ? 'Desmarcar web verificada':'He comprobado que es la web oficial'}
+                  </button>
+                </div>}
+              </div>}
+              <div className="radar-redes">
+                <h4>Perfiles sociales <small>Solo los que hayas encontrado y comprobado</small></h4>
+                {candidatos.map(({red,datos})=>{
+                  const Icono=REDES[red].icono;
+                  return <div className="radar-resultado" key={red}>
+                    <Icono size={16} aria-hidden="true"/>
+                    <b>{REDES[red].nombre}</b>
+                    {datos ? <>
+                      {enlace(datos.url,'Abrir perfil propuesto')}
+                      <span className="radar-origen">{datos.origen==='web'?'Enlazado desde la web':'Encontrado manualmente'}</span>
+                      <label><input type="checkbox" checked={draft.redesValidadas[red]===true}
+                        onChange={e=>actualizar(n.id,{
+                          redesValidadas:{...draft.redesValidadas,[red]:e.target.checked},
+                          estado:'pendiente',
+                        })}/> Confirmado</label>
+                    </> : <span className="radar-falta">Sin enlace identificado · No equivale a ausencia</span>}
+                  </div>;
+                })}
+                <details className="radar-manuales">
+                  <summary>Añadir perfiles encontrados manualmente</summary>
+                  <p>Introduce la URL completa del perfil correspondiente a este comercio. No se confirma automáticamente.</p>
+                  {REDES_RADAR.map(red=><div className="radar-manual-fila" key={red}>
+                    <label htmlFor={`radar-manual-${red}`}>{REDES[red].nombre}</label>
+                    <input id={`radar-manual-${red}`} type="url"
+                      placeholder={red==='instagram'?'https://www.instagram.com/negocio/':
+                        red==='facebook'?'https://www.facebook.com/negocio/':'https://x.com/negocio/'}
+                      value={draft.perfilesManuales?.[red]??''}
+                      onChange={e=>actualizarPerfil(red,e.target.value)} />
+                    {!!draft.perfilesManuales?.[red] && !normalizarPerfilRadar(red,draft.perfilesManuales[red]!) &&
+                      <small className="radar-error-inline">Dirección de perfil no válida</small>}
+                  </div>)}
+                </details>
+              </div>
+              <div className="radar-venta">
+                <b>Venta online</b>
+                {draft.hallazgo ? draft.hallazgo.indiciosVenta.length
+                  ? <p>Indicios detectados: {draft.hallazgo.indiciosVenta.join(' · ')}. Comprueba si realmente permite comprar.</p>
+                  : <p>No se han detectado indicios. Esto no significa que no venda online.</p>
+                  : <p>Puedes comprobarla manualmente aunque no haya web analizada.</p>}
+                <label>Comprobación humana
+                  <select value={draft.ventaOnline} onChange={e=>actualizar(n.id,{
+                    ventaOnline:e.target.value as BorradorRadar['ventaOnline'],estado:'pendiente',
+                  })}>
+                    <option value="pendiente">Pendiente</option>
+                    <option value="si">Sí, permite comprar online</option>
+                    <option value="no">No vende online</option>
+                  </select>
+                </label>
+              </div>
               <details className="radar-excel">
                 <summary>Ver valores originales del Excel (sin cambios)</summary>
                 <div>{CAMPOS_DIGITALES_EXCEL.map(c=><span key={c.clave}>
@@ -247,14 +376,12 @@ export default function RadarDigitalIT1() {
           </div>
           <div className="radar-pie">
             <button type="button" className={'btn '+(draft.estado==='revisado'?'':'primario')}
-              onClick={()=>actualizar(n.id,{estado:draft.estado==='revisado'?'pendiente':'revisado'})}>
-              <CheckCircle2 size={16}/>{draft.estado==='revisado'?'Volver a pendiente':'Marcar investigación revisada'}
+              onClick={terminarInvestigacion}>
+              <CheckCircle2 size={16}/>{draft.estado==='revisado'?'Volver a pendiente':'Marcar investigación revisada y avanzar'}
             </button>
-            <span>«Revisada» no significa que tenga web ni valida el censo.</span>
-            <button className="btn" type="button" disabled={seleccion>=negocios.length-1}
-              onClick={()=>{setSeleccion(x=>Math.min(x+1,negocios.length-1));setError('');}}>
-              Siguiente <ArrowRight size={15}/>
-            </button>
+            <span>«Revisada» significa investigación realizada, no que todos los datos estén confirmados en el censo.</span>
+            <button className="btn" type="button" disabled={negocios.length<2}
+              onClick={irSiguientePendiente}>Siguiente pendiente <ArrowRight size={15}/></button>
           </div>
         </>}
       </section>

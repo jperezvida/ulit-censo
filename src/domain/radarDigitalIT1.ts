@@ -59,6 +59,63 @@ export interface HallazgoRadar {
   urlFinal: string;
   redes: Partial<Record<RedRadar, string>>;
   indiciosVenta: string[];
+  /** Título declarado por la página, solo pista para contrastar el establecimiento. */
+  titulo?: string;
+  /** Momento de la lectura. La evidencia puede cambiar posteriormente. */
+  analizadoEn?: string;
+}
+
+const HOSTS_PERFIL: Record<RedRadar,string[]> = {
+  instagram:['instagram.com'],
+  facebook:['facebook.com','fb.com','fb.me'],
+  twitter:['x.com','twitter.com'],
+};
+
+/** Una URL manual nunca es evidencia de presencia hasta que el revisor la confirme. */
+export function normalizarPerfilRadar(red: RedRadar, texto: string): string | null {
+  try {
+    const u = new URL(texto.trim());
+    const host=u.hostname.toLowerCase().replace(/^www\./,'').replace(/^m\./,'');
+    if(u.protocol!=='https:' || u.username || u.password || u.port ||
+      !HOSTS_PERFIL[red].includes(host)) return null;
+    const path=u.pathname.replace(/^\/+|\/+$/g,'');
+    if(!path || /^(?:p|reel|reels|stories|explore|accounts|share|sharer|intent|hashtag|search|home|photo|photos|watch|groups|events|login|dialog|plugins|posts|status|i)(\/|$)/i.test(path))
+      return null;
+    if(u.searchParams.has('u') || u.searchParams.has('url')) return null;
+    u.search='';u.hash='';
+    return u.toString();
+  } catch { return null; }
+}
+export function enlaceCandidatoRadar(b:BorradorRadar,red:RedRadar): {url:string;origen:'web'|'manual'}|null {
+  const manual=b.perfilesManuales?.[red];
+  if(manual) {
+    const url=normalizarPerfilRadar(red,manual);
+    return url ? {url,origen:'manual'}:null;
+  }
+  if (!b.hallazgo) return null;
+  const url=b.hallazgo.redes[red]&&normalizarPerfilRadar(red,b.hallazgo.redes[red]);
+  return url ? {url,origen:'web'}:null;
+}
+
+/** Una confirmación agrupada es un acto humano explícito, no una clasificación automática. */
+export function validarHallazgosRadar(b:BorradorRadar): Partial<BorradorRadar> {
+  const redesValidadas={...b.redesValidadas};
+  for(const red of REDES_RADAR) if(enlaceCandidatoRadar(b,red)) redesValidadas[red]=true;
+  return {
+    webValidada:!!b.hallazgo && !!b.sitioWeb.trim(),
+    redesValidadas,estado:'pendiente',
+  };
+}
+/** El título de la página es una pista, nunca prueba suficiente por sí sola. */
+export function nombreCompatibleRadar(nombre:string,titulo:string|undefined): boolean|null {
+  if(!titulo?.trim()) return null;
+  const limpiar=(v:string)=>v.normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+  const n=limpiar(nombre);
+  const t=limpiar(titulo);
+  const tokens=n.split(' ').filter(w=>w.length>=4 && !['calle','tienda','comercio','grupo','centro','local','santa','santo','medina','campo'].includes(w));
+  if(!tokens.length) return null;
+  return tokens.filter(w=>t.split(' ').includes(w)).length>=Math.min(2,tokens.length);
 }
 
 export interface BorradorRadar {
@@ -66,6 +123,8 @@ export interface BorradorRadar {
   hallazgo?: HallazgoRadar;
   webValidada: boolean;
   redesValidadas: Partial<Record<RedRadar, boolean>>;
+  /** Candidatos encontrados manualmente, incluso cuando el negocio no tiene web. */
+  perfilesManuales?: Partial<Record<RedRadar,string>>;
   ventaOnline: 'pendiente' | 'si' | 'no';
   estado: 'pendiente' | 'revisado';
   actualizado: string;
@@ -95,22 +154,37 @@ export function leerBorradoresRadar(campanaId: string): BorradoresRadar {
           facebook: d.redesValidadas.facebook === true,
           twitter: d.redesValidadas.twitter === true,
         } : {},
+        perfilesManuales: Object.fromEntries(REDES_RADAR.filter(red=>
+          typeof d.perfilesManuales?.[red]==='string' &&
+          (d.perfilesManuales[red]?.length??0)<500)
+          .map(red=>[red,d.perfilesManuales![red]])),
         ventaOnline: ['si','no'].includes(d.ventaOnline ?? '') ? d.ventaOnline as 'si'|'no' : 'pendiente',
         estado: d.estado === 'revisado' ? 'revisado' : 'pendiente',
         actualizado: typeof d.actualizado === 'string' ? d.actualizado : '',
         ...(d.hallazgo && typeof d.hallazgo.urlFinal === 'string' && d.hallazgo.urlFinal.length < 2500 ? {
           hallazgo: {
             urlFinal: d.hallazgo.urlFinal,
-            redes: Object.fromEntries(REDES_RADAR.filter((red) =>
-              typeof d.hallazgo?.redes?.[red] === 'string' &&
-              (d.hallazgo.redes[red]?.length ?? 0) < 2500)
-              .map((red) => [red, d.hallazgo!.redes[red]])),
+            ...(typeof d.hallazgo.titulo==='string'?{titulo:d.hallazgo.titulo.slice(0,200)}:{}),
+            ...(typeof d.hallazgo.analizadoEn==='string'?{analizadoEn:d.hallazgo.analizadoEn.slice(0,40)}:{}),
+            redes: Object.fromEntries(REDES_RADAR.flatMap((red) => {
+              const url=d.hallazgo?.redes?.[red];
+              const limpia=typeof url==='string'?normalizarPerfilRadar(red,url):null;
+              return limpia?[[red,limpia]]:[];
+            })),
             indiciosVenta: Array.isArray(d.hallazgo.indiciosVenta)
               ? d.hallazgo.indiciosVenta.filter((v): v is string => typeof v === 'string').slice(0,5)
               : [],
           },
         } : {}),
       };
+      // Los estados conservados solo son válidos si todavía hay una URL de evidencia utilizable.
+      for(const red of REDES_RADAR) {
+        if(!enlaceCandidatoRadar(res[id],red)) res[id].redesValidadas[red]=false;
+      }
+      try {
+        const web=new URL(res[id].sitioWeb);
+        if(web.protocol!=='https:' || web.username || web.password) res[id].webValidada=false;
+      } catch { res[id].webValidada=false; }
     }
     return res;
   } catch { return {}; }
