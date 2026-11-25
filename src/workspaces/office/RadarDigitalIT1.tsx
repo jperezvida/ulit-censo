@@ -29,9 +29,17 @@ const etiquetaExcel=(valor:string) => {
   const estado=interpretarPresenciaExcel(valor);
   return estado==='si'?'Sí':estado==='no'?'No':'Sin dato';
 };
-const enlace=(url:string, texto:string) => <a href={url} target="_blank" rel="noopener noreferrer">
-  {texto}<ExternalLink size={13} aria-hidden="true"/>
-</a>;
+const enlace=(url:string, texto:string) => {
+  try {
+    const u=new URL(url);
+    if(u.protocol!=='https:' || u.username || u.password) throw Error('Enlace inseguro');
+    return <a href={u.toString()} target="_blank" rel="noopener noreferrer">
+      {texto}<ExternalLink size={13} aria-hidden="true"/>
+    </a>;
+  } catch {
+    return <span className="radar-falta">{texto}: enlace descartado por seguridad</span>;
+  }
+};
 
 function exportarJSON(data:unknown){
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json;charset=utf-8'});
