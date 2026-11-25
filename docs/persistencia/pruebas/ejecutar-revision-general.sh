@@ -30,4 +30,6 @@ q -f "$SQL/20261114_0015_ocupados_sin_fachada.sql"
 q -f "$P/ocupado_quitar_fachada_2026.sql"
 q -f "$SQL/20261116_0016_categorizar_it1_2026.sql"
 q -f "$P/categorizar_it1_2026.sql"
-echo '✓ Fase 1: migraciones 0010–0015 verificadas con PostgreSQL 17 y datos ficticios'
+q -f "$SQL/20261125_0017_franquicias_it1_2026.sql"
+q -f "$P/franquicias_it1_2026.sql"
+echo '✓ Fase 1, categorización y franquicias: migraciones 0010–0017 verificadas en PostgreSQL 17 aislado'
