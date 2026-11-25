@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle2, XCircle, ArrowLeft, AlertTriangle } from 'lucide-react';
 import { useContexto } from '../../store/contexto';
@@ -114,7 +114,7 @@ export default function FranquiciaIT1() {
 
 
   // Los botones no roban el foco al hacer clic: inmediatamente después sirve otra vez Enter/Supr.
-  const mantenerFoco = { onMouseDown: (e: React.MouseEvent<HTMLButtonElement>) => e.preventDefault() };
+  const mantenerFoco = { onMouseDown: (e: MouseEvent<HTMLButtonElement>) => e.preventDefault() };
 
   return <main className="pagina franquicia-it1">
     <header className="franquicia-cabecera">
