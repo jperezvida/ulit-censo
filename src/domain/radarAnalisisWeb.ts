@@ -42,8 +42,8 @@ export function extraerEnlacesPublicos(html: string, pagina: string): HallazgoRa
     señales.push('Enlace a carrito o pago');
   if (/"@type"\s*:\s*"Product"|itemtype=["']https?:\/\/schema\.org\/Product/i.test(texto))
     señales.push('Datos estructurados de producto');
-  const tituloRaw = html.match(/<title\\b[^>]*>([\\s\\S]{1,250}?)<\\/title>/i)?.[1];
-  const titulo=tituloRaw?.replace(/<[^>]*>/g,' ').replace(/&(?:amp|nbsp|quot);/gi,' ').replace(/\\s+/g,' ').trim().slice(0,180);
+  const tituloRaw = html.match(/<title\b[^>]*>([\s\S]{1,250}?)<\/title>/i)?.[1];
+  const titulo=tituloRaw?.replace(/<[^>]*>/g,' ').replace(/&(?:amp|nbsp|quot);/gi,' ').replace(/\s+/g,' ').trim().slice(0,180);
   return {
     urlFinal: pagina, redes, indiciosVenta: señales,
     ...(titulo ? {titulo} : {}),
