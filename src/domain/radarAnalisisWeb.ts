@@ -1,4 +1,4 @@
-import type { HallazgoRadar, RedRadar } from './radarDigitalIT1';
+import { normalizarPerfilRadar, type HallazgoRadar, type RedRadar } from './radarDigitalIT1';
 
 /** Extrae indicios de HTML público. Nada se confirma como dato del comercio sin revisión humana. */
 export function extraerEnlacesPublicos(html: string, pagina: string): HallazgoRadar {
@@ -31,7 +31,8 @@ export function extraerEnlacesPublicos(html: string, pagina: string): HallazgoRa
     if (!path || /^(?:p|reel|reels|stories|explore|accounts|share|sharer|intent|hashtag|search|home|photo|photos|watch|groups|events|login|dialog|plugins|posts|status|i)(\/|$)/.test(path)) continue;
     if (u.searchParams.has('u') || u.searchParams.has('url')) continue;
     u.search = ''; u.hash = '';
-    redes[red] = u.toString();
+    const perfil=normalizarPerfilRadar(red,u.toString());
+    if(perfil) redes[red] = perfil;
   }
   const señales: string[] = [];
   const texto = html.slice(0,300000);
@@ -41,5 +42,11 @@ export function extraerEnlacesPublicos(html: string, pagina: string): HallazgoRa
     señales.push('Enlace a carrito o pago');
   if (/"@type"\s*:\s*"Product"|itemtype=["']https?:\/\/schema\.org\/Product/i.test(texto))
     señales.push('Datos estructurados de producto');
-  return { urlFinal: pagina, redes, indiciosVenta: señales };
+  const tituloRaw = html.match(/<title\\b[^>]*>([\\s\\S]{1,250}?)<\\/title>/i)?.[1];
+  const titulo=tituloRaw?.replace(/<[^>]*>/g,' ').replace(/&(?:amp|nbsp|quot);/gi,' ').replace(/\\s+/g,' ').trim().slice(0,180);
+  return {
+    urlFinal: pagina, redes, indiciosVenta: señales,
+    ...(titulo ? {titulo} : {}),
+    analizadoEn:new Date().toISOString(),
+  };
 }
