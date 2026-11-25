@@ -96,7 +96,7 @@ describe('Radar Digital IT1: piloto sin escritura al censo',()=>{
       const d=JSON.parse(localStorage.getItem('ulit-censo-radar-it1-piloto-v1:c26')!);
       expect(d.reg1.webValidada).toBe(true);
       expect(d.reg1.redesValidadas).toMatchObject({instagram:true,facebook:true});
-      expect(d.reg1.redesValidadas.twitter).toBeUndefined();
+      expect(d.reg1.redesValidadas.twitter).toBe(false); // no confirmado, nunca «no tiene»
     });
     expect(screen.getByRole('status',{name:'Progreso del piloto'})).toHaveTextContent('1 webs validadas');
   });
@@ -107,6 +107,7 @@ describe('Radar Digital IT1: piloto sin escritura al censo',()=>{
     const web=screen.getByLabelText(/Web candidata/);
     fireEvent.change(web,{target:{value:'https://web-anterior.es/'}});
     fireEvent.click(screen.getByRole('button',{name:'Analizar web'}));
+    await waitFor(()=>expect(globalThis.fetch).toHaveBeenCalledTimes(1));
     fireEvent.change(web,{target:{value:'https://web-nueva.es/'}});
     responder(new Response(JSON.stringify({hallazgo:{
       urlFinal:'https://web-anterior.es/',redes:{instagram:'https://www.instagram.com/antigua/'},
