@@ -139,7 +139,7 @@ describe('IT1 · franquicias, interacción teclado y aceptación masiva',()=>{
     await waitFor(()=>expect(screen.getByRole('button',{name:/Aceptar todas las respuestas existentes/})).toBeEnabled());
     fireEvent.click(screen.getByRole('button',{name:/Dar por correctos todos/}));
     expect(guardarFranquiciaIT1).not.toHaveBeenCalled();
-    expect(screen.getByText(/se aceptarán las 2 respuestas/)).toBeInTheDocument();
+    expect(screen.getByText(/se aceptarán las 2 respuestas/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button',{name:/Sí, dar las 2 por correctas/}));
     await waitFor(()=>expect(guardarFranquiciaIT1).toHaveBeenCalledWith(
       {accion:'aceptar-todas',ids:['reg-11','reg-22']},20));
