@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { baseVacia } from './db';
+import { resumenItinerarios, type FilaOficina } from './oficina';
 import { categoriasDelCatalogo, categoriasFrecuentes, categoriaTexto, claveCategoria2026,
   mismaCategoria, opcionEquivaleA, OPCIONES_CATEGORIAS_2026, prepararRevisionCategoriaIT1,
   repartirPasosCategoria,
@@ -147,5 +148,44 @@ describe('Categorización IT1 · reparto en dos pasos',()=>{
     const otra=OPCIONES_CATEGORIAS_2026.find(o=>!o.etiqueta.includes('Carnicería')&&!o.requiereDescripcion)!;
     expect(opcionEquivaleA(otra.id,v)).toBe(false);
     expect(opcionEquivaleA('a1-comercio',v)).toBe(false);
+  });
+});
+
+/** Los paneles de Oficina y Excel miden universos distintos: nunca trasferir estados por proximidad. */
+describe('IT1 · coherencia de progreso entre Excel y locales físicos', () => {
+  it('muestra 66 decisiones del Excel sin dar por categorizados los 6 locales físicos', () => {
+    const db = fixture();
+    const origen = JSON.stringify(db.registros);
+    // Simula seis locales físicos ocupados sin revisión propia; no se deduce una equivalencia
+    // con ninguna de las 66 filas, aunque todas hayan sido revisadas.
+    const locales = Array.from({ length: 6 }, (_, n) => ({
+      localId: 'local-' + n, itinerarioIds: ['it1'], situacion: 'registrado', vacio: false,
+      rev: { categorizacion: 'pendiente', digital: 'pendiente' },
+      incidencias: [], avisos: [], errores: [], cronologiaIncierta: [],
+    } as unknown as FilaOficina));
+    const it1 = () => resumenItinerarios(db, 'c26', locales).find((r) => r.codigo === 'IT1')!;
+    expect(it1().categorizacionExcel).toEqual({ hechos: 0, pendientes: 66 });
+    expect(it1().categorizacion).toEqual({ hechos: 0, pendientes: 6 });
+
+    const carniceria = categoriasDelCatalogo(
+      OPCIONES_CATEGORIAS_2026.find((o) => o.etiqueta.includes('Carnicería'))!.id);
+    for (const f of prepararRevisionCategoriaIT1(db, 'c26')) {
+      db.revisionesCategoriaRegistros![f.id] = {
+        id: f.id, registroId: f.id, campanaId: 'c26',
+        estado: f.tienePropuesta ? 'aceptada' : 'corregida',
+        valores: f.tienePropuesta ? f.existentes : carniceria,
+        porId: 'responsable', fecha: '2026-11-25T10:00:00Z',
+      };
+    }
+    expect(it1().categorizacionExcel).toEqual({ hechos: 66, pendientes: 0 });
+    expect(it1().categorizacion).toEqual({ hechos: 0, pendientes: 6 });
+    expect(locales.every((f) => f.rev.categorizacion === 'pendiente')).toBe(true);
+    expect(JSON.stringify(db.registros)).toBe(origen);
+    expect(resumenItinerarios(db, 'c26', locales).find((r) => r.codigo === 'IT2')?.categorizacionExcel).toBeUndefined();
+
+    db.revisionesCategoriaRegistros!.r1.estado = 'rechazada';
+    expect(it1().categorizacionExcel).toEqual({ hechos: 65, pendientes: 1 });
+    expect(it1().categorizacion).toEqual({ hechos: 0, pendientes: 6 });
+    expect(resumenItinerarios(db, 'c25', locales).every((r) => !r.categorizacionExcel)).toBe(true);
   });
 });
