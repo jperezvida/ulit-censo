@@ -82,7 +82,8 @@ describe('IT1 · franquicias, interacción teclado y aceptación masiva',()=>{
     await waitFor(()=>expect(screen.getByRole('button',{name:/2 · Completar franquicias/})).toHaveTextContent('2 pendientes'));
     fireEvent.click(screen.getByRole('button',{name:/2 · Completar franquicias/}));
     expect(screen.getByText('Panadería Ficticia')).toBeInTheDocument();
-    fireEvent.keyDown(document.body,{key:'Delete'});
+    expect(document.activeElement).toHaveAttribute('aria-label','Paso 2 · Completar');
+    fireEvent.keyDown(document.activeElement!,{key:'Delete'});
     await waitFor(()=>expect(guardarFranquiciaIT1).toHaveBeenCalledWith(
       {accion:'resolver',ids:['reg-22'],respuesta:'no'},expect.any(Number)));
   });
