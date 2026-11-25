@@ -11,6 +11,7 @@ import {
   CAMPOS_DIGITALES_EXCEL, REDES_RADAR,
   negociosPilotoRadar, enlacesBusquedaRadar, interpretarPresenciaExcel,
   leerBorradoresRadar, guardarBorradoresRadar, resumenPilotoRadar,
+  normalizarPerfilRadar, enlaceCandidatoRadar, validarHallazgosRadar, nombreCompatibleRadar,
   type BorradoresRadar, type BorradorRadar, type HallazgoRadar, type RedRadar,
 } from '../../domain/radarDigitalIT1';
 import '../../styles/radar-digital.css';
@@ -48,7 +49,7 @@ export default function RadarDigitalIT1() {
   const [seleccion,setSeleccion]=useState(0);
   const [borradores,setBorradores]=useState<BorradoresRadar>(
     ()=>campana?leerBorradoresRadar(campana.id):{});
-  const [analizando,setAnalizando]=useState(false);
+  const [analizandoId,setAnalizandoId]=useState<string|null>(null);
   const [error,setError]=useState('');
   const [avisoLocal,setAvisoLocal]=useState(false);
 
@@ -63,23 +64,39 @@ export default function RadarDigitalIT1() {
   const buscar=n?enlacesBusquedaRadar(n):null;
 
   const actualizar=(id:string,cambio:Partial<BorradorRadar>)=>{
-    const previo=borradores[id]??VACIO;
-    const siguiente={...borradores,[id]:{
-      ...previo,...cambio,actualizado:new Date().toISOString(),
-    }};
-    setBorradores(siguiente);
-    if(campana && !guardarBorradoresRadar(campana.id,siguiente)) setAvisoLocal(true);
+    setBorradores((anterior)=>{
+      const previo=anterior[id]??VACIO;
+      const siguiente={...anterior,[id]:{
+        ...previo,...cambio,actualizado:new Date().toISOString(),
+      }};
+      if(campana && !guardarBorradoresRadar(campana.id,siguiente)) setAvisoLocal(true);
+      return siguiente;
+    });
+  };
+  const confirmarLote=()=>{
+    if(!n || !draft.hallazgo) return;
+    actualizar(n.id,validarHallazgosRadar(draft));
+  };
+  const actualizarPerfil=(red:RedRadar,texto:string)=>{
+    if(!n) return;
+    actualizar(n.id,{
+      perfilesManuales:{...draft.perfilesManuales,[red]:texto},
+      redesValidadas:{...draft.redesValidadas,[red]:false},
+      estado:'pendiente',
+    });
   };
   const webCambio=(valor:string)=>{
     if(!n) return;
     actualizar(n.id,{
       sitioWeb:valor, hallazgo:undefined, webValidada:false,
-      redesValidadas:{}, estado:'pendiente',
+      redesValidadas:{...Object.fromEntries(REDES_RADAR.map(red=>[red,
+        !!draft.perfilesManuales?.[red] && draft.redesValidadas[red]===true]))},
+      ventaOnline:'pendiente',estado:'pendiente',
     });
     setError('');
   };
   const analizar=async()=>{
-    if(!n || !draft.sitioWeb.trim() || analizando) return;
+    if(!n || !draft.sitioWeb.trim() || analizandoId) return;
     setError('');
     let url:string;
     try{
@@ -89,7 +106,7 @@ export default function RadarDigitalIT1() {
         throw new Error('Debe ser una dirección HTTPS pública.');
       url=parse.toString();
     }catch{return setError('Introduce una URL HTTPS pública válida.');}
-    setAnalizando(true);
+    setAnalizandoId(n.id);
     try {
       const cliente=clienteServidor();
       const sesion=await cliente?.auth.getSession();
@@ -106,12 +123,19 @@ export default function RadarDigitalIT1() {
       // No sobreescribir la selección del usuario: resultado vinculado al registro de partida.
       actualizar(n.id,{
         sitioWeb:url,hallazgo:payload.hallazgo,webValidada:false,
-        redesValidadas:{},estado:'pendiente',
+        redesValidadas:Object.fromEntries(REDES_RADAR.map(red=>[
+          red, !!draft.perfilesManuales?.[red] && draft.redesValidadas[red]===true,
+        ])),estado:'pendiente',
       });
     }catch(e){setError(e instanceof Error?e.message:'Análisis no disponible.');}
-    finally{setAnalizando(false);}
+    finally{setAnalizandoId(null);}
   };
 
+  const compatibilidad=n&&draft.hallazgo
+    ? nombreCompatibleRadar(n.nombre,draft.hallazgo.titulo) : null;
+  const candidatos=REDES_RADAR.map(red=>({red,datos:enlaceCandidatoRadar(draft,red)}));
+  const porValidar=candidatos.filter(({red,datos})=>!!datos && draft.redesValidadas[red]!==true).length +
+    (draft.hallazgo&&!draft.webValidada?1:0);
   const listaResultados=negocios.map((negocio,i)=>({
     id:negocio.id,nombre:negocio.nombre,
     datosExcel:negocio.datosExcel,
