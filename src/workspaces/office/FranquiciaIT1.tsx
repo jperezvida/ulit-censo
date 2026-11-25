@@ -6,7 +6,7 @@ import { useFuenteOficina } from '../../store/fuenteOficina';
 import { capacidadFranquiciaIT1, type CapacidadFranquiciaIT1 } from '../../store/franquiciaIT1Real';
 import {
   prepararFranquiciasIT1, pendientesFranquiciaIT1,
-  type DecisionFranquiciaIT1, type FilaFranquiciaIT1,
+  type DecisionFranquiciaIT1,
 } from '../../domain/revisionFranquiciaIT1';
 import '../../styles/categoria-it1.css';
 
@@ -25,7 +25,6 @@ export default function FranquiciaIT1() {
   const pendientes2 = vistas.filter((f) => f.paso === 2 && f.pendiente);
   const guardadas = filas.filter((f) => f.confirmada).length;
   const totalPorGuardar = cola.reduce((n,d) => n+d.ids.length,0);
-  const totales = { 1: filas.filter((f) => !!f.propuesta).length, 2: vistas.filter((f) => f.paso===2).length };
   const [paso, setPaso] = useState<Paso>(1);
   const [viendo, setViendo] = useState<string | null>(null);
   const [confirmandoTodas, setConfirmandoTodas] = useState(false);
