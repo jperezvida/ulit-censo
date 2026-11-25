@@ -177,6 +177,14 @@ export function leerBorradoresRadar(campanaId: string): BorradoresRadar {
           },
         } : {}),
       };
+      // Los estados conservados solo son válidos si todavía hay una URL de evidencia utilizable.
+      for(const red of REDES_RADAR) {
+        if(!enlaceCandidatoRadar(res[id],red)) res[id].redesValidadas[red]=false;
+      }
+      try {
+        const web=new URL(res[id].sitioWeb);
+        if(web.protocol!=='https:' || web.username || web.password) res[id].webValidada=false;
+      } catch { res[id].webValidada=false; }
     }
     return res;
   } catch { return {}; }
