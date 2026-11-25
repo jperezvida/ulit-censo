@@ -5,6 +5,7 @@ import { useStore } from '../../store/store';
 import { C25_SINT, C26_SINT, MUN_SINT, escenarioOficina } from '../../data/escenarioOficina';
 import { registrarVacio } from '../../domain/campo';
 import { kRev } from '../../domain/db';
+import { prepararRevisionCategoriaIT1 } from '../../domain/revisionCategoriaIT1';
 import OficinaPage from './OficinaPage';
 
 let ruta = '';
@@ -36,6 +37,42 @@ beforeEach(() => {
 });
 
 describe('B2 · Oficina organizada por itinerarios (interfaz)', () => {
+
+  it('IT1: el panel muestra la revisión del Excel y mantiene separado el progreso de locales', () => {
+    const db = esc.db;
+    const itId = esc.itinerarios[0];
+    db.itinerarios[itId].codigo = 'IT1';
+    db.importaciones['imp-it1-panel'] = {
+      id:'imp-it1-panel',campanaId:C26_SINT,municipioId:MUN_SINT,
+      tipo:'C-excel-itinerario',archivo:'IT1.xlsx',huella:'ficticia',fecha:'2026-10-01',
+      filas:1,estado:'confirmada',resumen:{},procedencia:'simulado',
+    };
+    db.registros['fila-it1-panel'] = {
+      id:'fila-it1-panel',importacionId:'imp-it1-panel',itinerarioId:itId,fila:2,
+      datos:{'Local Vacío':'0','Nombre del negocio':'Negocio sintético IT1',
+        'Dirección':'Calle Ficticia','Num':'1','GrActividad':'Servicios',
+        'Subgrupo de actividad':'Reparaciones','Actividad':'Reparaciones'},
+    };
+    const f = prepararRevisionCategoriaIT1(db, C26_SINT).find((x) => x.fila.id === 'fila-it1-panel')!;
+    expect(f).toBeDefined();
+    montar('/oficina');
+    const tarjeta = screen.getByRole('article',{name:'Itinerario IT1'});
+    expect(within(tarjeta).getByRole('button',
+      {name:/Categorización del Excel: 0 revisados, 1 pendientes/})).toBeInTheDocument();
+    const localesAntes = within(tarjeta).getByText(/Revisión de locales físicos:/).textContent;
+    db.revisionesCategoriaRegistros!['fila-it1-panel'] = {
+      id:'fila-it1-panel',registroId:'fila-it1-panel',campanaId:C26_SINT,
+      estado:'aceptada',valores:f.existentes,porId:'p-marta',fecha:'2026-11-25T10:00:00Z',
+    };
+    act(() => useStore.setState({ db: { ...db } }));
+    expect(within(tarjeta).getByRole('button',
+      {name:/Categorización del Excel: 1 revisados, 0 pendientes/})).toBeInTheDocument();
+    expect(within(tarjeta).getByText(/Revisión de locales físicos:/).textContent).toBe(localesAntes);
+    fireEvent.click(within(tarjeta).getByRole('button',
+      {name:/Categorización del Excel: 1 revisados, 0 pendientes/}));
+    expect(ruta).toContain('/oficina/categoria-it1');
+  });
+
   it('muestra primero los itinerarios con su progreso independiente', () => {
     montar('/oficina');
     const it1 = screen.getByRole('article', { name: 'Itinerario IT-1' });
