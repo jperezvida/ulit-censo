@@ -31,7 +31,7 @@ const SIN_FRECUENTES: string[] = [];
 
 export function BuscadorClasificacion({
   catalogo, nombreNegocio, inicial = '', onElegir, onCancelar, flotante = false, autoFocus = true, etiqueta = 'Buscar actividad',
-  frecuentes = SIN_FRECUENTES, marcarPropuestaUnica = false, rechazadas = SIN_FRECUENTES,
+  frecuentes = SIN_FRECUENTES, marcarPropuestaUnica = false, rechazadas = SIN_FRECUENTES, actividadEspecifica = false,
 }: {
   catalogo: string;
   /** Nombre comercial: para proponer clasificaciones (nunca se aplican solas). */
@@ -55,6 +55,12 @@ export function BuscadorClasificacion({
    * pueden elegirse a mano, pero nunca quedan marcadas por defecto y se señalan como rechazadas.
    */
   rechazadas?: string[];
+  /**
+   * Al elegir un SUBGRUPO, ofrecer un campo «Actividad específica» de texto libre (opcional si el
+   * subgrupo no tiene actividades). Se devuelve como `descripcion`; el catálogo no se amplía.
+   * No aparece al elegir una actividad o un ejemplo del catálogo.
+   */
+  actividadEspecifica?: boolean;
 }) {
   // En un espacio de trabajo no se leen ni guardan las preferencias de la demostración (recientes y usos).
   const fuente = useFuenteOficina();
@@ -66,7 +72,7 @@ export function BuscadorClasificacion({
   // Al editar una clasificación con descripción se busca por la clasificación, sin la descripción.
   const [q, setQ] = useState(() => inicial.split(' · ')[0]);
   const [sel, setSel] = useState<number>(-1);
-  const [paso, setPaso] = useState<{ opcion: OpcionClasificacion; descripcion: string } | null>(null);
+  const [paso, setPaso] = useState<{ opcion: OpcionClasificacion; descripcion: string; opcional?: boolean } | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number; width: number } | null>(null);
@@ -130,8 +136,12 @@ export function BuscadorClasificacion({
   };
 
   const elegir = (o: OpcionClasificacion, tecla: 'enter' | 'tab' | 'shift-tab' | 'clic') => {
-    if (o.requiereDescripcion) {
-      setPaso({ opcion: o, descripcion: q.trim() && q.trim().toLowerCase() !== o.etiqueta.toLowerCase() ? q.trim() : '' });
+    if (o.requiereDescripcion || (actividadEspecifica && o.tipo === 'subgrupo')) {
+      // Con «Actividad específica», el texto usado para localizar la categoría NO es una descripción:
+      // el campo empieza siempre vacío. En las demás pantallas se conserva el comportamiento anterior.
+      setPaso({ opcion: o, descripcion: !actividadEspecifica && q.trim()
+        && q.trim().toLowerCase() !== o.etiqueta.toLowerCase() ? q.trim() : '',
+        opcional: !o.requiereDescripcion });
       return;
     }
     recordar(o);
@@ -143,12 +153,12 @@ export function BuscadorClasificacion({
     if (paso) {
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();
-        if (!paso.descripcion.trim()) {
+        if (!paso.descripcion.trim() && !paso.opcional) {
           setAviso('Escribe una breve descripción de la actividad.');
           return;
         }
         recordar(paso.opcion);
-        onElegir({ opcion: paso.opcion, descripcion: paso.descripcion.trim() }, e.key === 'Tab' ? (e.shiftKey ? 'shift-tab' : 'tab') : 'enter');
+        onElegir({ opcion: paso.opcion, descripcion: paso.descripcion.trim() || undefined }, e.key === 'Tab' ? (e.shiftKey ? 'shift-tab' : 'tab') : 'enter');
       } else if (e.key === 'Escape') {
         e.preventDefault();
         setPaso(null);
@@ -183,7 +193,11 @@ export function BuscadorClasificacion({
       {paso ? (
         <div className="bc-paso">
           <div className="muted bc-ruta">{paso.opcion.ruta}</div>
-          <div className="bc-paso-t">El subgrupo tiene actividades; si ninguna encaja, añade una breve descripción:</div>
+          <div className="bc-paso-t">{paso.opcional
+            ? 'Actividad específica (opcional): escríbela si el catálogo no la recoge, p. ej. «Oficina de empleo». Enter para guardar.'
+            : actividadEspecifica
+              ? 'El subgrupo tiene actividades; si ninguna encaja, escribe la actividad específica:'
+              : 'El subgrupo tiene actividades; si ninguna encaja, añade una breve descripción:'}</div>
           {aviso && <div className="bc-aviso" role="alert">{aviso}</div>}
         </div>
       ) : (
@@ -234,8 +248,8 @@ export function BuscadorClasificacion({
         aria-expanded
         aria-controls="bc-opciones"
         aria-activedescendant={!paso && sel >= 0 ? `bc-op-${sel}` : undefined}
-        aria-label={paso ? `Descripción para ${paso.opcion.etiqueta}` : etiqueta}
-        placeholder={paso ? 'Breve descripción de la actividad' : 'Actividad, palabra clave o ejemplo…'}
+        aria-label={paso ? (actividadEspecifica ? `Actividad específica para ${paso.opcion.etiqueta}` : `Descripción para ${paso.opcion.etiqueta}`) : etiqueta}
+        placeholder={paso ? (actividadEspecifica ? 'Actividad específica' : 'Breve descripción de la actividad') : 'Actividad, palabra clave o ejemplo…'}
         value={paso ? paso.descripcion : q}
         onChange={(e) => (paso ? setPaso({ ...paso, descripcion: e.target.value }) : setQ(e.target.value))}
         onKeyDown={onKeyDown}

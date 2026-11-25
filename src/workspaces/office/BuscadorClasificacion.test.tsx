@@ -52,4 +52,66 @@ describe('BuscadorClasificacion · propuestas y frecuentes', () => {
     fireEvent.click(op);
     expect(onElegir).toHaveBeenCalledTimes(1);
   });
+
+  it('actividad específica: al elegir un subgrupo se puede escribir texto libre y Enter lo guarda', () => {
+    const onElegir = montar({ actividadEspecifica: true });
+    const caja = screen.getByRole('combobox');
+    fireEvent.change(caja, { target: { value: 'organismos oficiales' } });
+    fireEvent.keyDown(caja, { key: 'Enter' });
+    expect(onElegir).not.toHaveBeenCalled();
+    const campo = screen.getByRole('combobox', { name: 'Actividad específica para Organismos Oficiales' });
+    expect(screen.getByText(/Actividad específica \(opcional\)/)).toBeInTheDocument();
+    fireEvent.change(campo, { target: { value: '  Oficina de empleo ' } });
+    fireEvent.keyDown(campo, { key: 'Enter' });
+    expect(onElegir).toHaveBeenCalledTimes(1);
+    expect(onElegir.mock.calls[0][0].opcion.etiqueta).toBe('Organismos Oficiales');
+    expect(onElegir.mock.calls[0][0].descripcion).toBe('Oficina de empleo');
+  });
+  it('actividad específica opcional: Enter sin texto guarda solo el subgrupo', () => {
+    const onElegir = montar({ actividadEspecifica: true });
+    const caja = screen.getByRole('combobox');
+    fireEvent.change(caja, { target: { value: 'organismos oficiales' } });
+    fireEvent.keyDown(caja, { key: 'Enter' });
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
+    expect(onElegir).toHaveBeenCalledTimes(1);
+    expect(onElegir.mock.calls[0][0].descripcion).toBeUndefined();
+  });
+  it('no pide actividad específica al elegir una actividad concreta del catálogo', () => {
+    const onElegir = montar({ actividadEspecifica: true });
+    const caja = screen.getByRole('combobox');
+    fireEvent.change(caja, { target: { value: 'carniceria' } });
+    fireEvent.keyDown(caja, { key: 'Enter' });
+    expect(onElegir).toHaveBeenCalledTimes(1);
+    expect(onElegir.mock.calls[0][0].opcion.etiqueta).toBe('Carnicería');
+    expect(screen.queryByText(/Actividad específica/)).not.toBeInTheDocument();
+  });
+  it('sin la opción, el subgrupo sin actividades se elige directamente (comportamiento anterior)', () => {
+    const onElegir = montar();
+    const caja = screen.getByRole('combobox');
+    fireEvent.change(caja, { target: { value: 'organismos oficiales' } });
+    fireEvent.keyDown(caja, { key: 'Enter' });
+    expect(onElegir).toHaveBeenCalledTimes(1);
+  });
+
+  it('actividad específica: el término de búsqueda parcial no se hereda como descripción', () => {
+    const onElegir = montar({ actividadEspecifica: true });
+    const caja = screen.getByRole('combobox');
+    fireEvent.change(caja, { target: { value: 'organismos' } });
+    fireEvent.click(screen.getByRole('option', { name: /^Organismos Oficiales/ }));
+    expect(onElegir).not.toHaveBeenCalled();
+    expect(screen.getByRole('combobox', { name: 'Actividad específica para Organismos Oficiales' })).toHaveValue('');
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
+    expect(onElegir).toHaveBeenCalledTimes(1);
+    expect(onElegir.mock.calls[0][0].descripcion).toBeUndefined();
+  });
+  it('en las demás pantallas se mantiene el traslado del texto buscado a la descripción obligatoria', () => {
+    montar();
+    const sub = OPCIONES_CATEGORIAS_2026.find((o) => o.requiereDescripcion)!;
+    const nombre = sub.etiqueta.split(' › ').pop()!;
+    const caja = screen.getByRole('combobox');
+    fireEvent.change(caja, { target: { value: nombre.slice(0, 6) } });
+    const op = screen.getAllByRole('option').find((o) => o.textContent?.startsWith(nombre))!;
+    fireEvent.click(op);
+    expect(screen.getByRole('combobox', { name: `Descripción para ${nombre}` })).toHaveValue(nombre.slice(0, 6));
+  });
 });
