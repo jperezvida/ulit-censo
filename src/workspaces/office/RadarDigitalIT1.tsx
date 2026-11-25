@@ -63,11 +63,14 @@ export default function RadarDigitalIT1() {
   const resumen=resumenPilotoRadar(negocios,borradores);
   const buscar=n?enlacesBusquedaRadar(n):null;
 
-  const actualizar=(id:string,cambio:Partial<BorradorRadar>)=>{
+  const actualizar=(id:string,cambio:Partial<BorradorRadar> |
+      ((vigente:BorradorRadar)=>Partial<BorradorRadar>|null))=>{
     setBorradores((anterior)=>{
       const previo=anterior[id]??VACIO;
+      const aplicado=typeof cambio==='function'?cambio(previo):cambio;
+      if(!aplicado) return anterior;
       const siguiente={...anterior,[id]:{
-        ...previo,...cambio,actualizado:new Date().toISOString(),
+        ...previo,...aplicado,actualizado:new Date().toISOString(),
       }};
       if(campana && !guardarBorradoresRadar(campana.id,siguiente)) setAvisoLocal(true);
       return siguiente;
@@ -76,6 +79,28 @@ export default function RadarDigitalIT1() {
   const confirmarLote=()=>{
     if(!n || !draft.hallazgo) return;
     actualizar(n.id,validarHallazgosRadar(draft));
+  };
+  const confirmarWebManual=()=>{
+    if(!n || !draft.sitioWeb.trim()) return;
+    try {
+      const url=new URL(draft.sitioWeb.trim());
+      if(url.protocol!=='https:' || !url.hostname.includes('.') || url.username || url.password)
+        throw Error('URL no válida');
+      actualizar(n.id,{webValidada:!draft.webValidada,estado:'pendiente'});
+      setError('');
+    } catch {
+      setError('Comprueba e introduce una dirección HTTPS completa antes de validar la web.');
+    }
+  };
+  const pegarEnlace=async()=>{
+    try {
+      if(!navigator.clipboard?.readText) throw Error('not supported');
+      const texto=await navigator.clipboard.readText();
+      if(!texto.trim()) throw Error('empty');
+      webCambio(texto.trim());
+    } catch {
+      setError('No se pudo leer el portapapeles. Pega el enlace en el campo con Ctrl+V.');
+    }
   };
   const actualizarPerfil=(red:RedRadar,texto:string)=>{
     if(!n) return;
@@ -121,12 +146,13 @@ export default function RadarDigitalIT1() {
       if(!respuesta.ok || !payload.hallazgo)
         throw Error(payload.error||'No se ha podido leer la web.');
       // No sobreescribir la selección del usuario: resultado vinculado al registro de partida.
-      actualizar(n.id,{
+      const solicitado=draft.sitioWeb.trim();
+      actualizar(n.id,(vigente)=>vigente.sitioWeb.trim()!==solicitado ? null : ({
         sitioWeb:url,hallazgo:payload.hallazgo,webValidada:false,
         redesValidadas:Object.fromEntries(REDES_RADAR.map(red=>[
-          red, !!draft.perfilesManuales?.[red] && draft.redesValidadas[red]===true,
+          red, !!vigente.perfilesManuales?.[red] && vigente.redesValidadas[red]===true,
         ])),estado:'pendiente',
-      });
+      }));
     }catch(e){setError(e instanceof Error?e.message:'Análisis no disponible.');}
     finally{setAnalizandoId(null);}
   };
@@ -207,10 +233,13 @@ export default function RadarDigitalIT1() {
                   placeholder="https://www.ejemplo.es" autoComplete="off"
                   onChange={e=>webCambio(e.target.value)}
                   onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();void analizar();}}}/>
-                <button type="button" className="btn primario" disabled={analizando||!draft.sitioWeb.trim()}
+                <button type="button" className="btn radar-pegar" onClick={()=>void pegarEnlace()}>
+                  Pegar enlace
+                </button>
+                <button type="button" className="btn primario" disabled={!!analizandoId||!draft.sitioWeb.trim()}
                   onClick={()=>void analizar()}>
-                  {analizando?<LoaderCircle size={16} className="radar-giro"/>:<ScanSearch size={16}/>}
-                  {analizando?'Analizando…':'Analizar web'}
+                  {analizandoId===n.id?<LoaderCircle size={16} className="radar-giro"/>:<ScanSearch size={16}/>}
+                  {analizandoId===n.id?'Analizando…':'Analizar web'}
                 </button>
               </div>
               <p className="radar-ayuda">El análisis es puntual, sin rastreo masivo: una sola web HTTPS que tú has elegido. Algunas webs pueden bloquear la lectura.</p>
