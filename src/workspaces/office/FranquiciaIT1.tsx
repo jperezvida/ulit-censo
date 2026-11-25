@@ -8,7 +8,7 @@ import {
   prepararFranquiciasIT1, pendientesFranquiciaIT1,
   type DecisionFranquiciaIT1,
 } from '../../domain/revisionFranquiciaIT1';
-import '../../styles/categoria-it1.css';
+import '../../styles/franquicia-it1.css';
 
 const SIN_COLA: DecisionFranquiciaIT1[] = [];
 type Paso = 1 | 2;
@@ -28,7 +28,7 @@ export default function FranquiciaIT1() {
   const [paso, setPaso] = useState<Paso>(1);
   const tarjeta = useRef<HTMLElement>(null);
   // El foco vuelve a la ficha: Enter/Supr funcionan aunque se cambie de pestaña con un clic.
-  useEffect(() => { tarjeta.current?.focus(); }, [paso]);
+  useEffect(() => { tarjeta.current?.focus({ preventScroll: true }); }, [paso]);
   const [viendo, setViendo] = useState<string | null>(null);
   const [confirmandoTodas, setConfirmandoTodas] = useState(false);
   const [saltados, setSaltados] = useState<string[]>([]);
@@ -62,7 +62,7 @@ export default function FranquiciaIT1() {
     }
     setError('');
     setViendo(null);
-    tarjeta.current?.focus();
+    tarjeta.current?.focus({ preventScroll: true });
     return true;
   };
   const decidir = (accion: 'aceptar' | 'rechazar' | 'resolver', respuesta?: 'si' | 'no') => {
@@ -92,7 +92,7 @@ export default function FranquiciaIT1() {
   };
   useEffect(() => {
     const onKeyDown = (ev: KeyboardEvent) => {
-      if (ev.ctrlKey || ev.metaKey || ev.altKey || ev.isComposing ||
+      if (ev.ctrlKey || ev.metaKey || ev.altKey || ev.isComposing || ev.repeat ||
           (ev.target instanceof HTMLElement && ev.target.closest('button,input,textarea,select,a,summary,[contenteditable=true]')) ||
           confirmandoTodas) return;
       if (paso === 1) {
@@ -112,89 +112,137 @@ export default function FranquiciaIT1() {
   const resumen = (p: Paso) => (p === 1 ? pendientes1 : pendientes2).length;
   if (!campana || campana.anio !== 2026) return <p>Selecciona la campaña 2026.</p>;
 
-  return <div className="categoria-it1" style={{maxWidth: 1280, margin:'0 auto', padding:'24px 28px'}}>
-    <Link to="/oficina" className="btn s fantasma"><ArrowLeft size={16}/> Volver a Oficina</Link>
-    <p className="rotulo" style={{marginTop:22}}>OFICINA · IT1 · FASE 3</p>
-    <h1>Revisión de franquicias</h1>
-    <p className="muted">Dos pasos. Primero valida los datos del Excel; después completa los negocios sin dato o los rechazados.</p>
-    <div className="categoria-resumen" role="status" aria-label="Estado del guardado"
-      style={{display:'flex',gap:12,flexWrap:'wrap',margin:'18px 0'}}>
-      <span className="t-info"><b>{ocupados-guardadas-totalPorGuardar}</b> pendientes por decidir</span>
-      <span className="t-info"><b>{totalPorGuardar}</b> decisiones por guardar</span>
-      <span className="t-info"><b>{guardadas}</b> de {ocupados} confirmadas en el servidor</span>
+
+  // Los botones no roban el foco al hacer clic: inmediatamente después sirve otra vez Enter/Supr.
+  const mantenerFoco = { onMouseDown: (e: React.MouseEvent<HTMLButtonElement>) => e.preventDefault() };
+
+  return <main className="pagina franquicia-it1">
+    <header className="franquicia-cabecera">
+      <Link to="/oficina" className="btn s fantasma"><ArrowLeft size={15}/> Volver a Oficina</Link>
+      <span className="rotulo">Oficina · IT1 · Fase 3</span>
+      <h1>Revisión de franquicias</h1>
+      <p>Primero confirma los valores del Excel. Después completa los que faltan o has rechazado.</p>
+    </header>
+
+    <div className="franquicia-resumen" role="status" aria-label="Estado del guardado">
+      <span><strong>{ocupados-guardadas-totalPorGuardar}</strong> pendientes por decidir</span>
+      <span className={totalPorGuardar ? 'franquicia-resumen-cola' : ''}>
+        <strong>{totalPorGuardar}</strong> decisiones por guardar
+      </span>
+      <span><strong>{guardadas}</strong> de {ocupados} confirmadas en el servidor</span>
     </div>
-    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(230px,1fr))',gap:12,margin:'16px 0'}}>
-      {([1,2] as const).map((p) => <button key={p} type="button" className={'btn '+(paso===p?'primario':'')}
-        style={{justifyContent:'flex-start',padding:18,textAlign:'left',height:'auto'}}
-        onClick={()=>{setPaso(p);setViendo(null);setConfirmandoTodas(false);setError('');}}>
-        <b>{p} · {p===1?'Revisar franquicias del Excel':'Completar franquicias'}</b>
-        <span style={{marginLeft:'auto'}}>{resumen(p)===0?'Completado':resumen(p)+' pendientes'}</span>
-      </button>)}
-    </div>
-    {motivoBloqueo && <p className="t-info aviso" role="alert">{motivoBloqueo}</p>}
-    {error && <p className="t-info aviso" role="alert">{error}</p>}
-    {errorCola && fuente?.reintentarColaFranquiciaIT1 && <button type="button" className="btn" onClick={fuente.reintentarColaFranquiciaIT1}>Reintentar guardado</button>}
-    {paso===1 && pendientes1.length>0 && (
-      <div style={{padding:'12px 0'}}>
-        {!confirmandoTodas ? <button type="button" className="btn" disabled={!!motivoBloqueo || totalPorGuardar>0}
-          onClick={()=>setConfirmandoTodas(true)}>Dar por correctos todos los datos existentes</button> :
-          <div className="t-info aviso" role="group" aria-label="Confirmar todas las propuestas">
-            <p><b>Confirmación masiva:</b> se aceptarán las {pendientes1.length} respuestas 0/1 existentes del Excel aún sin revisar.
-              Cada decisión quedará identificada en el servidor. Los datos vacíos seguirán pendientes. ¿Confirmas?</p>
-            <button type="button" className="btn primario" disabled={!!motivoBloqueo || totalPorGuardar>0} onClick={confirmarTodas}>
-              Sí, dar las {pendientes1.length} por correctas</button>{' '}
-            <button type="button" className="btn" onClick={()=>setConfirmandoTodas(false)}>Cancelar</button>
-          </div>}
+
+    <nav className="franquicia-pasos" aria-label="Pasos de revisión de franquicias">
+      {([1,2] as const).map((p) =>
+        <button type="button" key={p} className={'franquicia-paso' + (paso === p ? ' activo' : '')}
+          aria-pressed={paso === p} {...mantenerFoco}
+          onClick={() => { setPaso(p); setViendo(null); setConfirmandoTodas(false); setError(''); }}>
+          <span className="franquicia-paso-num">{p}</span>
+          <span className="franquicia-paso-texto">
+            <b>{p===1 ? 'Revisar franquicias del Excel' : 'Completar franquicias'}</b>
+            <small>{resumen(p)===0 ? 'Completado' : resumen(p)+' pendientes'}</small>
+          </span>
+        </button>)}
+    </nav>
+
+    <section ref={tarjeta} tabIndex={-1} className="franquicia-ficha"
+      aria-label={paso===1 ? 'Paso 1 · Revisar' : 'Paso 2 · Completar'}>
+      <div className="franquicia-ficha-progreso">
+        <span>Paso {paso} de 2</span>
+        <strong>Quedan {resumen(paso)}</strong>
       </div>
-    )}
-    <section ref={tarjeta} tabIndex={-1} className="t-info" aria-label={paso===1?'Paso 1 · Revisar':'Paso 2 · Completar'}
-      style={{marginTop:12,padding:28,minHeight:270}}>
-      {!actual ? <>
-        <p style={{fontWeight:700,color:'var(--verde,#18794e)'}}><CheckCircle2 size={19}/> Paso {paso} completado.</p>
-        <p className="muted">{totalPorGuardar ? 'Hay decisiones esperando confirmación del servidor.' : 'No quedan decisiones pendientes en este paso.'}</p>
-        {paso===1 && <button type="button" className="btn primario" onClick={()=>setPaso(2)}>Ir al paso 2</button>}
-      </> : <>
-        <p className="muted">Quedan {resumen(paso)} · {actual.fila.direccion}, {actual.fila.numero}</p>
-        <h2>{actual.fila.nombre}</h2>
-        {paso===1 ? <>
-          <p>Franquicia indicada en el Excel: <b style={{fontSize:22}}>{respuestaTexto(actual.propuesta)}</b></p>
-          <p className="muted">¿Es correcto el valor que figura en el Excel?</p>
-          <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
-            <button type="button" className="btn primario" disabled={!!motivoBloqueo || !!actual.enCola}
-              onClick={()=>decidir('aceptar')}><CheckCircle2 size={16}/> Correcto · Enter</button>
-            <button type="button" className="btn" disabled={!!motivoBloqueo || !!actual.enCola}
-              onClick={()=>decidir('rechazar')}><XCircle size={16}/> No es correcto · Supr</button>
+
+      {!actual ? <div className="franquicia-ficha-fin">
+        <CheckCircle2 size={29} aria-hidden="true"/>
+        <h2>Paso {paso} completado</h2>
+        <p>{totalPorGuardar
+          ? 'Hay decisiones pendientes de confirmación en el servidor.'
+          : 'Todas las decisiones de este paso están guardadas.'}</p>
+        {paso===1 && <button type="button" className="btn primario" {...mantenerFoco}
+          onClick={()=>setPaso(2)}>Ir al paso 2</button>}
+      </div> :
+        <div className="franquicia-ficha-contenido">
+          <div className="franquicia-negocio">
+            <h2 title={actual.fila.nombre}>{actual.fila.nombre || 'Negocio sin identificar'}</h2>
+            <p title={`${actual.fila.direccion}, ${actual.fila.numero}`}>
+              {actual.fila.direccion}, {actual.fila.numero}
+            </p>
           </div>
-          <p className="muted">Rechazar lo envía al paso 2 sin abrir formularios.</p>
-        </> : <>
-          <p className="muted">{actual.propuesta ? 'Excel rechazado: '+respuestaTexto(actual.propuesta) : 'Sin valor de franquicia en el Excel.'}</p>
-          <p>¿Es una franquicia? <span className="muted">(Una cadena comercial no siempre es franquicia)</span></p>
-          <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
-            <button type="button" className="btn primario" disabled={!!motivoBloqueo || !!actual.enCola}
-              onClick={()=>decidir('resolver','si')}><CheckCircle2 size={16}/> Sí · Enter</button>
-            <button type="button" className="btn" disabled={!!motivoBloqueo || !!actual.enCola}
-              onClick={()=>decidir('resolver','no')}><XCircle size={16}/> No · Supr</button>
-            <button type="button" className="btn fantasma" disabled={pendientes2.length<2}
-              onClick={omitirCaso}>Dejar pendiente · Esc</button>
+
+          <div className="franquicia-valor">
+            <span>{paso===1 ? 'VALOR EN EL EXCEL'
+              : actual.propuesta ? 'VALOR DEL EXCEL RECHAZADO' : 'VALOR EN EL EXCEL'}</span>
+            <strong>{actual.propuesta ? respuestaTexto(actual.propuesta).toLocaleUpperCase('es') : 'SIN DATO'}</strong>
+            <p>{paso===1 ? '¿Es correcto?' : '¿Es una franquicia?'}</p>
           </div>
-        </>}
-        {actual.enCola && <p className="muted">Decisión por guardar; no cuenta como confirmada.</p>}
-        {actual.confirmada && <p className="muted"><CheckCircle2 size={14}/> Decisión guardada: {respuestaTexto(actual.revision?.respuesta)}</p>}
-      </>}
+
+          <div className="franquicia-decisiones">
+            <button type="button" className="franquicia-decision principal" {...mantenerFoco}
+              disabled={!!motivoBloqueo || !!actual.enCola}
+              onClick={()=>paso===1 ? decidir('aceptar') : decidir('resolver','si')}>
+              <CheckCircle2 size={18} aria-hidden="true"/>
+              <span>{paso===1 ? 'Correcto' : 'Sí'}</span>
+              <kbd>Enter</kbd>
+            </button>
+            <button type="button" className="franquicia-decision secundaria" {...mantenerFoco}
+              disabled={!!motivoBloqueo || !!actual.enCola}
+              onClick={()=>paso===1 ? decidir('rechazar') : decidir('resolver','no')}>
+              <XCircle size={18} aria-hidden="true"/>
+              <span>{paso===1 ? 'No es correcto' : 'No'}</span>
+              <kbd>Supr</kbd>
+            </button>
+          </div>
+          <div className="franquicia-ficha-pie">
+            <span className="franquicia-estado-ficha">
+              {actual.enCola ? 'Por guardar en el servidor'
+                : actual.confirmada ? 'Decisión guardada en el servidor'
+                : paso===1 ? 'Si rechazas, pasará al paso 2'
+                : 'Una cadena comercial no siempre es franquicia'}
+            </span>
+            {paso===2 && <button type="button" className="franquicia-posponer" {...mantenerFoco}
+              disabled={pendientes2.length<2} onClick={omitirCaso}>Dejar para después <kbd>Esc</kbd></button>}
+          </div>
+        </div>}
     </section>
-    {guardadas>0 && <details style={{marginTop:22}}>
-      <summary>Buscar un negocio para revisar de nuevo</summary>
-      <input className="campo" style={{margin:'12px 0',width:'100%',maxWidth:420}}
-        value={buscar} onChange={(e)=>setBuscar(e.target.value)} placeholder="Buscar nombre o dirección…"
-        aria-label="Buscar negocio revisado"/>
-      <div style={{maxHeight:240,overflowY:'auto'}}>
-        {vistas.filter((f) => f.confirmada && f.fila.nombre.toLowerCase().includes(buscar.toLowerCase()))
-          .slice(0,60).map((f) => <button key={f.fila.id} type="button" className="btn fantasma"
-            style={{display:'block',margin:'3px 0'}} onClick={()=>mostrar(f.fila.id,f.paso)}>
-            {f.fila.nombre} · {respuestaTexto(f.revision?.respuesta)}
-          </button>)}
-      </div>
-    </details>}
-    {ocupados===0 && <p className="t-info aviso"><AlertTriangle size={16}/> No hay negocios ocupados del IT1 en esta campaña.</p>}
-  </div>;
+
+    <div className="franquicia-secundario">
+      {motivoBloqueo && <p className="franquicia-aviso" role="alert">{motivoBloqueo}</p>}
+      {error && <p className="franquicia-aviso" role="alert">{error}</p>}
+      {errorCola && fuente?.reintentarColaFranquiciaIT1 &&
+        <button type="button" className="btn" {...mantenerFoco}
+          onClick={fuente.reintentarColaFranquiciaIT1}>Reintentar guardado</button>}
+
+      {paso===1 && pendientes1.length>0 && (
+        <div className="franquicia-masiva">
+          {!confirmandoTodas ? <>
+            <button type="button" className="btn" disabled={!!motivoBloqueo || totalPorGuardar>0}
+              onClick={()=>setConfirmandoTodas(true)}>Aceptar todas las respuestas existentes</button>
+            <p>Solo confirma los valores 0/1 del Excel. Los que están en blanco seguirán pendientes.</p>
+          </> : <div className="franquicia-confirmar-todas" role="group" aria-label="Confirmar todas las propuestas">
+            <p><strong>Confirmación masiva.</strong> Se aceptarán las {pendientes1.length} respuestas 0/1 existentes del Excel aún sin revisar.
+              Cada decisión quedará registrada en el servidor. Los datos vacíos seguirán pendientes. ¿Confirmas?</p>
+            <div className="franquicia-confirmar-botones">
+              <button type="button" className="btn primario" disabled={!!motivoBloqueo || totalPorGuardar>0}
+                onClick={confirmarTodas}>Sí, dar las {pendientes1.length} por correctas</button>
+              <button type="button" className="btn" onClick={()=>setConfirmandoTodas(false)}>Cancelar</button>
+            </div>
+          </div>}
+        </div>
+      )}
+
+      {guardadas>0 && <details className="franquicia-buscar">
+        <summary>Buscar un negocio para revisar de nuevo</summary>
+        <input className="campo" value={buscar} onChange={(e)=>setBuscar(e.target.value)}
+          placeholder="Nombre del negocio…" aria-label="Buscar negocio revisado"/>
+        <div className="franquicia-resultados">
+          {vistas.filter((f) => f.confirmada && f.fila.nombre.toLowerCase().includes(buscar.toLowerCase()))
+            .slice(0,60).map((f) => <button key={f.fila.id} type="button" className="btn fantasma"
+              onClick={()=>mostrar(f.fila.id,f.paso)}>
+              {f.fila.nombre} · {respuestaTexto(f.revision?.respuesta)}
+            </button>)}
+        </div>
+      </details>}
+      {ocupados===0 && <p className="franquicia-aviso"><AlertTriangle size={16}/> No hay negocios ocupados del IT1 en esta campaña.</p>}
+    </div>
+  </main>;
 }
