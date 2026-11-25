@@ -137,7 +137,7 @@ describe('IT1 · franquicias, interacción teclado y aceptación masiva',()=>{
   it('confirmación masiva requiere segundo clic, acepta solo Excel con 0/1 y deja vacío pendiente',async()=>{
     render(<Pantalla/>);
     await waitFor(()=>expect(screen.getByRole('button',{name:/Aceptar todas las respuestas existentes/})).toBeEnabled());
-    fireEvent.click(screen.getByRole('button',{name:/Dar por correctos todos/}));
+    fireEvent.click(screen.getByRole('button',{name:/Aceptar todas las respuestas existentes/}));
     expect(guardarFranquiciaIT1).not.toHaveBeenCalled();
     expect(screen.getByText(/se aceptarán las 2 respuestas/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button',{name:/Sí, dar las 2 por correctas/}));
