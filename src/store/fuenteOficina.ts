@@ -5,6 +5,8 @@ import type { Id, Rol } from '../domain/types';
 import type { CambioRevisionGeneralReal } from './revisionGeneralReal';
 import type { CambioCategoriaIT1 } from './categoriaIT1Real';
 import type { DecisionCategoriaIT1, EstadoColaCategoriaIT1 } from './colaCategoriaIT1';
+import type { DecisionFranquiciaIT1 } from '../domain/revisionFranquiciaIT1';
+import type { EstadoColaFranquiciaIT1 } from './colaFranquiciaIT1';
 
 export type Aplicar = (fn: (db: BaseDatos) => BaseDatos, etiqueta: string, opciones?: { silencioso?: boolean; sinAvisoError?: boolean }) => boolean;
 
@@ -32,6 +34,10 @@ export interface FuenteOficina {
   estadoColaCategoriaIT1?: EstadoColaCategoriaIT1;
   encolarCategoriaIT1?: (decision: DecisionCategoriaIT1) => boolean;
   reintentarColaCategoriaIT1?: () => void;
+  /** Cola específica por fila del Excel IT1: no se confunde con la revisión de locales. */
+  estadoColaFranquiciaIT1?: EstadoColaFranquiciaIT1;
+  encolarFranquiciaIT1?: (decision: DecisionFranquiciaIT1) => boolean;
+  reintentarColaFranquiciaIT1?: () => void;
   versionReal?: number;
 }
 
