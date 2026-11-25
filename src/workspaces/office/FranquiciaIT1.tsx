@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle2, XCircle, ArrowLeft, AlertTriangle } from 'lucide-react';
 import { useContexto } from '../../store/contexto';
@@ -26,6 +26,9 @@ export default function FranquiciaIT1() {
   const guardadas = filas.filter((f) => f.confirmada).length;
   const totalPorGuardar = cola.reduce((n,d) => n+d.ids.length,0);
   const [paso, setPaso] = useState<Paso>(1);
+  const tarjeta = useRef<HTMLElement>(null);
+  // El foco vuelve a la ficha: Enter/Supr funcionan aunque se cambie de pestaña con un clic.
+  useEffect(() => { tarjeta.current?.focus(); }, [paso]);
   const [viendo, setViendo] = useState<string | null>(null);
   const [confirmandoTodas, setConfirmandoTodas] = useState(false);
   const [saltados, setSaltados] = useState<string[]>([]);
@@ -59,6 +62,7 @@ export default function FranquiciaIT1() {
     }
     setError('');
     setViendo(null);
+    tarjeta.current?.focus();
     return true;
   };
   const decidir = (accion: 'aceptar' | 'rechazar' | 'resolver', respuesta?: 'si' | 'no') => {
@@ -143,7 +147,7 @@ export default function FranquiciaIT1() {
           </div>}
       </div>
     )}
-    <section className="t-info" aria-label={paso===1?'Paso 1 · Revisar':'Paso 2 · Completar'}
+    <section ref={tarjeta} tabIndex={-1} className="t-info" aria-label={paso===1?'Paso 1 · Revisar':'Paso 2 · Completar'}
       style={{marginTop:12,padding:28,minHeight:270}}>
       {!actual ? <>
         <p style={{fontWeight:700,color:'var(--verde,#18794e)'}}><CheckCircle2 size={19}/> Paso {paso} completado.</p>
