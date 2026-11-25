@@ -52,4 +52,44 @@ describe('BuscadorClasificacion · propuestas y frecuentes', () => {
     fireEvent.click(op);
     expect(onElegir).toHaveBeenCalledTimes(1);
   });
+
+  it('actividad específica: al elegir un subgrupo se puede escribir texto libre y Enter lo guarda', () => {
+    const onElegir = montar({ actividadEspecifica: true });
+    const caja = screen.getByRole('combobox');
+    fireEvent.change(caja, { target: { value: 'organismos oficiales' } });
+    fireEvent.keyDown(caja, { key: 'Enter' });
+    expect(onElegir).not.toHaveBeenCalled();
+    const campo = screen.getByRole('combobox', { name: 'Actividad específica para Organismos Oficiales' });
+    expect(screen.getByText(/Actividad específica \(opcional\)/)).toBeInTheDocument();
+    fireEvent.change(campo, { target: { value: '  Oficina de empleo ' } });
+    fireEvent.keyDown(campo, { key: 'Enter' });
+    expect(onElegir).toHaveBeenCalledTimes(1);
+    expect(onElegir.mock.calls[0][0].opcion.etiqueta).toBe('Organismos Oficiales');
+    expect(onElegir.mock.calls[0][0].descripcion).toBe('Oficina de empleo');
+  });
+  it('actividad específica opcional: Enter sin texto guarda solo el subgrupo', () => {
+    const onElegir = montar({ actividadEspecifica: true });
+    const caja = screen.getByRole('combobox');
+    fireEvent.change(caja, { target: { value: 'organismos oficiales' } });
+    fireEvent.keyDown(caja, { key: 'Enter' });
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
+    expect(onElegir).toHaveBeenCalledTimes(1);
+    expect(onElegir.mock.calls[0][0].descripcion).toBeUndefined();
+  });
+  it('no pide actividad específica al elegir una actividad concreta del catálogo', () => {
+    const onElegir = montar({ actividadEspecifica: true });
+    const caja = screen.getByRole('combobox');
+    fireEvent.change(caja, { target: { value: 'carniceria' } });
+    fireEvent.keyDown(caja, { key: 'Enter' });
+    expect(onElegir).toHaveBeenCalledTimes(1);
+    expect(onElegir.mock.calls[0][0].opcion.etiqueta).toBe('Carnicería');
+    expect(screen.queryByText(/Actividad específica/)).not.toBeInTheDocument();
+  });
+  it('sin la opción, el subgrupo sin actividades se elige directamente (comportamiento anterior)', () => {
+    const onElegir = montar();
+    const caja = screen.getByRole('combobox');
+    fireEvent.change(caja, { target: { value: 'organismos oficiales' } });
+    fireEvent.keyDown(caja, { key: 'Enter' });
+    expect(onElegir).toHaveBeenCalledTimes(1);
+  });
 });

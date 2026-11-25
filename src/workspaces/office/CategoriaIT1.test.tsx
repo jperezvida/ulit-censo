@@ -341,4 +341,23 @@ describe('Oficina · categorización IT1 en dos pasos',()=>{
     expect(within(paso2()).getByRole('option',{selected:true})).toHaveTextContent(/Peluquería/);
     expect(within(paso2()).queryByText('rechazada en el Excel')).not.toBeInTheDocument();
   });
+
+  it('paso 2: subgrupo + actividad específica libre se guarda como descripción y avanza al instante', async()=>{
+    const db=()=>{ const d=fixture(); d.registros.r2={...d.registros.r2,
+      datos:{...d.registros.r2.datos,'Nombre del negocio':'Oficina de Empleo de Medina del Campo'}}; return d; };
+    render(<Pantalla inicial={db}/>);
+    await listo();
+    fireEvent.click(botonPaso(2));
+    const caja=within(paso2()).getByRole('combobox');
+    fireEvent.change(caja,{target:{value:'organismos oficiales'}});
+    fireEvent.keyDown(caja,{key:'Enter'});
+    const campo=within(paso2()).getByRole('combobox',{name:/Actividad específica/});
+    fireEvent.change(campo,{target:{value:'Oficina de empleo'}});
+    fireEvent.keyDown(campo,{key:'Enter'});
+    expect(within(paso2()).getByText('Paso 2 completado.')).toBeInTheDocument();
+    await waitFor(()=>expect(guardarCategoriaIT1).toHaveBeenCalledWith('r2',20,'corregir',{
+      grupoActividad:'Servicios',grupoComercio:'',subgrupo:'Organismos Oficiales',
+      actividad:'',descripcionActividad:'Oficina de empleo'}));
+    await waitFor(()=>expect(resumen()).toHaveTextContent('1 de 2 con categoría finalizada'));
+  });
 });

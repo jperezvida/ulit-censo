@@ -296,7 +296,7 @@ export default function CategoriaIT1() {
             {actual.existentes.descripcionActividad && <p>{actual.existentes.descripcionActividad}</p>}
             {actual.paso === 2 && <p className="categoria-advertencia">
               {actual.revision?.estado === 'corregida' || actual.enCola?.accion === 'corregir'
-                ? `Sustituida en el paso 2 por: ${categoriaTexto(actual.visibles)}`
+                ? `Sustituida en el paso 2 por: ${categoriaTexto(actual.visibles)}${actual.visibles.descripcionActividad ? ` · ${actual.visibles.descripcionActividad}` : ''}`
                 : 'Rechazada: este negocio se categoriza en el paso 2.'}</p>}
           </div>
           <div className="categoria-acciones">
@@ -317,7 +317,7 @@ export default function CategoriaIT1() {
             ? <p className="categoria-referencia">Excel (rechazada, solo como referencia): <b>{categoriaTexto(actual.existentes)}</b></p>
             : <p className="categoria-referencia">Sin categoría en el Excel.</p>}
           {(actual.revision?.estado === 'corregida' || actual.enCola?.accion === 'corregir') &&
-            <p className="categoria-referencia">Categoría elegida: <b>{categoriaTexto(actual.visibles)}</b></p>}
+            <p className="categoria-referencia">Categoría elegida: <b>{categoriaTexto(actual.visibles)}{actual.visibles.descripcionActividad ? ` · ${actual.visibles.descripcionActividad}` : ''}</b></p>}
           {propuesta && propuesta.sugerencias.length > 0 && <p className="categoria-propuesta" role="note">
             <Lightbulb size={15}/>
             {propuestaRechazada
@@ -327,7 +327,7 @@ export default function CategoriaIT1() {
               : <span>{propuesta.sugerencias.length} propuestas por el nombre: elige una con <kbd>↑</kbd>/<kbd>↓</kbd> y <kbd>Enter</kbd>.</span>}
           </p>}
           <BuscadorClasificacion key={actual.fila.id} catalogo={ID_CATALOGO_2026}
-            nombreNegocio={actual.fila.nombre} frecuentes={frecuentesFicha} marcarPropuestaUnica rechazadas={rechazadas}
+            nombreNegocio={actual.fila.nombre} frecuentes={frecuentesFicha} marcarPropuestaUnica rechazadas={rechazadas} actividadEspecifica
             etiqueta={`Categoría para ${actual.fila.nombre || 'el negocio'}`}
             onElegir={(e) => elegirPaso2(e)}/>
           <div className="categoria-acciones">

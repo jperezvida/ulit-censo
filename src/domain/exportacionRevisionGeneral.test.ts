@@ -113,3 +113,31 @@ describe('Exportación 2026 · datos efectivos de revisión', () => {
     expect(salida.filas[0]['ULIT · Incidencias pendientes']).toContain('presencia digital');
   });
 });
+
+describe('Exportación 2026 · actividad específica en texto libre', () => {
+  it('«Organismos Oficiales» + «Oficina de empleo» se guarda en descripcionActividad y sale en el Excel', async () => {
+    const { categoriasDelCatalogo, OPCIONES_CATEGORIAS_2026, claveCategoria2026 } = await import('./revisionCategoriaIT1');
+    const { PERFIL_ITINERARIO_28 } = await import('./xlsx/perfilesImportacion');
+    const { diagnosticarClasificacion } = await import('./xlsx/clasificacionHistorica');
+    const op = OPCIONES_CATEGORIAS_2026.find((o) => o.etiqueta.endsWith('Organismos Oficiales'))!;
+    expect(op.requiereDescripcion).toBe(false);
+    const valores = categoriasDelCatalogo(op.id, 'Oficina de empleo');
+    expect(valores).toEqual({ grupoActividad: 'Servicios', grupoComercio: '', subgrupo: 'Organismos Oficiales',
+      actividad: '', descripcionActividad: 'Oficina de empleo' });
+    // Coherente con el catálogo oficial sin ampliarlo: la actividad libre no se convierte en actividad del catálogo.
+    expect(claveCategoria2026(valores)).toBe(op.id);
+    expect(diagnosticarClasificacion({ grupo: valores.grupoActividad, subgrupo: valores.subgrupo,
+      descripcion: valores.descripcionActividad }).fueraDeLista).toEqual([]);
+    const db = escenario();
+    db.revisionesCategoriaRegistros = { r2: { id: 'r2', registroId: 'r2', campanaId: 'c26', estado: 'corregida',
+      valores, porId: 'responsable', fecha: '2026-11-25T10:00:00Z' } };
+    const fila = exportarRevisionGeneral(db, 'c26', 'it2').filas[0];
+    const cab = (clave: string) => PERFIL_ITINERARIO_28.columnas.find((c) => c.clave === clave)!.cabecera;
+    expect(fila[cab('grupoActividad')]).toBe('Servicios');
+    expect(fila[cab('grupoComercio')]).toBe('');
+    expect(fila[cab('subgrupo')]).toBe('Organismos Oficiales');
+    expect(fila[cab('actividad')]).toBe('');
+    expect(fila[cab('descripcionActividad')]).toBe('Oficina de empleo');
+    expect(fila['ULIT · Revisión categoría']).toBe('Corregida');
+  });
+});
