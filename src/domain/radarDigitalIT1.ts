@@ -75,11 +75,11 @@ const HOSTS_PERFIL: Record<RedRadar,string[]> = {
 export function normalizarPerfilRadar(red: RedRadar, texto: string): string | null {
   try {
     const u = new URL(texto.trim());
-    const host=u.hostname.toLowerCase().replace(/^www\\./,'').replace(/^m\\./,'');
+    const host=u.hostname.toLowerCase().replace(/^www\./,'').replace(/^m\./,'');
     if(u.protocol!=='https:' || u.username || u.password || u.port ||
       !HOSTS_PERFIL[red].includes(host)) return null;
-    const path=u.pathname.replace(/^\\/+|\\/+$/g,'');
-    if(!path || /^(?:p|reel|reels|stories|explore|accounts|share|sharer|intent|hashtag|search|home|photo|photos|watch|groups|events|login|dialog|plugins|posts|status|i)(\\/|$)/i.test(path))
+    const path=u.pathname.replace(/^\/+|\/+$/g,'');
+    if(!path || /^(?:p|reel|reels|stories|explore|accounts|share|sharer|intent|hashtag|search|home|photo|photos|watch|groups|events|login|dialog|plugins|posts|status|i)(\/|$)/i.test(path))
       return null;
     if(u.searchParams.has('u') || u.searchParams.has('url')) return null;
     u.search='';u.hash='';
@@ -109,7 +109,7 @@ export function validarHallazgosRadar(b:BorradorRadar): Partial<BorradorRadar> {
 /** El título de la página es una pista, nunca prueba suficiente por sí sola. */
 export function nombreCompatibleRadar(nombre:string,titulo:string|undefined): boolean|null {
   if(!titulo?.trim()) return null;
-  const limpiar=(v:string)=>v.normalize('NFD').replace(/[\\u0300-\\u036f]/g,'')
+  const limpiar=(v:string)=>v.normalize('NFD').replace(/[\u0300-\u036f]/g,'')
     .toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
   const n=limpiar(nombre);
   const t=limpiar(titulo);
