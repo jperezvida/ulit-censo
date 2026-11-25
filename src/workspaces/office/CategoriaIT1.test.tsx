@@ -360,4 +360,34 @@ describe('Oficina · categorización IT1 en dos pasos',()=>{
       actividad:'',descripcionActividad:'Oficina de empleo'}));
     await waitFor(()=>expect(resumen()).toHaveTextContent('1 de 2 con categoría finalizada'));
   });
+
+  it('paso 2: «organismos» → Organismos Oficiales → actividad vacía → «Oficina de empleo» → Enter', async()=>{
+    render(<Pantalla/>);
+    await listo();
+    fireEvent.click(botonPaso(2));
+    const caja=within(paso2()).getByRole('combobox');
+    fireEvent.change(caja,{target:{value:'organismos'}});
+    fireEvent.click(within(paso2()).getByRole('option',{name:/^Organismos Oficiales/}));
+    const campo=within(paso2()).getByRole('combobox',{name:/Actividad específica/});
+    expect(campo).toHaveValue('');
+    fireEvent.change(campo,{target:{value:'Oficina de empleo'}});
+    fireEvent.keyDown(campo,{key:'Enter'});
+    await waitFor(()=>expect(guardarCategoriaIT1).toHaveBeenCalledWith('r2',20,'corregir',{
+      grupoActividad:'Servicios',grupoComercio:'',subgrupo:'Organismos Oficiales',
+      actividad:'',descripcionActividad:'Oficina de empleo'}));
+  });
+
+  it('paso 2: Enter sin escribir actividad específica no guarda el término de búsqueda', async()=>{
+    render(<Pantalla/>);
+    await listo();
+    fireEvent.click(botonPaso(2));
+    const caja=within(paso2()).getByRole('combobox');
+    fireEvent.change(caja,{target:{value:'organismos'}});
+    fireEvent.keyDown(caja,{key:'Enter'});
+    const campo=within(paso2()).getByRole('combobox',{name:/Actividad específica/});
+    expect(campo).toHaveValue('');
+    fireEvent.keyDown(campo,{key:'Enter'});
+    await waitFor(()=>expect(guardarCategoriaIT1).toHaveBeenCalledWith('r2',20,'corregir',
+      expect.objectContaining({subgrupo:'Organismos Oficiales',actividad:'',descripcionActividad:''})));
+  });
 });

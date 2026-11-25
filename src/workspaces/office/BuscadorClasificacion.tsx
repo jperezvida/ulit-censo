@@ -137,7 +137,10 @@ export function BuscadorClasificacion({
 
   const elegir = (o: OpcionClasificacion, tecla: 'enter' | 'tab' | 'shift-tab' | 'clic') => {
     if (o.requiereDescripcion || (actividadEspecifica && o.tipo === 'subgrupo')) {
-      setPaso({ opcion: o, descripcion: q.trim() && q.trim().toLowerCase() !== o.etiqueta.toLowerCase() ? q.trim() : '',
+      // Con «Actividad específica», el texto usado para localizar la categoría NO es una descripción:
+      // el campo empieza siempre vacío. En las demás pantallas se conserva el comportamiento anterior.
+      setPaso({ opcion: o, descripcion: !actividadEspecifica && q.trim()
+        && q.trim().toLowerCase() !== o.etiqueta.toLowerCase() ? q.trim() : '',
         opcional: !o.requiereDescripcion });
       return;
     }
