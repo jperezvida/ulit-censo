@@ -65,8 +65,11 @@ export default function FranquiciaIT1() {
     if (!actual || actual.enCola) return;
     if (paso === 1 && (accion === 'resolver' || !actual.propuesta)) return;
     if (paso === 2 && accion !== 'resolver') return;
-    if (accion === 'resolver' && actual.confirmada &&
-        actual.revision?.estado === 'corregida' && actual.revision.respuesta === respuesta) {
+    if (actual.confirmada && (
+      (accion === 'aceptar' && actual.revision?.estado === 'aceptada') ||
+      (accion === 'resolver' && actual.revision?.estado === 'corregida'
+        && actual.revision.respuesta === respuesta))) {
+      // No reenviar una decisión idéntica: el servidor la rechaza como duplicada.
       setViendo(null); return;
     }
     encolar({ accion, ids:[actual.fila.id], ...(respuesta ? { respuesta } : {}) });
