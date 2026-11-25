@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { baseVacia, type BaseDatos } from '../../domain/db';
 import { FuenteOficinaContext } from '../../store/fuenteOficina';
@@ -75,7 +75,7 @@ beforeEach(()=>{
 describe('IT1 · franquicias, interacción teclado y aceptación masiva',()=>{
   it('Enter confirma el valor del Excel y Supr rechaza: ese negocio pasa a nuevos',async()=>{
     render(<Pantalla/>);
-    await waitFor(()=>expect(screen.getByRole('button',{name:/Correcto · Enter/})).toBeEnabled());
+    await waitFor(()=>expect(screen.getByRole('button',{name:/Correcto/})).toBeEnabled());
     expect(screen.getByText('Farmacia Ficticia')).toBeInTheDocument();
     fireEvent.keyDown(document.body,{key:'Enter'});
     await waitFor(()=>expect(screen.getByText('Panadería Ficticia')).toBeInTheDocument());
@@ -88,9 +88,55 @@ describe('IT1 · franquicias, interacción teclado y aceptación masiva',()=>{
     await waitFor(()=>expect(guardarFranquiciaIT1).toHaveBeenCalledWith(
       {accion:'resolver',ids:['reg-22'],respuesta:'no'},expect.any(Number)));
   });
+
+  it('misma ficha y punto de atención al avanzar: solo cambian nombre, valor y contador',async()=>{
+    render(<Pantalla/>);
+    await waitFor(()=>expect(screen.getByRole('button',{name:/Correcto/})).toBeEnabled());
+    const ficha = screen.getByRole('region',{name:'Paso 1 · Revisar'});
+    const nombre = within(ficha).getByRole('heading',{level:2});
+    const valor = ficha.querySelector('.franquicia-valor strong');
+    const acciones = ficha.querySelector('.franquicia-decisiones');
+    expect(nombre).toHaveTextContent('Farmacia Ficticia');
+    expect(valor).toHaveTextContent('SÍ');
+    expect(ficha).toHaveClass('franquicia-ficha');
+    expect(acciones).toContainElement(within(ficha).getByRole('button',{name:/Correcto/}));
+    fireEvent.keyDown(ficha,{key:'Enter'});
+    await waitFor(()=>expect(nombre).toHaveTextContent('Panadería Ficticia'));
+    expect(screen.getByRole('region',{name:'Paso 1 · Revisar'})).toBe(ficha);
+    expect(within(ficha).getByRole('heading',{level:2})).toBe(nombre);
+    expect(ficha.querySelector('.franquicia-valor strong')).toBe(valor);
+    expect(ficha.querySelector('.franquicia-decisiones')).toBe(acciones);
+    expect(valor).toHaveTextContent('NO');
+    expect(within(ficha).getByText('Quedan 1')).toBeInTheDocument();
+  });
+
+  it('después de cambiar con ratón se recupera el foco y funcionan Enter/Supr',async()=>{
+    render(<Pantalla/>);
+    await waitFor(()=>expect(screen.getByRole('button',{name:/Correcto/})).toBeEnabled());
+    const paso2 = screen.getByRole('button',{name:/2 · Completar franquicias/});
+    fireEvent.mouseDown(paso2);
+    fireEvent.click(paso2);
+    const ficha = screen.getByRole('region',{name:'Paso 2 · Completar'});
+    expect(document.activeElement).toBe(ficha);
+    expect(within(ficha).getByRole('heading',{level:2})).toHaveTextContent('Peluquería Ficticia');
+    expect(within(ficha).getByText('SIN DATO')).toBeInTheDocument();
+    fireEvent.keyDown(ficha,{key:'Delete'});
+    await waitFor(()=>expect(guardarFranquiciaIT1).toHaveBeenCalledWith(
+      {accion:'resolver',ids:['reg-33'],respuesta:'no'},expect.any(Number)));
+  });
+
+  it('ignora repeticiones del teclado para evitar aceptar varios negocios al mantener Enter pulsado',async()=>{
+    render(<Pantalla/>);
+    await waitFor(()=>expect(screen.getByRole('button',{name:/Correcto/})).toBeEnabled());
+    const ficha = screen.getByRole('region',{name:'Paso 1 · Revisar'});
+    fireEvent.keyDown(ficha,{key:'Enter',repeat:true});
+    expect(guardarFranquiciaIT1).not.toHaveBeenCalled();
+    expect(within(ficha).getByRole('heading',{level:2})).toHaveTextContent('Farmacia Ficticia');
+  });
+
   it('confirmación masiva requiere segundo clic, acepta solo Excel con 0/1 y deja vacío pendiente',async()=>{
     render(<Pantalla/>);
-    await waitFor(()=>expect(screen.getByRole('button',{name:/Dar por correctos todos/})).toBeEnabled());
+    await waitFor(()=>expect(screen.getByRole('button',{name:/Aceptar todas las respuestas existentes/})).toBeEnabled());
     fireEvent.click(screen.getByRole('button',{name:/Dar por correctos todos/}));
     expect(guardarFranquiciaIT1).not.toHaveBeenCalled();
     expect(screen.getByText(/se aceptarán las 2 respuestas/)).toBeInTheDocument();
