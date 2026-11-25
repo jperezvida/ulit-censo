@@ -1,120 +1,121 @@
-/* Radar Digital IT1 · piloto de investigación con fuentes trazables */
-.radar-piloto {max-width:1400px;margin:0 auto;padding:22px 25px 48px;color:#19324e}
-.radar-cab {display:flex;align-items:flex-start;flex-direction:column;gap:9px}
-.radar-cab h1 {display:flex;align-items:center;gap:9px;font-size:30px;margin:3px 0 0}
-.radar-cab>p {margin:0;color:#61748b;font-size:14px}
-.radar-advertencia {display:flex;align-items:flex-start;gap:10px;color:#48647d;background:#eef5fc;border:1px solid #d9e8f5;border-radius:11px;padding:11px 14px;font-size:12px;line-height:1.5;width:100%}
-.radar-advertencia svg {flex:none;color:#275b90}
-.radar-progreso {display:flex;align-items:center;flex-wrap:wrap;gap:9px;margin:17px 0}
-.radar-progreso span {padding:9px 12px;border:1px solid #d9e3ee;background:white;border-radius:10px;color:#65758b;font-size:12px}
-.radar-progreso b {font-size:19px;color:#19324e;font-variant-numeric:tabular-nums;margin-right:5px}
-.radar-progreso .btn {margin-left:auto}
-.radar-disposicion {display:grid;grid-template-columns:minmax(245px,320px) minmax(0,1fr);gap:16px;align-items:start}
-.radar-lista,.radar-detalle {border:1px solid #dae4ee;border-radius:14px;background:#fff;overflow:hidden}
-.radar-lista-titulo {font-size:12px;font-weight:750;background:#f3f7fb;padding:15px;border-bottom:1px solid #dae4ee;color:#536b84}
-.radar-fila {width:100%;display:flex;align-items:center;gap:10px;cursor:pointer;padding:12px 12px;text-align:left;background:#fff;border:0;border-bottom:1px solid #edf1f5;color:#183450;min-height:63px}
-.radar-fila:hover {background:#f5f9fd}
-.radar-fila.activo {background:#eaf3ff;box-shadow:inset 3px 0 #247ce2}
-.radar-fila:focus-visible {outline:2px solid #2580e8;outline-offset:-2px}
-.radar-ordinal {font-size:12px;color:#617891;background:#e9eff6;display:grid;place-items:center;border-radius:8px;width:26px;height:26px;flex:none;font-weight:700}
-.radar-fila-nombre {min-width:0;flex:1;font-size:13px;font-weight:650;overflow-wrap:anywhere}
-.radar-fila-nombre small {display:block;color:#7b8b9c;font-size:11px;font-weight:400;margin-top:3px}
-.radar-punto-pendiente {width:9px;height:9px;border-radius:50%;background:#c3cdd8;flex:none}
-.radar-detalle {padding:20px 22px}
-.radar-negocio {padding-bottom:17px;border-bottom:1px solid #e9eef4}
-.radar-negocio h2 {font-size:24px;line-height:1.2;margin:7px 0 4px}
-.radar-negocio p {margin:0;color:#64748b;font-size:13px}
-.radar-pasos-trabajo {display:grid;gap:18px;padding:18px 0 6px}
-.radar-bloque h3 {font-size:16px;margin:0 0 7px;display:flex;align-items:center;gap:9px}
-.radar-bloque h3>span {width:26px;height:26px;border-radius:50%;background:#e8f2fd;color:#1f6cb9;display:grid;place-items:center;font-size:13px}
-.radar-ayuda {font-size:12px;color:#75859a;margin:4px 0 10px;line-height:1.5}
-.radar-buscadores {display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 16px}
-.radar-buscadores a {display:inline-flex;align-items:center;gap:6px;border-radius:8px;background:#f5f9fd;border:1px solid #dbe6f1;color:#285c94;font-size:12px;padding:9px 11px;text-decoration:none}
-.radar-buscadores a:hover {background:#e9f2fd}
-.radar-bloque>label {display:block;color:#334d67;font-size:12px;font-weight:650;margin-bottom:7px}
-.radar-web-form {display:flex;gap:9px;align-items:center}
-.radar-web-form input {flex:1;min-width:0;max-width:520px;padding:11px 12px;border:1px solid #c8d6e5;border-radius:9px;font:inherit;font-size:13px;background:#fff;color:#173653}
-.radar-web-form input:focus-visible {outline:2px solid #7fb5f1}
-.radar-web-form .btn {white-space:nowrap;min-height:44px}
-.radar-sin-evidencia {padding:17px 19px;border:1px dashed #cddce9;border-radius:10px;color:#647a90;background:#f8fafc;font-size:13px}
-.radar-resultado {display:flex;align-items:center;gap:9px;flex-wrap:wrap;border-bottom:1px solid #edf1f6;padding:9px 0;font-size:12px;min-height:48px}
-.radar-resultado>svg {color:#5c7692;flex:none}
-.radar-resultado a {display:inline-flex;align-items:center;gap:5px;color:#165c99;text-decoration:underline;text-underline-offset:2px}
-.radar-resultado label {display:inline-flex;align-items:center;gap:5px;margin-left:auto;cursor:pointer;font-weight:600;color:#305b79}
-.radar-resultado input {width:16px;height:16px;accent-color:#1f7ac9}
-.radar-falta {color:#8291a1;font-size:12px}
-.radar-venta {border-radius:10px;background:#f4f8fc;padding:12px 14px;margin-top:12px;font-size:12px}
-.radar-venta p {margin:5px 0 10px;color:#667b90}
-.radar-venta label {display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-weight:650}
-.radar-venta select {padding:8px;border:1px solid #d2dfe9;border-radius:7px;background:white;color:#1d3b57}
-.radar-excel {margin-top:15px;color:#6c8298;font-size:12px}
-.radar-excel summary {cursor:pointer}
-.radar-excel>div {display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}
-.radar-excel span {padding:6px 9px;background:#f4f7fa;border:1px solid #e7edf3;border-radius:8px}
-.radar-pie {display:flex;gap:9px;align-items:center;flex-wrap:wrap;border-top:1px solid #e6edf5;padding-top:16px;margin-top:18px}
-.radar-pie span {font-size:11px;color:#718398;flex:1;min-width:150px}
-.radar-error {display:flex;align-items:center;gap:7px;padding:11px 13px;background:#fff4e3;border-radius:8px;color:#8a4b13;font-size:12px}
-.radar-giro {animation:radar-girar 1.2s linear infinite}
-@keyframes radar-girar{to{transform:rotate(360deg)}}
-@media(max-width:900px) {.radar-disposicion {grid-template-columns:1fr}.radar-lista {display:flex;overflow-x:auto}.radar-lista-titulo {flex:0 0 100px;border-bottom:0}.radar-fila{flex:0 0 180px;border-right:1px solid #edf1f5}.radar-ordinal {flex:none}}
-@media(max-width:540px) {.radar-piloto{padding:14px 11px}.radar-cab h1{font-size:25px}.radar-detalle{padding:14px}.radar-web-form{flex-wrap:wrap}.radar-web-form input {flex-basis:100%;font-size:16px}.radar-web-form .btn{width:100%;justify-content:center}.radar-progreso .btn{margin-left:0}.radar-resultado label{margin-left:0}}
-@media(prefers-reduced-motion:reduce){.radar-giro{animation:none}}
+/* Radar Digital · bandeja de investigación con evidencias trazables.
+   Una sola zona de atención; el estado nunca se comunica solo por color (siempre hay texto). */
+.radar { max-width: 1440px; margin: 0 auto; padding: 18px 22px 40px; color: var(--tinta); }
+.radar kbd { font: 600 10.5px var(--f-mono); padding: 1px 5px; border: 1px solid var(--linea-2); border-bottom-width: 2px; border-radius: 4px; background: var(--superficie-2); color: var(--tinta-2); }
+.radar-cab { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.radar-titulo { flex: 1; min-width: 260px; }
+.radar-titulo h1 { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; font-size: 24px; margin: 0; }
+.radar-titulo h1 svg { align-self: center; }
+.radar-titulo h1 small { font-size: 13px; font-weight: 500; color: var(--tinta-3); }
+.radar-nota { display: flex; align-items: center; gap: 6px; margin: 4px 0 0; font-size: 12px; color: var(--tinta-3); }
+.radar-acciones-cab { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.radar-acciones-cab .btn, .radar-pie .btn, .radar-decision .btn { display: inline-flex; align-items: center; gap: 6px; }
+.radar-barra { height: 4px; background: var(--linea); border-radius: 4px; overflow: hidden; margin: 12px 0 0; }
+.radar-barra span { display: block; height: 100%; background: var(--azul); transition: width .2s var(--ease); }
+.radar-fuentes { font-size: 12px; color: var(--tinta-3); margin: 10px 0 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.btn-enlace { display: inline-flex; align-items: center; gap: 4px; background: none; border: 0; padding: 2px 4px; color: var(--azul); font: inherit; font-size: 12px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.btn-enlace:disabled { color: var(--tinta-4); cursor: default; }
+.radar-avisos { font-size: 12px; color: #8a5300; margin-top: 8px; }
+.radar-avisos ul { margin: 6px 0 0; padding-left: 18px; }
 
-/* Revisión de evidencias: origen, contraste y decisión humana en una sola zona. */
-.radar-modelo {display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;
-  gap:7px 16px;background:#f6f9fd;border:1px solid #e1eaf3;border-radius:12px;
-  padding:12px 14px;margin:10px 0;}
-.radar-modelo-fuente {display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0;}
-.radar-modelo-etiqueta {font-size:11px;font-weight:750;letter-spacing:.045em;color:#658098;text-transform:uppercase;}
-.radar-modelo-fuente a,.radar-sin-analisis-acciones a {display:inline-flex;align-items:center;gap:5px;font-size:13px;
-  color:#1c629b;text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere;}
-.radar-modelo-fuente small {font-size:11px;color:#75869b;}
-.radar-modelo-titulo {grid-column:1/-1;margin:0;font-size:12px;color:#4d6178;line-height:1.4;}
-.radar-verificar {grid-column:2;grid-row:1;display:flex;align-items:center;gap:7px;
-  font-size:12px;font-weight:650;color:#234f76;cursor:pointer;min-height:40px;}
-.radar-verificar input {width:18px;height:18px;accent-color:#1f7bca;}
-.radar-concordancia,.radar-discrepancia {grid-column:1/-1;margin:0;font-size:12px;
-  line-height:1.4;padding:8px 10px;border-radius:7px;}
-.radar-concordancia {color:#17603f;background:#e9f7ef;}
-.radar-discrepancia {color:#8b541d;background:#fff1dd;}
-.radar-lote {display:flex;align-items:center;justify-content:space-between;gap:10px;
-  flex-wrap:wrap;border:1px solid #d7e5f2;background:#eff6fd;border-radius:10px;
-  padding:9px 12px;}
-.radar-lote>span {font-size:12px;color:#436384;}
-.radar-lote b {font-variant-numeric:tabular-nums;font-size:19px;color:#133e6b;margin-right:5px;}
-.radar-lote .btn {min-height:40px;}
-.radar-redes {border-top:1px solid #e5edf5;margin-top:13px;padding-top:13px;}
-.radar-redes h4 {display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;font-size:14px;margin:0 0 4px;}
-.radar-redes h4 small {font-size:11px;font-weight:400;color:#71859a;}
-.radar-origen {font-size:11px;color:#778ba2;background:#eff4f8;border-radius:6px;padding:3px 6px;}
-.radar-resultado {gap:9px 12px;line-height:1.35;}
-.radar-resultado>b {min-width:90px;font-size:12px;}
-.radar-resultado label {margin-left:auto;min-height:37px;}
-.radar-manuales {margin-top:12px;border:1px solid #e0eaf2;border-radius:9px;padding:9px 12px;}
-.radar-manuales summary {cursor:pointer;font-size:12px;font-weight:650;color:#35688e;}
-.radar-manuales>p {font-size:11px;color:#70839a;margin:8px 0;}
-.radar-manual-fila {display:grid;grid-template-columns:100px minmax(0,1fr);gap:4px 8px;
-  padding:5px 0;align-items:center;}
-.radar-manual-fila label {font-size:12px;color:#4d6780;}
-.radar-manual-fila input {min-width:0;min-height:40px;border:1px solid #ccdbe8;border-radius:7px;
-  padding:9px 10px;font:inherit;font-size:13px;color:#1d3852;background:white;}
-.radar-manual-fila input:focus-visible {outline:2px solid #7fb5f1;}
-.radar-error-inline {grid-column:2;color:#9c4a25;font-size:11px;}
-.radar-sin-evidencia p {margin:0 0 8px;}
-.radar-sin-analisis-acciones {display:flex;flex-wrap:wrap;align-items:center;gap:10px;}
-.radar-pegar {min-height:44px;}
-.radar-bloque {min-width:0;}
-.radar-bloque h3 {margin-bottom:4px;}
-.radar-detalle {scroll-margin-top:12px;}
-.radar-pie {position:sticky;bottom:0;z-index:3;background:white;
-  box-shadow:0 -8px 18px rgba(255,255,255,.94);}
-.radar-pie .btn:focus-visible,.radar-lote .btn:focus-visible {outline:3px solid #72adf0;outline-offset:2px;}
-@media(max-width:640px) {
-  .radar-modelo {grid-template-columns:1fr;}
-  .radar-verificar {grid-row:auto;grid-column:1;}
-  .radar-manual-fila {grid-template-columns:1fr;}
-  .radar-error-inline {grid-column:1;}
-  .radar-redes h4 small{display:block}
-  .radar-resultado label{margin-left:0}
-  .radar-pie {position:static;box-shadow:none;}
+.radar-bandeja { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 14px 0 12px; }
+.radar-filtro { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 11px; border: 1px solid var(--linea); border-radius: 999px; background: var(--superficie); color: var(--tinta-2); font: inherit; font-size: 12.5px; cursor: pointer; }
+.radar-filtro b { font-variant-numeric: tabular-nums; color: var(--tinta); }
+.radar-filtro:hover { border-color: var(--azul-borde); }
+.radar-filtro.activo { background: var(--navy); border-color: var(--navy); color: #fff; }
+.radar-filtro.activo b { color: #fff; }
+.radar-filtro.f-intervencion:not(.activo) b { color: #b3261e; }
+.radar-filtro.f-listo:not(.activo) b { color: #0b7a52; }
+.radar-avance { margin-left: auto; font-size: 12.5px; color: var(--tinta-3); }
+
+.radar-disposicion { display: grid; grid-template-columns: minmax(230px, 290px) minmax(0, 1fr); gap: 14px; align-items: start; }
+.radar-lista { border: 1px solid var(--linea); border-radius: 12px; background: var(--superficie); overflow: auto; max-height: calc(100vh - 230px); position: sticky; top: 12px; }
+.radar-fila { width: 100%; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 0; border-bottom: 1px solid #edf0f5; background: var(--superficie); text-align: left; color: var(--tinta); cursor: pointer; min-height: 52px; font: inherit; }
+.radar-fila:hover { background: #f5f8fd; }
+.radar-fila.activo { background: var(--azul-suave); box-shadow: inset 3px 0 var(--azul); }
+.radar-fila:focus-visible, .radar-filtro:focus-visible, .btn-enlace:focus-visible { outline: 2px solid var(--azul); outline-offset: -2px; }
+.radar-fila.b-revisado .radar-fila-nombre { color: var(--tinta-3); }
+.radar-fila-nombre { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.radar-fila-nombre small { display: block; margin-top: 2px; font-size: 11px; font-weight: 400; color: var(--tinta-3); }
+.radar-puntos { display: inline-flex; gap: 3px; flex: none; }
+.radar-puntos i { width: 8px; height: 8px; border-radius: 2px; background: #d7dde7; }
+.radar-puntos .p-confirmado { background: #12a873; }
+.radar-puntos .p-relacionado { background: #3384ff; }
+.radar-puntos .p-encontrado { background: #f59f00; }
+.radar-puntos .p-descartado { background: #97a3b5; }
+.radar-vacio { padding: 14px; font-size: 13px; color: var(--tinta-3); }
+
+.radar-foco { border: 1px solid var(--linea); border-radius: 12px; background: var(--superficie); padding: 16px 18px; min-width: 0; }
+.radar-negocio { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.radar-negocio h2 { font-size: 22px; margin: 4px 0 2px; line-height: 1.2; }
+.radar-negocio p { margin: 0; font-size: 13px; color: var(--tinta-3); }
+.radar-nav { display: flex; gap: 6px; }
+.radar-sin-investigar { margin: 12px 0 0; padding: 10px 12px; border: 1px dashed var(--linea-2); border-radius: 8px; font-size: 12.5px; color: var(--tinta-2); background: var(--superficie-2); }
+
+.radar-campos { margin-top: 14px; border-top: 1px solid var(--linea); }
+.radar-campo { display: grid; grid-template-columns: 150px 48px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 4px; border-bottom: 1px solid #edf0f5; font-size: 13px; }
+.radar-campo.cab { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--tinta-3); padding: 7px 4px; }
+.radar-campo.discrepa { background: #fff7ed; }
+.radar-campo-nombre { display: flex; align-items: center; gap: 7px; font-weight: 600; }
+.radar-excel { font-variant-numeric: tabular-nums; color: var(--tinta-2); text-align: center; }
+.radar-propuesta { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; min-width: 0; }
+.radar-propuesta a, .radar-evidencia a { display: inline-flex; align-items: center; gap: 3px; color: var(--azul); overflow-wrap: anywhere; }
+.radar-estado { display: inline-flex; align-items: center; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.radar-estado.s-confirmado { background: #e3f6ee; color: #0b6b47; }
+.radar-estado.s-relacionado { background: #e6f0ff; color: #0b4fbf; }
+.radar-estado.s-encontrado { background: #fff1d6; color: #8a5300; }
+.radar-estado.s-descartado { background: #eef1f5; color: #4d5b70; }
+.radar-estado.s-pendiente { background: #f1f3f6; color: #5b687c; }
+.radar-evidencia { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 5px 8px; min-width: 0; }
+.radar-criterios { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.radar-chip { font-size: 10.5px; padding: 1px 6px; border-radius: 4px; background: #eef2f8; color: #344358; }
+.radar-chip.c-marca { background: #f6e8fb; color: #6d2582; }
+.radar-procedencia a { font-size: 11px; color: var(--tinta-2); text-decoration: underline dotted; }
+.radar-detalle { font-size: 11.5px; color: var(--tinta-2); }
+.radar-por-que, .radar-manual em { font-size: 11.5px; color: #8a5300; font-style: normal; }
+.radar-manual { font-size: 12px; color: var(--tinta-3); }
+.radar-alternativa { font-size: 11.5px; color: var(--tinta-3); display: inline-flex; gap: 5px; align-items: center; }
+.radar-discrepa { font-size: 11px; font-weight: 700; color: #b3261e; }
+.radar-decision { display: flex; gap: 5px; justify-content: flex-end; flex-wrap: wrap; }
+.radar-decision .btn.ok { border-color: #9fd9bf; color: #0b6b47; }
+
+.radar-pegar { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 0 10px; border: 1px dashed var(--azul-borde); border-radius: 9px; background: #f7faff; color: var(--azul); }
+.radar-pegar input { flex: 1; min-width: 0; min-height: 42px; border: 0; background: transparent; font: inherit; font-size: 13px; color: var(--tinta); }
+.radar-pegar input:focus { outline: none; }
+.radar-pegar:focus-within { border-style: solid; box-shadow: 0 0 0 3px var(--azul-suave); }
+.radar-pie { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 14px; }
+.radar-pie .btn.primario kbd { background: rgba(255,255,255,.18); border-color: rgba(255,255,255,.35); color: #fff; }
+.radar-atajos { font-size: 11.5px; color: var(--tinta-3); margin-left: auto; }
+.radar-mensaje { min-height: 18px; margin: 8px 0 0; font-size: 12.5px; color: #0b6b47; }
+.radar-falta { font-size: 12px; color: var(--tinta-3); }
+.radar-error { color: #b3261e; font-size: 13px; margin-top: 10px; }
+.radar-giro { animation: radar-giro 1s linear infinite; }
+@keyframes radar-giro { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .radar-giro { animation: none; } .radar-barra span { transition: none; } }
+.radar .visualmente-oculto { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@media (max-width: 980px) {
+  .radar-disposicion { grid-template-columns: 1fr; }
+  .radar-lista { position: static; max-height: 34vh; }
+  .radar-atajos { display: none; }
+}
+@media (max-width: 640px) {
+  .radar { padding: 12px 12px 32px; }
+  .radar-cab { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .radar-titulo h1 { font-size: 21px; }
+  /* Bandejas en una sola línea desplazable: no empujan la ficha fuera de la pantalla. */
+  .radar-bandeja { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+  .radar-filtro { flex: none; }
+  .radar-avance { display: none; }
+  .radar-titulo h1 small { flex-basis: 100%; }
+  .radar-campo { grid-template-columns: 1fr auto; grid-template-areas: "n x" "p p" "d d"; gap: 6px 10px; }
+  .radar-campo.cab { display: none; }
+  .radar-campo-nombre { grid-area: n; }
+  .radar-excel { grid-area: x; }
+  .radar-excel::before { content: 'Excel: '; color: var(--tinta-3); }
+  .radar-propuesta { grid-area: p; }
+  .radar-decision { grid-area: d; justify-content: flex-start; }
+  .radar-decision .btn, .radar-pie .btn { min-height: 44px; }
+  .radar-pie .btn.primario { width: 100%; justify-content: center; white-space: normal; text-align: left; }
+  .radar-filtro { min-height: 40px; }
 }

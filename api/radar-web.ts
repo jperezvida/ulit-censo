@@ -1,11 +1,17 @@
 import { lookup } from 'node:dns/promises';
 import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
-import { extraerEnlacesPublicos } from '../src/domain/radarAnalisisWeb';
+import { analizarPagina } from '../src/domain/radarAnalisisWeb';
+import {
+  lugaresDesdeOverpass, marcaDesdeWikidata, type ContextoNegocio, type MarcaWikidata,
+} from '../src/domain/radarInvestigacion';
 
 const PROYECTO = 'https://ldegybookaubncnayhep.supabase.co';
 const ESPACIO = 'real-medina-del-campo-2026';
 const LIMITE_BYTES = 300_000;
+const AGENTE = 'ULIT-Censo-Radar/0.2 (investigacion asistida de comercios; contacto via ULIT Censo)';
+/** Cada petición debe terminar holgadamente dentro del límite de una función de Vercel. */
+const PLAZO_MS = 8000;
 
 const respuesta = (status:number, contenido:unknown) => new Response(JSON.stringify(contenido), {
   status, headers: {
@@ -51,10 +57,10 @@ async function htmlSeguro(url:URL, saltos=0):Promise<{texto:string;url:string}> 
   const resultado=await new Promise<{texto?:string;redireccion?:string}>((resolve,reject)=>{
     const req=httpsRequest({
       hostname:url.hostname, servername:url.hostname, port:443,
-      path:url.pathname+url.search, method:'GET', timeout:5500,
+      path:url.pathname+url.search, method:'GET', timeout:4000,
       lookup:(_host,_opts,cb)=>cb(null,ip,4),
       headers:{
-        'user-agent':'ULIT-Censo-Radar/0.1 (manual pilot; public website links)',
+        'user-agent':AGENTE,
         'accept':'text/html,application/xhtml+xml',
         'accept-encoding':'identity',
       },
@@ -116,34 +122,95 @@ async function accesoPermitido(token:string):Promise<boolean> {
   return dato.habilitada===true && dato.alcance==='it1-franquicias-supervisadas';
 }
 
-/** Lectura bajo demanda de una ÚNICA URL elegida por el revisor.
- * No consulta buscadores, no rastrea redes, no almacena datos y no escribe en Supabase.
+function conPlazo<T>(p:Promise<T>,ms:number,mensaje:string):Promise<T> {
+  let temporizador:ReturnType<typeof setTimeout>|undefined;
+  return Promise.race([p,new Promise<never>((_,reject)=>{temporizador=setTimeout(()=>reject(Error(mensaje)),ms);})])
+    .finally(()=>clearTimeout(temporizador));
+}
+const texto=(v:unknown,max:number)=>typeof v==='string'&&v.length<=max?v.trim():null;
+
+/** Lugares con nombre del municipio en OpenStreetMap (datos abiertos ODbL, sin clave ni coste). */
+async function lugaresMunicipio(municipio:string) {
+  const q=`[out:json][timeout:7];area["boundary"="administrative"]["admin_level"="8"]["name"="${municipio}"]->.a;`
+    +'nwr(area.a)["name"](if:is_tag("shop")||is_tag("amenity")||is_tag("office")||is_tag("craft")||is_tag("healthcare")||is_tag("tourism")||is_tag("leisure"));out tags 5000;';
+  let estado='sin respuesta';
+  // Servidor principal y un espejo público: si uno está saturado, se prueba el otro.
+  for(const servidor of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']){
+    try{
+      const r=await fetch(servidor,{
+        method:'POST',
+        headers:{'content-type':'application/x-www-form-urlencoded','user-agent':AGENTE},
+        body:'data='+encodeURIComponent(q),
+        signal:AbortSignal.timeout(PLAZO_MS/2),
+      });
+      if(r.ok) return lugaresDesdeOverpass(await r.json());
+      estado=String(r.status);
+    }catch{estado='tiempo agotado';}
+  }
+  throw Error('OpenStreetMap no está disponible ahora mismo ('+estado+'). Inténtalo más tarde.');
+}
+
+/** Cuentas oficiales de marcas (P856, P2003, P2013, P2002) en Wikidata. */
+async function marcasWikidata(ids:string[]):Promise<MarcaWikidata[]> {
+  const r=await fetch('https://www.wikidata.org/w/api.php?action=wbgetentities&props=claims&format=json&ids='
+    +ids.join('|'),{headers:{'user-agent':AGENTE},signal:AbortSignal.timeout(PLAZO_MS)});
+  if(!r.ok) throw Error('Wikidata no está disponible ahora mismo ('+r.status+').');
+  const d=await r.json() as {entities?:Record<string,unknown>};
+  return ids.map(id=>marcaDesdeWikidata(id,d.entities?.[id])).filter((m):m is MarcaWikidata=>!!m);
+}
+
+/**
+ * Radar Digital (solo equipo de Oficina, verificado por RPC; sin service_role ni escritura):
+ * - `paginas`: lee hasta 4 webs HTTPS públicas y devuelve los enlaces que ellas mismas publican.
+ * - `osm`: lugares del municipio en OpenStreetMap. - `marcas`: cuentas oficiales en Wikidata.
+ * No consulta buscadores, no rastrea redes sociales, no almacena nada.
  */
 export default async function handler(req:Request):Promise<Response> {
   if(req.method!=='POST') return respuesta(405,{error:'Usa POST.'});
   const token=req.headers.get('authorization')?.match(/^Bearer ([A-Za-z0-9._-]{40,4000})$/)?.[1];
-  if(!token) return respuesta(401,{error:'Inicia sesión para analizar una web.'});
+  if(!token) return respuesta(401,{error:'Inicia sesión para usar el Radar Digital.'});
   const longitud=Number(req.headers.get('content-length')??'0');
-  if(longitud>3000) return respuesta(413,{error:'Solicitud demasiado grande.'});
-  let body:unknown;
+  if(longitud>6000) return respuesta(413,{error:'Solicitud demasiado grande.'});
+  let body:Record<string,unknown>;
   try {
     const raw=await req.text();
-    if(raw.length>3000) return respuesta(413,{error:'Solicitud demasiado grande.'});
-    body=JSON.parse(raw);
+    if(raw.length>6000) return respuesta(413,{error:'Solicitud demasiado grande.'});
+    const parsed:unknown=JSON.parse(raw);
+    if(!parsed||typeof parsed!=='object'||Array.isArray(parsed)) throw Error();
+    body=parsed as Record<string,unknown>;
   } catch{return respuesta(400,{error:'Solicitud JSON inválida.'});}
-  const urlTexto=(body&&typeof body==='object'&&'url' in body)
-    ? (body as {url?:unknown}).url:null;
-  if(typeof urlTexto!=='string') return respuesta(400,{error:'Falta la dirección web.'});
-  let url:URL;
-  try{url=validarDestinoWeb(urlTexto);}catch(e){return respuesta(400,{error:e instanceof Error?e.message:'URL inválida.'});}
+  const accion=body.accion??'paginas';
+
+  // Validar la entrada ANTES de consultar la sesión: nada inválido llega a la red.
+  let tarea:()=>Promise<Response>;
+  if(accion==='osm'){
+    const municipio=texto(body.municipio,60);
+    if(!municipio||!/^[\p{L}][\p{L} .'-]{1,59}$/u.test(municipio)) return respuesta(400,{error:'Municipio no válido.'});
+    tarea=async()=>respuesta(200,{lugares:await lugaresMunicipio(municipio.replace(/["\\]/g,''))});
+  } else if(accion==='marcas'){
+    const ids=Array.isArray(body.ids)?body.ids.filter((x):x is string=>typeof x==='string'&&/^Q\d{1,10}$/.test(x)):[];
+    if(!ids.length||ids.length>40) return respuesta(400,{error:'Indica entre 1 y 40 marcas.'});
+    tarea=async()=>respuesta(200,{marcas:await marcasWikidata([...new Set(ids)])});
+  } else if(accion==='paginas'){
+    const lista=Array.isArray(body.urls)?body.urls:[];
+    if(!lista.length||lista.length>4||lista.some(u=>typeof u!=='string')) return respuesta(400,{error:'Indica entre 1 y 4 webs.'});
+    let urls:URL[];
+    try{urls=(lista as string[]).map(validarDestinoWeb);}
+    catch(e){return respuesta(400,{error:e instanceof Error?e.message:'URL inválida.'});}
+    const c=(body.contexto??{}) as Record<string,unknown>;
+    const ctx:ContextoNegocio={nombre:texto(c.nombre,200)??'',calle:texto(c.calle,200)??'',municipio:texto(c.municipio,60)??''};
+    tarea=async()=>{
+      const resultados=await Promise.allSettled(urls.map(url=>conPlazo(htmlSeguro(url),PLAZO_MS,'La web tardó demasiado en responder.')
+        .then(r=>analizarPagina(r.texto,r.url,ctx,url.toString()))));
+      return respuesta(200,{resultados:resultados.map((r,i)=>r.status==='fulfilled'
+        ?{url:urls[i].toString(),pagina:r.value}
+        :{url:urls[i].toString(),error:r.reason instanceof Error?r.reason.message:'No se pudo analizar la página.'})});
+    };
+  } else return respuesta(400,{error:'Acción desconocida.'});
+
   try{
-    if(!await accesoPermitido(token)) return respuesta(403,{error:'Sin autorización para el piloto de IT1.'});
+    if(!await accesoPermitido(token)) return respuesta(403,{error:'Sin autorización para el Radar Digital de IT1.'});
   }catch{return respuesta(503,{error:'No se pudo verificar la sesión del censo.'});}
-  try{
-    const {texto,pagina}=await (async()=>{
-      const r=await htmlSeguro(url);
-      return {texto:r.texto,pagina:r.url};
-    })();
-    return respuesta(200,{hallazgo:extraerEnlacesPublicos(texto,pagina)});
-  }catch(e){return respuesta(422,{error:e instanceof Error?e.message:'No se pudo analizar la página.'});}
+  try{return await tarea();}
+  catch(e){return respuesta(502,{error:e instanceof Error?e.message:'La fuente no respondió.'});}
 }

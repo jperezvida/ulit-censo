@@ -1,391 +1,491 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  ArrowLeft, ArrowRight, CheckCircle2, ExternalLink, Globe2, Instagram, Facebook,
-  ScanSearch, LoaderCircle, ShieldCheck, FileDown, AlertCircle,
+  ArrowLeft, Ban, CheckCircle2, ChevronLeft, ChevronRight, ClipboardPaste, Download, ExternalLink,
+  LoaderCircle, RefreshCw, ScanSearch, ShieldCheck, Undo2, Upload, XCircle,
 } from 'lucide-react';
 import { useContexto } from '../../store/contexto';
 import { useFuenteOficina } from '../../store/fuenteOficina';
 import { clienteServidor } from '../../store/clienteSupabase';
+import { enlacesBusquedaRadar, negociosPilotoRadar, type NegocioPiloto } from '../../domain/radarDigitalIT1';
 import {
-  CAMPOS_DIGITALES_EXCEL, REDES_RADAR,
-  negociosPilotoRadar, enlacesBusquedaRadar, interpretarPresenciaExcel,
-  leerBorradoresRadar, guardarBorradoresRadar, resumenPilotoRadar,
-  normalizarPerfilRadar, enlaceCandidatoRadar, validarHallazgosRadar, nombreCompatibleRadar,
-  type BorradoresRadar, type BorradorRadar, type HallazgoRadar, type RedRadar,
-} from '../../domain/radarDigitalIT1';
+  CAMPOS_RADAR, TEXTO_BANDEJA, TEXTO_CRITERIO, TEXTO_ESTADO, TEXTO_FUENTE,
+  bandejaDe, campoDeEnlace, confirmarRelacionadas, csvRadar, discrepaExcel, emparejarOSM,
+  fusionarTrabajos, guardarCopiaOSM, guardarResultadosAuto, guardarTrabajos, huellaNegocio,
+  investigarNegocio, leerCopiaOSM, leerResultadosAuto, leerTrabajos, nivelEvidencia, resultadoVigente,
+  sanearResultado, trabajosDesdeTexto, trabajoVacio, vistaCampo,
+  type BandejaRadar, type CampoRadar, type EvidenciaRadar, type LugarOSM, type MarcaWikidata,
+  type PaginaRadar, type ResultadoAuto, type ResultadosAuto, type ServiciosRadar, type TrabajoRadar, type TrabajosRadar,
+} from '../../domain/radarInvestigacion';
 import '../../styles/radar-digital.css';
 
-const REDES: Record<RedRadar,{nombre:string; icono:typeof Globe2}> = {
-  instagram:{nombre:'Instagram',icono:Instagram},
-  facebook:{nombre:'Facebook',icono:Facebook},
-  twitter:{nombre:'X / Twitter',icono:Globe2},
+type Filtro = 'todos' | BandejaRadar;
+const FILTROS: Filtro[] = ['todos', 'intervencion', 'listo', 'sin-evidencias', 'sin-investigar', 'revisado'];
+const ORDEN_BANDEJA: BandejaRadar[] = ['intervencion', 'listo', 'sin-evidencias', 'sin-investigar', 'revisado'];
+const BUSQUEDA: Record<CampoRadar, 'web' | 'google' | 'instagram' | 'facebook' | 'twitter'> = {
+  web: 'web', googleBusiness: 'google', instagram: 'instagram', facebook: 'facebook', twitter: 'twitter', ventaOnline: 'web',
 };
-const VACIO: BorradorRadar = {
-  sitioWeb:'',webValidada:false,redesValidadas:{},ventaOnline:'pendiente',
-  estado:'pendiente',actualizado:'',
-};
-const etiquetaExcel=(valor:string) => {
-  const estado=interpretarPresenciaExcel(valor);
-  return estado==='si'?'Sí':estado==='no'?'No':'Sin dato';
-};
-const enlace=(url:string, texto:string) => {
-  try {
-    const u=new URL(url);
-    if(u.protocol!=='https:' || u.username || u.password) throw Error('Enlace inseguro');
-    return <a href={u.toString()} target="_blank" rel="noopener noreferrer">
-      {texto}<ExternalLink size={13} aria-hidden="true"/>
-    </a>;
-  } catch {
-    return <span className="radar-falta">{texto}: enlace descartado por seguridad</span>;
-  }
-};
+const TECLA_BUSQUEDA: Record<string, 'web' | 'google' | 'instagram' | 'facebook'> = { w: 'web', g: 'google', i: 'instagram', f: 'facebook' };
 
-function exportarJSON(data:unknown){
-  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json;charset=utf-8'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url;a.download='ulit-radar-digital-it1-piloto.json';
-  document.body.appendChild(a);a.click();a.remove();
+/** Solo enlaces HTTPS; el resto se muestra como texto. */
+function Enlace({ url, children, titulo }: { url: string; children: ReactNode; titulo?: string }) {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:' || u.username || u.password) throw Error('inseguro');
+    return <a href={u.toString()} target="_blank" rel="noopener noreferrer" title={titulo ?? u.toString()}>
+      {children}<ExternalLink size={12} aria-hidden="true"/></a>;
+  } catch { return <span className="radar-falta">{children} (enlace descartado por seguridad)</span>; }
+}
+const corta = (url: string) => {
+  try { const u = new URL(url); return (u.hostname.replace(/^www\./, '') + u.pathname + u.search).replace(/\/$/, ''); }
+  catch { return url; }
+};
+const excelTexto = (v: string) => v.trim() === '1' ? 'Sí' : v.trim() === '0' ? 'No' : '—';
+function descargar(nombre: string, contenido: string, tipo: string) {
+  const url = URL.createObjectURL(new Blob([contenido], { type: tipo }));
+  const a = document.createElement('a');
+  a.href = url; a.download = nombre;
+  document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
 }
+/** El ratón no deja el foco en botones: Enter sigue sirviendo para confirmar y avanzar. */
+const SIN_FOCO = { onMouseDown: (e: { preventDefault(): void }) => e.preventDefault() };
+const enCampoDeTexto = (t: EventTarget | null) =>
+  t instanceof HTMLElement && !!t.closest('input,textarea,select,[contenteditable="true"]');
+
+async function llamarRadar<T>(cuerpo: unknown): Promise<T> {
+  const sesion = await clienteServidor()?.auth.getSession();
+  const jwt = sesion?.data.session?.access_token;
+  if (!jwt) throw Error('La sesión no está disponible; vuelve a iniciar sesión.');
+  const r = await fetch('/api/radar-web', {
+    method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + jwt },
+    body: JSON.stringify(cuerpo),
+  });
+  const datos = await r.json().catch(() => ({})) as T & { error?: string };
+  if (!r.ok) throw Error(datos.error || 'El servicio del Radar no respondió.');
+  return datos;
+}
+const SERVICIOS = (municipio: string): ServiciosRadar => ({
+  lugares: async () => (await llamarRadar<{ lugares: LugarOSM[] }>({ accion: 'osm', municipio })).lugares ?? [],
+  marcas: async (ids) => (await llamarRadar<{ marcas: MarcaWikidata[] }>({ accion: 'marcas', ids })).marcas ?? [],
+  paginas: async (urls, contexto) => {
+    const r = await llamarRadar<{ resultados: { url: string; pagina?: PaginaRadar; error?: string }[] }>({ accion: 'paginas', urls, contexto });
+    const lista = r.resultados ?? [];
+    return {
+      paginas: lista.flatMap((x) => x.pagina ? [x.pagina] : []),
+      fallos: lista.flatMap((x) => x.error ? [{ url: x.url, error: x.error }] : []),
+    };
+  },
+});
 
 export default function RadarDigitalIT1() {
-  const {db,campana}=useContexto();
-  const fuente=useFuenteOficina();
-  const negocios=useMemo(()=>campana?negociosPilotoRadar(db,campana.id):[],[db,campana?.id]);
-  const [seleccion,setSeleccion]=useState(0);
-  const [borradores,setBorradores]=useState<BorradoresRadar>(
-    ()=>campana?leerBorradoresRadar(campana.id):{});
-  const [analizandoId,setAnalizandoId]=useState<string|null>(null);
-  const [error,setError]=useState('');
-  const [avisoLocal,setAvisoLocal]=useState(false);
+  const { db, campana } = useContexto();
+  const fuente = useFuenteOficina();
+  const negocios = useMemo(() => campana ? negociosPilotoRadar(db, campana.id) : [], [db, campana?.id]);
+  const municipio = (campana && db.municipios[campana.municipioId]?.nombre) || 'Medina del Campo';
+  const [trabajos, setTrabajos] = useState<TrabajosRadar>(() => campana ? leerTrabajos(campana.id) : {});
+  const [resultados, setResultados] = useState<ResultadosAuto>(() => campana ? leerResultadosAuto(campana.id) : {});
+  const [copiaOSM, setCopiaOSM] = useState(() => leerCopiaOSM(municipio));
+  const [seleccionId, setSeleccionId] = useState<string | null>(null);
+  const [filtro, setFiltro] = useState<Filtro>('todos');
+  const [progreso, setProgreso] = useState<{ hechos: number; total: number } | null>(null);
+  const [avisos, setAvisos] = useState<string[]>([]);
+  const [mensaje, setMensaje] = useState('');
+  const [errorGuardado, setErrorGuardado] = useState(false);
+  const [deshacer, setDeshacer] = useState<{ id: string; previo: TrabajoRadar; texto: string } | null>(null);
+  const [pegado, setPegado] = useState('');
+  const importar = useRef<HTMLInputElement>(null);
+  const zonaFoco = useRef<HTMLElement>(null);
+  /** En pantallas estrechas la lista está encima: al elegir un negocio se lleva la vista a su ficha. */
+  const elegir = (id: string) => {
+    setSeleccionId(id);
+    if (window.matchMedia?.('(max-width: 980px)').matches) requestAnimationFrame(() => zonaFoco.current?.scrollIntoView?.({ block: 'start' }));
+  };
 
-  useEffect(()=>{
-    setBorradores(campana?leerBorradoresRadar(campana.id):{});
-    setSeleccion(0);
-  },[campana?.id]);
+  useEffect(() => {
+    if (!campana) return;
+    setTrabajos(leerTrabajos(campana.id));
+    setResultados(leerResultadosAuto(campana.id));
+  }, [campana?.id]);
 
-  const n=negocios[Math.min(seleccion,Math.max(0,negocios.length-1))];
-  const draft=n?borradores[n.id]??VACIO:VACIO;
-  const resumen=resumenPilotoRadar(negocios,borradores);
-  const buscar=n?enlacesBusquedaRadar(n):null;
+  // Solo se usan resultados del MISMO negocio (nombre y dirección); los antiguos se muestran como tales.
+  const resultadoDe = useCallback((n: NegocioPiloto): ResultadoAuto | undefined => {
+    const r = resultados[n.id];
+    return r && r.huella === huellaNegocio(n) ? r : undefined;
+  }, [resultados]);
+  const filas = useMemo(() => negocios.map((n, i) => {
+    const t = trabajos[n.id] ?? trabajoVacio();
+    return { n, i, t, r: resultadoDe(n), bandeja: bandejaDe(n, resultadoDe(n), t) };
+  }), [negocios, trabajos, resultadoDe]);
+  const cuenta = (b: BandejaRadar) => filas.filter((f) => f.bandeja === b).length;
+  const visibles = useMemo(() => (filtro === 'todos'
+    ? [...filas].sort((a, b) => ORDEN_BANDEJA.indexOf(a.bandeja) - ORDEN_BANDEJA.indexOf(b.bandeja) || a.i - b.i)
+    : filas.filter((f) => f.bandeja === filtro)), [filas, filtro]);
+  const actual = filas.find((f) => f.n.id === seleccionId) ?? visibles[0] ?? filas[0];
+  const porInvestigar = negocios.filter((n) => !resultadoVigente(resultados[n.id], n));
 
-  const actualizar=(id:string,cambio:Partial<BorradorRadar> |
-      ((vigente:BorradorRadar)=>Partial<BorradorRadar>|null))=>{
-    setBorradores((anterior)=>{
-      const previo=anterior[id]??VACIO;
-      const aplicado=typeof cambio==='function'?cambio(previo):cambio;
-      if(!aplicado) return anterior;
-      const siguiente={...anterior,[id]:{
-        ...previo,...aplicado,actualizado:new Date().toISOString(),
-      }};
-      if(campana && !guardarBorradoresRadar(campana.id,siguiente)) setAvisoLocal(true);
+  const actualizar = useCallback((id: string, cambio: (t: TrabajoRadar) => TrabajoRadar) => {
+    setTrabajos((prev) => {
+      const siguiente = { ...prev, [id]: { ...cambio(prev[id] ?? trabajoVacio()), actualizado: new Date().toISOString() } };
+      if (campana) setErrorGuardado(!guardarTrabajos(campana.id, siguiente));
       return siguiente;
     });
-  };
-  const confirmarLote=()=>{
-    if(!n || !draft.hallazgo) return;
-    actualizar(n.id,validarHallazgosRadar(draft));
-  };
-  const confirmarWebManual=()=>{
-    if(!n || !draft.sitioWeb.trim()) return;
-    try {
-      const url=new URL(draft.sitioWeb.trim());
-      if(url.protocol!=='https:' || !url.hostname.includes('.') || url.username || url.password)
-        throw Error('URL no válida');
-      actualizar(n.id,{webValidada:!draft.webValidada,estado:'pendiente'});
-      setError('');
-    } catch {
-      setError('Comprueba e introduce una dirección HTTPS completa antes de validar la web.');
+  }, [campana]);
+
+  /** `webs`: web conocida por negocio (p. ej. recién pegada) para analizarla aunque el estado aún no la refleje. */
+  const investigar = async (lista: NegocioPiloto[], refrescarFuentes = false, webs: Record<string, string> = {}) => {
+    if (!campana || progreso || !lista.length) return;
+    const servicios = SERVICIOS(municipio);
+    const nuevosAvisos: string[] = [];
+    setProgreso({ hechos: 0, total: lista.length });
+    let lugares = refrescarFuentes ? undefined : leerCopiaOSM(municipio)?.lugares;
+    if (!lugares) {
+      try {
+        guardarCopiaOSM(municipio, await servicios.lugares());
+        const copia = leerCopiaOSM(municipio);
+        setCopiaOSM(copia);
+        lugares = copia?.lugares ?? [];
+      } catch (e) {
+        nuevosAvisos.push(`OpenStreetMap: ${e instanceof Error ? e.message : 'no disponible'}. Se investigan solo las webs.`);
+        lugares = [];
+      }
     }
-  };
-  const pegarEnlace=async()=>{
-    try {
-      if(!navigator.clipboard?.readText) throw Error('not supported');
-      const texto=await navigator.clipboard.readText();
-      if(!texto.trim()) throw Error('empty');
-      webCambio(texto.trim());
-    } catch {
-      setError('No se pudo leer el portapapeles. Pega el enlace en el campo con Ctrl+V.');
+    const ids = [...new Set(lista.flatMap((n) => emparejarOSM(n, lugares!).flatMap((c) => c.lugar.marcaWd ? [c.lugar.marcaWd] : [])))];
+    const marcas = new Map<string, MarcaWikidata>();
+    if (ids.length) {
+      try { for (const m of await servicios.marcas(ids)) marcas.set(m.id, m); }
+      catch (e) { nuevosAvisos.push(`Wikidata: ${e instanceof Error ? e.message : 'no disponible'}.`); }
     }
-  };
-  const actualizarPerfil=(red:RedRadar,texto:string)=>{
-    if(!n) return;
-    actualizar(n.id,{
-      perfilesManuales:{...draft.perfilesManuales,[red]:texto},
-      redesValidadas:{...draft.redesValidadas,[red]:false},
-      estado:'pendiente',
-    });
-  };
-  const webCambio=(valor:string)=>{
-    if(!n) return;
-    actualizar(n.id,{
-      sitioWeb:valor, hallazgo:undefined, webValidada:false,
-      redesValidadas:{...Object.fromEntries(REDES_RADAR.map(red=>[red,
-        !!draft.perfilesManuales?.[red] && draft.redesValidadas[red]===true]))},
-      ventaOnline:'pendiente',estado:'pendiente',
-    });
-    setError('');
-  };
-  const analizar=async()=>{
-    if(!n || !draft.sitioWeb.trim() || analizandoId) return;
-    setError('');
-    let url:string;
-    try{
-      const valor=draft.sitioWeb.trim();
-      const parse=new URL(/^https?:\/\//i.test(valor)?valor:'https://'+valor);
-      if(parse.protocol!=='https:' || !parse.hostname.includes('.'))
-        throw new Error('Debe ser una dirección HTTPS pública.');
-      url=parse.toString();
-    }catch{return setError('Introduce una URL HTTPS pública válida.');}
-    setAnalizandoId(n.id);
-    try {
-      const cliente=clienteServidor();
-      const sesion=await cliente?.auth.getSession();
-      const jwt=sesion?.data.session?.access_token;
-      if(!jwt) throw Error('La sesión no está disponible; vuelve a iniciar sesión.');
-      const respuesta=await fetch('/api/radar-web',{
-        method:'POST',
-        headers:{'content-type':'application/json','authorization':'Bearer '+jwt},
-        body:JSON.stringify({url}),
-      });
-      const payload=await respuesta.json() as {error?:string; hallazgo?:HallazgoRadar};
-      if(!respuesta.ok || !payload.hallazgo)
-        throw Error(payload.error||'No se ha podido leer la web.');
-      // No sobreescribir la selección del usuario: resultado vinculado al registro de partida.
-      const solicitado=draft.sitioWeb.trim();
-      actualizar(n.id,(vigente)=>vigente.sitioWeb.trim()!==solicitado ? null : ({
-        sitioWeb:url,hallazgo:payload.hallazgo,webValidada:false,
-        redesValidadas:Object.fromEntries(REDES_RADAR.map(red=>[
-          red, !!vigente.perfilesManuales?.[red] && vigente.redesValidadas[red]===true,
-        ])),estado:'pendiente',
-      }));
-    }catch(e){setError(e instanceof Error?e.message:'Análisis no disponible.');}
-    finally{setAnalizandoId(null);}
+    // Dos negocios a la vez: rápido sin saturar las webs ni la función del servidor.
+    const cola = [...lista];
+    let hechos = 0;
+    const trabajar = async () => {
+      for (let n = cola.shift(); n; n = cola.shift()) {
+        try {
+          const web = webs[n.id] ?? trabajos[n.id]?.decisiones.web?.url ?? trabajos[n.id]?.manuales.web;
+          const r = sanearResultado(await investigarNegocio(n, municipio, lugares!, marcas, servicios, web));
+          if (r) setResultados((prev) => {
+            const sig = { ...prev, [n!.id]: r };
+            guardarResultadosAuto(campana.id, sig);
+            return sig;
+          });
+        } catch (e) {
+          nuevosAvisos.push(`${n.nombre}: ${e instanceof Error ? e.message : 'no se pudo investigar'}`);
+        }
+        setProgreso({ hechos: ++hechos, total: lista.length });
+      }
+    };
+    await Promise.all([trabajar(), trabajar()]);
+    setAvisos(nuevosAvisos);
+    setProgreso(null);
+    setMensaje(`Investigación terminada: ${hechos} negocios. Revisa primero los que requieren intervención.`);
   };
 
-  const compatibilidad=n&&draft.hallazgo
-    ? nombreCompatibleRadar(n.nombre,draft.hallazgo.titulo) : null;
-  const candidatos=REDES_RADAR.map(red=>({red,datos:enlaceCandidatoRadar(draft,red)}));
-  const porValidar=candidatos.filter(({red,datos})=>!!datos && draft.redesValidadas[red]!==true).length +
-    (draft.hallazgo&&!draft.webValidada?1:0);
-  const irSiguientePendiente=()=>{
-    const siguiente=negocios.findIndex((item,i)=>
-      i>seleccion && borradores[item.id]?.estado!=='revisado');
-    const primerPendiente=negocios.findIndex(item=>borradores[item.id]?.estado!=='revisado');
-    setSeleccion(siguiente>=0?siguiente:primerPendiente>=0?primerPendiente:
-      Math.min(seleccion+1,negocios.length-1));
-    setError('');
+  const siguientePendiente = useCallback((desdeId: string) => {
+    const orden = visibles.map((f) => f.n.id);
+    const i = orden.indexOf(desdeId);
+    const resto = [...orden.slice(i + 1), ...orden.slice(0, Math.max(0, i))];
+    return resto.find((id) => filas.find((f) => f.n.id === id)?.bandeja !== 'revisado') ?? null;
+  }, [visibles, filas]);
+  const mover = (paso: number) => {
+    if (!actual || !visibles.length) return;
+    const i = visibles.findIndex((f) => f.n.id === actual.n.id);
+    const j = Math.min(visibles.length - 1, Math.max(0, (i < 0 ? 0 : i) + paso));
+    setSeleccionId(visibles[j].n.id);
   };
-  const terminarInvestigacion=()=>{
-    if(!n) return;
-    const terminada=draft.estado!=='revisado';
-    actualizar(n.id,{estado:terminada?'revisado':'pendiente'});
-    if(terminada){
-      const siguiente=negocios.findIndex((item,i)=>i>seleccion && borradores[item.id]?.estado!=='revisado');
-      if(siguiente>=0){setSeleccion(siguiente);setError('');}
+
+  /**
+   * Enter: confirma SOLO lo «probablemente relacionado». Si quedan coincidencias por comprobar,
+   * se queda en el negocio (nunca se dan por revisadas sin decidir); si no, lo marca revisado y avanza.
+   */
+  const confirmarYAvanzar = () => {
+    if (!actual) return;
+    const { n, t, r } = actual;
+    const decisiones = confirmarRelacionadas(r, t, new Date().toISOString());
+    const nuevas = Object.keys(decisiones).length - Object.keys(t.decisiones).length;
+    const porComprobar = CAMPOS_RADAR.filter((c) => vistaCampo(c.clave, r?.evidencias ?? [], { ...t, decisiones }).estado === 'encontrado').length;
+    if (porComprobar) {
+      if (nuevas) {
+        actualizar(n.id, (x) => ({ ...x, decisiones, estado: 'pendiente' }));
+        setDeshacer({ id: n.id, previo: t, texto: `${n.nombre}: ${nuevas} propuestas confirmadas.` });
+      }
+      setMensaje(`Quedan ${porComprobar} coincidencias por comprobar: pulsa su número para aceptarlas o «No es» para descartarlas.`);
+      return;
     }
+    actualizar(n.id, (x) => ({ ...x, decisiones, estado: 'revisado' }));
+    setDeshacer({ id: n.id, previo: t, texto: `${n.nombre}: ${nuevas} propuestas confirmadas y marcado como revisado.` });
+    setMensaje('');
+    const sig = siguientePendiente(n.id);
+    if (sig) setSeleccionId(sig);
   };
-  const listaResultados=negocios.map((negocio,i)=>({
-    id:negocio.id,nombre:negocio.nombre,
-    datosExcel:negocio.datosExcel,
-    ...borradores[negocio.id],
-    seleccion:i,
+  const deshacerUltimo = () => {
+    if (!deshacer) return;
+    actualizar(deshacer.id, () => deshacer.previo);
+    setSeleccionId(deshacer.id);
+    setMensaje('Acción deshecha.');
+    setDeshacer(null);
+  };
+  /** Tecla 1–6: alterna la decisión del campo. Con propuesta → «Sí»; sin propuesta → «No tiene». */
+  const resolverCampo = (campo: CampoRadar) => {
+    if (!actual) return;
+    const v = vistaCampo(campo, actual.r?.evidencias ?? [], actual.t);
+    actualizar(actual.n.id, (t) => {
+      const decisiones = { ...t.decisiones };
+      if (decisiones[campo]) delete decisiones[campo];
+      else decisiones[campo] = v.propuesta
+        ? { valor: 'si', url: v.propuesta.url, fecha: new Date().toISOString() }
+        : { valor: 'no', fecha: new Date().toISOString() };
+      return { ...t, decisiones, estado: 'pendiente' };
+    });
+  };
+  const decidirNo = (campo: CampoRadar) => actual && actual.n && actualizar(actual.n.id, (t) => ({
+    ...t, estado: 'pendiente', decisiones: { ...t.decisiones, [campo]: { valor: 'no', fecha: new Date().toISOString() } },
   }));
-  if(!campana || campana.anio!==2026 || !fuente?.soloLectura)
-    return <main className="pagina"><p>El piloto del Radar Digital solo está disponible en la Oficina real de 2026.</p></main>;
-  return <main className="pagina radar-piloto">
+  const aceptar = (e: EvidenciaRadar) => actual && actualizar(actual.n.id, (t) => ({
+    ...t, estado: 'pendiente', decisiones: { ...t.decisiones, [e.campo]: { valor: 'si', url: e.url, fecha: new Date().toISOString() } },
+  }));
+  const descartar = (e: EvidenciaRadar) => actual && actualizar(actual.n.id, (t) => ({
+    ...t, estado: 'pendiente', descartadas: [...t.descartadas, `${e.campo}|${e.url}`],
+  }));
+  const anular = (campo: CampoRadar) => actual && actualizar(actual.n.id, (t) => {
+    const decisiones = { ...t.decisiones };
+    delete decisiones[campo];
+    return { ...t, decisiones, estado: 'pendiente' };
+  });
+  /** Un enlace pegado (perfil, ficha o web) se asigna solo a su campo y queda confirmado. */
+  const usarEnlace = (texto: string): boolean => {
+    if (!actual) return false;
+    const destino = campoDeEnlace(texto);
+    if (!destino) { setMensaje('Ese texto no es un enlace HTTPS de web, Instagram, Facebook, X o Google Maps.'); return false; }
+    actualizar(actual.n.id, (t) => ({
+      ...t, estado: 'pendiente',
+      decisiones: { ...t.decisiones, [destino.campo]: { valor: 'si', url: destino.url, fecha: new Date().toISOString(), manual: true } },
+    }));
+    // Una web pegada se analiza al momento: sus redes y su ficha aparecen sin más pasos.
+    if (destino.campo === 'web' && !progreso) void investigar([actual.n], false, { [actual.n.id]: destino.url });
+    setMensaje(`${CAMPOS_RADAR.find((c) => c.clave === destino.campo)!.etiqueta} confirmado con el enlace pegado${destino.campo === 'web' ? '; analizando sus enlaces…' : '.'}`);
+    return true;
+  };
+
+  // Atajos globales (nunca mientras se escribe en un campo).
+  useEffect(() => {
+    const teclado = (ev: KeyboardEvent) => {
+      if (ev.ctrlKey || ev.metaKey || ev.altKey) {
+        if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z' && deshacer && !enCampoDeTexto(ev.target)) { ev.preventDefault(); deshacerUltimo(); }
+        return;
+      }
+      if (enCampoDeTexto(ev.target) || ev.repeat || !actual) return;
+      const k = ev.key.toLowerCase();
+      if (ev.key === 'Enter') {
+        if (ev.isComposing || (ev.target instanceof HTMLElement && ev.target.closest('button,a,summary'))) return;
+        ev.preventDefault(); confirmarYAvanzar();
+      } else if (/^[1-6]$/.test(ev.key)) { ev.preventDefault(); resolverCampo(CAMPOS_RADAR[Number(ev.key) - 1].clave); }
+      else if (ev.key === 'ArrowDown' || k === 'j') { ev.preventDefault(); mover(1); }
+      else if (ev.key === 'ArrowUp' || k === 'k') { ev.preventDefault(); mover(-1); }
+      else if (k === 'z' && deshacer) { ev.preventDefault(); deshacerUltimo(); }
+      else if (TECLA_BUSQUEDA[k]) {
+        ev.preventDefault();
+        window.open(enlacesBusquedaRadar(actual.n)[TECLA_BUSQUEDA[k]], '_blank', 'noopener,noreferrer');
+      }
+    };
+    const pegar = (ev: ClipboardEvent) => {
+      if (enCampoDeTexto(ev.target)) return;
+      const texto = ev.clipboardData?.getData('text') ?? '';
+      if (texto.trim()) { ev.preventDefault(); usarEnlace(texto); }
+    };
+    document.addEventListener('keydown', teclado);
+    document.addEventListener('paste', pegar);
+    return () => { document.removeEventListener('keydown', teclado); document.removeEventListener('paste', pegar); };
+  });
+
+  if (!campana || campana.anio !== 2026 || !fuente?.soloLectura)
+    return <main className="pagina"><p>El Radar Digital solo está disponible en la Oficina real de 2026.</p></main>;
+
+  const exportarCSV = () => descargar('ulit-radar-digital-it1.csv', csvRadar(negocios, trabajos), 'text/csv;charset=utf-8');
+  const exportarCopia = () => descargar('ulit-radar-digital-it1-copia.json', JSON.stringify({
+    formato: 'ulit-radar-trabajo-v2', campanaId: campana.id, exportado: new Date().toISOString(), trabajos,
+  }, null, 2), 'application/json;charset=utf-8');
+  const importarCopia = async (archivo: File | undefined) => {
+    if (!archivo || archivo.size > 1_000_000) return setMensaje('Elige una copia JSON del Radar (máximo 1 MB).');
+    try {
+      const datos = JSON.parse(await archivo.text()) as { formato?: string; campanaId?: string; trabajos?: unknown };
+      if (datos.formato !== 'ulit-radar-trabajo-v2' || datos.campanaId !== campana.id) throw Error('formato');
+      const importados = trabajosDesdeTexto(JSON.stringify(datos.trabajos ?? {}));
+      setTrabajos((prev) => {
+        const sig = fusionarTrabajos(prev, importados);
+        setErrorGuardado(!guardarTrabajos(campana.id, sig));
+        return sig;
+      });
+      setMensaje(`Copia importada: ${Object.keys(importados).length} negocios (prevalece lo más reciente).`);
+    } catch { setMensaje('La copia no es válida o pertenece a otra campaña.'); }
+  };
+
+  const vistas = actual ? CAMPOS_RADAR.map((c) => vistaCampo(c.clave, actual.r?.evidencias ?? [], actual.t)) : [];
+  const relacionadasSinDecidir = vistas.filter((v) => v.estado === 'relacionado').length;
+  const porComprobar = vistas.filter((v) => v.estado === 'encontrado').length;
+  const busqueda = actual ? enlacesBusquedaRadar(actual.n) : null;
+  const revisados = cuenta('revisado');
+  // Medida del piloto: cuántos campos llegan con propuesta automática y cuántos ya están decididos.
+  const vistasTodas = filas.flatMap((f) => CAMPOS_RADAR.map((c) => vistaCampo(c.clave, f.r?.evidencias ?? [], f.t)));
+  const preparados = vistasTodas.filter((v) => v.propuesta || v.decision?.url && !v.decision.manual).length;
+  const decididos = vistasTodas.filter((v) => v.decision).length;
+  const antiguo = actual?.r && !resultadoVigente(actual.r, actual.n);
+
+  return <main className="pagina radar">
     <header className="radar-cab">
-      <Link className="btn s fantasma" to="/oficina"><ArrowLeft size={15}/> Volver a Oficina</Link>
-      <div className="rotulo">Oficina · IT1 · Fase 4 · Piloto sin coste adicional</div>
-      <h1><ScanSearch size={26} aria-hidden="true"/> Radar Digital</h1>
-      <p>Investigación asistida de 10 negocios. Busca la web oficial, analiza sus enlaces y valida las evidencias.</p>
-      <div className="radar-advertencia" role="note"><ShieldCheck size={17}/>
-        <span><b>Ensayo independiente.</b> Los resultados se guardan solo como borrador en este navegador.
-          No modifican el censo, no convierten «no encontrado» en «No» y no requieren APIs de pago.</span>
+      <Link className="btn s fantasma" to="/oficina"><ArrowLeft size={15}/> Oficina</Link>
+      <div className="radar-titulo">
+        <h1><ScanSearch size={24} aria-hidden="true"/> Radar Digital <small>IT1 · piloto de {negocios.length} negocios</small></h1>
+        <p className="radar-nota"><ShieldCheck size={14} aria-hidden="true"/>Borrador en este navegador. No modifica el censo ni el Excel; «sin coincidencias» nunca significa «No».</p>
+      </div>
+      <div className="radar-acciones-cab">
+        <button type="button" className="btn primario" disabled={!!progreso || !porInvestigar.length}
+          onClick={() => void investigar(porInvestigar)}>
+          {progreso ? <LoaderCircle size={16} className="radar-giro"/> : <ScanSearch size={16}/>}
+          {progreso ? `Investigando ${progreso.hechos}/${progreso.total}…`
+            : porInvestigar.length ? `Investigar ${porInvestigar.length} automáticamente` : 'Todo investigado'}
+        </button>
+        <button type="button" className="btn s" onClick={exportarCSV}><Download size={14}/> CSV</button>
+        <button type="button" className="btn s" onClick={exportarCopia} title="Copia para continuar en otro navegador"><Download size={14}/> Guardar copia</button>
+        <button type="button" className="btn s" onClick={() => importar.current?.click()}><Upload size={14}/> Importar</button>
+        <input ref={importar} type="file" accept="application/json,.json" hidden aria-label="Importar copia del Radar"
+          onChange={(e) => { void importarCopia(e.target.files?.[0]); e.target.value = ''; }}/>
       </div>
     </header>
 
-    <div className="radar-progreso" role="status" aria-label="Progreso del piloto">
-      <span><b>{resumen.total}</b> negocios del piloto</span>
-      <span><b>{resumen.finalizados}</b> revisados en este navegador</span>
-      <span><b>{resumen.conWeb}</b> webs validadas</span>
-      <button type="button" className="btn s" onClick={()=>exportarJSON({
-        formato:'ulit-radar-digital-piloto-v1',campanaId:campana.id,
-        descripcion:'Evidencias de trabajo; sin escribir en el censo',
-        negocios:listaResultados,
-      })}><FileDown size={15}/> Exportar resultados</button>
+    {progreso && <div className="radar-barra" role="progressbar" aria-label="Investigación automática"
+      aria-valuemin={0} aria-valuemax={progreso.total} aria-valuenow={progreso.hechos}>
+      <span style={{ width: `${(progreso.hechos / Math.max(1, progreso.total)) * 100}%` }}/></div>}
+    <p className="radar-fuentes">
+      Fuentes automáticas: OpenStreetMap{copiaOSM ? ` (${copiaOSM.lugares.length} lugares, copia del ${new Date(copiaOSM.fecha).toLocaleDateString('es-ES')})` : ''},
+      {' '}Wikidata (marcas) y las webs encontradas. Sin APIs de pago.
+      {copiaOSM && !progreso && <button type="button" className="btn-enlace" onClick={() => void investigar(negocios, true)}>
+        <RefreshCw size={12}/> Reinvestigar todo con fuentes actualizadas</button>}
+    </p>
+    {avisos.length > 0 && <details className="radar-avisos"><summary>{avisos.length} avisos de la última investigación</summary>
+      <ul>{avisos.map((a) => <li key={a}>{a}</li>)}</ul></details>}
+
+    <div className="radar-bandeja" role="group" aria-label="Bandejas de trabajo">
+      {FILTROS.map((f) => {
+        const n = f === 'todos' ? filas.length : cuenta(f);
+        return <button key={f} type="button" aria-pressed={filtro === f} {...SIN_FOCO}
+          className={`radar-filtro f-${f}${filtro === f ? ' activo' : ''}`} onClick={() => setFiltro(f)}>
+          <b>{n}</b> {f === 'todos' ? 'Todos' : TEXTO_BANDEJA[f]}</button>;
+      })}
+      <span className="radar-avance" role="status" aria-label="Progreso del piloto">{revisados} de {negocios.length} revisados ·
+        {' '}{preparados} de {vistasTodas.length} campos con propuesta automática · {decididos} decididos</span>
     </div>
 
     <div className="radar-disposicion">
-      <aside className="radar-lista" aria-label="Negocios del piloto">
-        <div className="radar-lista-titulo">10 negocios del Excel IT1</div>
-        {negocios.map((item,i)=><button type="button" key={item.id}
-          className={'radar-fila'+(i===seleccion?' activo':'')}
-          aria-current={i===seleccion?'step':undefined}
-          onClick={()=>{setSeleccion(i);setError('');}}>
-          <span className="radar-ordinal">{i+1}</span>
-          <span className="radar-fila-nombre">{item.nombre}<small>{item.direccion}, {item.numero}</small></span>
-          {borradores[item.id]?.estado==='revisado'
-            ? <CheckCircle2 size={17} color="#18835b" aria-label="Revisado"/>
-            : <span className="radar-punto-pendiente" aria-label="Pendiente"/>}
+      <nav className="radar-lista" aria-label="Negocios del piloto">
+        {visibles.map((f) => <button type="button" key={f.n.id} data-id={f.n.id} {...SIN_FOCO}
+          className={`radar-fila b-${f.bandeja}${actual?.n.id === f.n.id ? ' activo' : ''}`}
+          aria-current={actual?.n.id === f.n.id ? 'true' : undefined} onClick={() => elegir(f.n.id)}>
+          <span className="radar-fila-nombre">{f.n.nombre}<small>{f.n.direccion}, {f.n.numero}</small></span>
+          <span className="radar-puntos" aria-label={TEXTO_BANDEJA[f.bandeja]}>
+            {CAMPOS_RADAR.map((c) => {
+              const e = vistaCampo(c.clave, f.r?.evidencias ?? [], f.t).estado;
+              return <i key={c.clave} className={`p-${e}`} title={`${c.etiqueta}: ${TEXTO_ESTADO[e]}`}/>;
+            })}
+          </span>
         </button>)}
-      </aside>
+        {!visibles.length && <p className="radar-vacio">No hay negocios en esta bandeja.</p>}
+      </nav>
 
-      <section className="radar-detalle" aria-label="Investigación del establecimiento">
-        {!n?<p>No hay negocios ocupados para este piloto.</p>:<>
-          <div className="radar-negocio">
-            <span className="rotulo">NEGOCIO {seleccion+1} DE {negocios.length} · FILA {n.fila}</span>
-            <h2>{n.nombre}</h2>
-            <p>{n.direccion}, {n.numero} · Medina del Campo</p>
+      {actual ? <section ref={zonaFoco} className="radar-foco" aria-label="Investigación del establecimiento">
+        <div className="radar-negocio">
+          <div>
+            <span className="rotulo">Fila {actual.n.fila} · {TEXTO_BANDEJA[actual.bandeja]}</span>
+            <h2>{actual.n.nombre}</h2>
+            <p>{actual.n.direccion}, {actual.n.numero} · {municipio}</p>
           </div>
-          <div className="radar-pasos-trabajo">
-            <div className="radar-bloque">
-              <h3><span>1</span> Encontrar la web oficial</h3>
-              <p className="radar-ayuda">Búsquedas ya preparadas con nombre, calle y municipio.</p>
-              <div className="radar-buscadores">
-                {buscar && <>
-                  {enlace(buscar.web,'Buscar web oficial')}
-                  {enlace(buscar.google,'Buscar ficha de Google')}
-                  {enlace(buscar.instagram,'Buscar Instagram')}
-                  {enlace(buscar.facebook,'Buscar Facebook')}
+          <div className="radar-nav">
+            <button type="button" {...SIN_FOCO} className="btn s icono" aria-label="Negocio anterior" onClick={() => mover(-1)}><ChevronLeft size={16}/></button>
+            <button type="button" {...SIN_FOCO} className="btn s icono" aria-label="Negocio siguiente" onClick={() => mover(1)}><ChevronRight size={16}/></button>
+          </div>
+        </div>
+        {!actual.r && <p className="radar-sin-investigar">Aún sin investigar. Pulsa «Investigar» arriba, o busca a mano con los enlaces de cada fila y pega aquí lo que encuentres.</p>}
+        {antiguo && <p className="radar-sin-investigar">Resultados del {new Date(actual.r!.fecha).toLocaleDateString('es-ES')}: pueden estar desactualizados.
+          {' '}<button type="button" className="btn-enlace" disabled={!!progreso} onClick={() => void investigar([actual.n])}><RefreshCw size={12}/> Reinvestigar</button></p>}
+
+        <div className="radar-campos" role="table" aria-label="Presencia digital">
+          <div className="radar-campo cab" role="row">
+            <span role="columnheader">Campo</span><span role="columnheader">Excel</span>
+            <span role="columnheader">Propuesta y procedencia</span><span role="columnheader">Decisión</span>
+          </div>
+          {vistas.map((v, i) => {
+            const meta = CAMPOS_RADAR[i];
+            const excel = actual.n.datosExcel[v.campo];
+            const discrepa = discrepaExcel(v, excel);
+            return <div key={v.campo} role="row" className={`radar-campo e-${v.estado}${discrepa ? ' discrepa' : ''}`}>
+              <span role="cell" className="radar-campo-nombre"><kbd>{i + 1}</kbd>{meta.etiqueta}</span>
+              <span role="cell" className="radar-excel" title="Valor original del Excel (no se modifica)">{excelTexto(excel)}</span>
+              <span role="cell" className="radar-propuesta">
+                <span className={`radar-estado s-${v.estado}`}>{v.estado === 'confirmado'
+                  ? (v.decision!.valor === 'si' ? 'Confirmado: Sí' : 'Confirmado: No tiene') : TEXTO_ESTADO[v.estado]}</span>
+                {v.decision?.url && <Enlace url={v.decision.url}>{corta(v.decision.url)}</Enlace>}
+                {v.decision?.manual && <span className="radar-chip">Pegado por ti</span>}
+                {!v.decision && v.propuesta && <Evidencia e={v.propuesta}/>}
+                {!v.decision && v.alternativas.slice(0, 2).map((a) => <span key={a.url} className="radar-alternativa">
+                  Otra coincidencia: <Enlace url={a.url}>{corta(a.url)}</Enlace>
+                  <button type="button" {...SIN_FOCO} className="btn-enlace" onClick={() => aceptar(a)}>Usar esta</button></span>)}
+                {!v.decision && !v.propuesta && busqueda && <span className="radar-manual">
+                  Sin coincidencias automáticas.{' '}<Enlace url={busqueda[BUSQUEDA[v.campo]]}>Buscar a mano</Enlace>
+                  {excel.trim() === '1' && <em> · El Excel indica Sí</em>}</span>}
+                {discrepa && <span className="radar-discrepa">Discrepa del Excel</span>}
+              </span>
+              <span role="cell" className="radar-decision">
+                {v.decision ? <button type="button" {...SIN_FOCO} className="btn s" onClick={() => anular(v.campo)}><Undo2 size={14}/> Deshacer</button> : <>
+                  {v.propuesta && <button type="button" {...SIN_FOCO} className="btn s ok" onClick={() => aceptar(v.propuesta!)}
+                    aria-label={`${meta.etiqueta}: confirmar propuesta`}><CheckCircle2 size={14}/> Sí</button>}
+                  {v.propuesta && <button type="button" {...SIN_FOCO} className="btn s" onClick={() => descartar(v.propuesta!)}
+                    aria-label={`${meta.etiqueta}: la coincidencia no corresponde`}><XCircle size={14}/> No es</button>}
+                  <button type="button" {...SIN_FOCO} className="btn s" onClick={() => decidirNo(v.campo)}
+                    aria-label={`${meta.etiqueta}: comprobado que no tiene`}><Ban size={14}/> No tiene</button>
                 </>}
-              </div>
-              <label htmlFor="radar-web-oficial">Web candidata (pégala aquí cuando la identifiques)</label>
-              <div className="radar-web-form">
-                <input id="radar-web-oficial" type="url" value={draft.sitioWeb}
-                  placeholder="https://www.ejemplo.es" autoComplete="off"
-                  onChange={e=>webCambio(e.target.value)}
-                  onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();void analizar();}}}/>
-                <button type="button" className="btn radar-pegar" onClick={()=>void pegarEnlace()}>
-                  Pegar enlace
-                </button>
-                <button type="button" className="btn primario" disabled={!!analizandoId||!draft.sitioWeb.trim()}
-                  onClick={()=>void analizar()}>
-                  {analizandoId===n.id?<LoaderCircle size={16} className="radar-giro"/>:<ScanSearch size={16}/>}
-                  {analizandoId===n.id?'Analizando…':'Analizar web'}
-                </button>
-              </div>
-              <p className="radar-ayuda">El análisis es puntual, sin rastreo masivo: una sola web HTTPS que tú has elegido. Algunas webs pueden bloquear la lectura.</p>
-              {error && <p className="radar-error" role="alert"><AlertCircle size={15}/>{error}</p>}
-            </div>
+              </span>
+            </div>;
+          })}
+        </div>
 
-            <div className="radar-bloque">
-              <h3><span>2</span> Revisar evidencias encontradas</h3>
-              {draft.hallazgo ? <>
-                <div className="radar-modelo">
-                  <div className="radar-modelo-fuente">
-                    <span className="radar-modelo-etiqueta">Fuente consultada</span>
-                    {enlace(draft.hallazgo.urlFinal,'Página analizada')}
-                    {draft.hallazgo.analizadoEn && <small>
-                      Analizada: {new Date(draft.hallazgo.analizadoEn).toLocaleString('es-ES')}
-                    </small>}
-                  </div>
-                  {draft.hallazgo.titulo && <p className="radar-modelo-titulo">
-                    Título de la página: <b>{draft.hallazgo.titulo}</b>
-                  </p>}
-                  {compatibilidad===true && <p className="radar-concordancia">El nombre aparece en el título: indicio orientativo.</p>}
-                  {compatibilidad===false && <p className="radar-discrepancia">
-                    El título no coincide claramente con el nombre del comercio. Comprueba la dirección.
-                  </p>}
-                  <label className="radar-verificar">
-                    <input type="checkbox" checked={draft.webValidada}
-                      onChange={e=>actualizar(n.id,{webValidada:e.target.checked,estado:'pendiente'})}/>
-                    Web oficial verificada por mí
-                  </label>
-                </div>
-                <div className="radar-lote">
-                  <span><b>{porValidar}</b> propuestas sin confirmar</span>
-                  <button type="button" className="btn primario" disabled={porValidar===0}
-                    onClick={confirmarLote}>
-                    <CheckCircle2 size={16}/> Confirmar web y enlaces comprobados
-                  </button>
-                </div>
-                <p className="radar-ayuda">La confirmación agrupada es una decisión tuya: abre los enlaces antes de aceptarlos.</p>
-              </> : <div className="radar-sin-evidencia">
-                <p>Sin análisis automático. Puedes comprobar la web y los perfiles manualmente.</p>
-                {draft.sitioWeb.trim() && <div className="radar-sin-analisis-acciones">
-                  {(() => {
-                    try {
-                      const u=new URL(draft.sitioWeb);
-                      return u.protocol==='https:' && u.hostname.includes('.') ? enlace(u.toString(),'Abrir web candidata') : null;
-                    } catch { return null; }
-                  })()}
-                  <button type="button" className="btn s" onClick={confirmarWebManual}>
-                    {draft.webValidada ? 'Desmarcar web verificada':'He comprobado que es la web oficial'}
-                  </button>
-                </div>}
-              </div>}
-              <div className="radar-redes">
-                <h4>Perfiles sociales <small>Solo los que hayas encontrado y comprobado</small></h4>
-                {candidatos.map(({red,datos})=>{
-                  const Icono=REDES[red].icono;
-                  return <div className="radar-resultado" key={red}>
-                    <Icono size={16} aria-hidden="true"/>
-                    <b>{REDES[red].nombre}</b>
-                    {datos ? <>
-                      {enlace(datos.url,'Abrir perfil propuesto')}
-                      <span className="radar-origen">{datos.origen==='web'?'Enlazado desde la web':'Encontrado manualmente'}</span>
-                      <label><input type="checkbox" checked={draft.redesValidadas[red]===true}
-                        onChange={e=>actualizar(n.id,{
-                          redesValidadas:{...draft.redesValidadas,[red]:e.target.checked},
-                          estado:'pendiente',
-                        })}/> Confirmado</label>
-                    </> : <span className="radar-falta">Sin enlace identificado · No equivale a ausencia</span>}
-                  </div>;
-                })}
-                <details className="radar-manuales">
-                  <summary>Añadir perfiles encontrados manualmente</summary>
-                  <p>Introduce la URL completa del perfil correspondiente a este comercio. No se confirma automáticamente.</p>
-                  {REDES_RADAR.map(red=><div className="radar-manual-fila" key={red}>
-                    <label htmlFor={`radar-manual-${red}`}>{REDES[red].nombre}</label>
-                    <input id={`radar-manual-${red}`} type="url"
-                      placeholder={red==='instagram'?'https://www.instagram.com/negocio/':
-                        red==='facebook'?'https://www.facebook.com/negocio/':'https://x.com/negocio/'}
-                      value={draft.perfilesManuales?.[red]??''}
-                      onChange={e=>actualizarPerfil(red,e.target.value)} />
-                    {!!draft.perfilesManuales?.[red] && !normalizarPerfilRadar(red,draft.perfilesManuales[red]!) &&
-                      <small className="radar-error-inline">Dirección de perfil no válida</small>}
-                  </div>)}
-                </details>
-              </div>
-              <div className="radar-venta">
-                <b>Venta online</b>
-                {draft.hallazgo ? draft.hallazgo.indiciosVenta.length
-                  ? <p>Indicios detectados: {draft.hallazgo.indiciosVenta.join(' · ')}. Comprueba si realmente permite comprar.</p>
-                  : <p>No se han detectado indicios. Esto no significa que no venda online.</p>
-                  : <p>Puedes comprobarla manualmente aunque no haya web analizada.</p>}
-                <label>Comprobación humana
-                  <select value={draft.ventaOnline} onChange={e=>actualizar(n.id,{
-                    ventaOnline:e.target.value as BorradorRadar['ventaOnline'],estado:'pendiente',
-                  })}>
-                    <option value="pendiente">Pendiente</option>
-                    <option value="si">Sí, permite comprar online</option>
-                    <option value="no">No vende online</option>
-                  </select>
-                </label>
-              </div>
-              <details className="radar-excel">
-                <summary>Ver valores originales del Excel (sin cambios)</summary>
-                <div>{CAMPOS_DIGITALES_EXCEL.map(c=><span key={c.clave}>
-                  {c.etiqueta}: <strong>{etiquetaExcel(n.datosExcel[c.clave])}</strong>
-                </span>)}</div>
-              </details>
-            </div>
-          </div>
-          <div className="radar-pie">
-            <button type="button" className={'btn '+(draft.estado==='revisado'?'':'primario')}
-              onClick={terminarInvestigacion}>
-              <CheckCircle2 size={16}/>{draft.estado==='revisado'?'Volver a pendiente':'Marcar investigación revisada y avanzar'}
-            </button>
-            <span>«Revisada» significa investigación realizada, no que todos los datos estén confirmados en el censo.</span>
-            <button className="btn" type="button" disabled={negocios.length<2}
-              onClick={irSiguientePendiente}>Siguiente pendiente <ArrowRight size={15}/></button>
-          </div>
-        </>}
-      </section>
+        <label className="radar-pegar">
+          <ClipboardPaste size={16} aria-hidden="true"/>
+          <span className="visualmente-oculto">Pegar enlace encontrado</span>
+          <input type="url" value={pegado} placeholder="Pega aquí (o Ctrl+V en cualquier parte) un enlace de web, Instagram, Facebook, X o Google Maps: se asigna solo"
+            onChange={(e) => setPegado(e.target.value)}
+            onPaste={(e) => { const t = e.clipboardData.getData('text'); if (usarEnlace(t)) { e.preventDefault(); setPegado(''); } }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); if (usarEnlace(pegado)) setPegado(''); } }}/>
+        </label>
+
+        <div className="radar-pie">
+          <button type="button" {...SIN_FOCO} className="btn primario" onClick={confirmarYAvanzar}>
+            <CheckCircle2 size={16}/>{porComprobar
+              ? (relacionadasSinDecidir ? `Confirmar ${relacionadasSinDecidir} relacionadas · quedan ${porComprobar} por comprobar` : `Quedan ${porComprobar} por comprobar`)
+              : relacionadasSinDecidir ? `Confirmar ${relacionadasSinDecidir} relacionadas y siguiente` : 'Marcar revisado y siguiente'} <kbd>Enter</kbd>
+          </button>
+          {actual.t.estado === 'revisado' && <button type="button" className="btn s" onClick={() => actualizar(actual.n.id, (t) => ({ ...t, estado: 'pendiente' }))}>Reabrir</button>}
+          {deshacer && <button type="button" className="btn s" onClick={deshacerUltimo}><Undo2 size={14}/> Deshacer <kbd>Z</kbd></button>}
+          <span className="radar-atajos"><kbd>1</kbd>–<kbd>6</kbd> decidir campo · <kbd>↑</kbd><kbd>↓</kbd> negocio · <kbd>G</kbd> Maps · <kbd>W</kbd> web · <kbd>I</kbd> Instagram · <kbd>F</kbd> Facebook · <kbd>Ctrl</kbd>+<kbd>V</kbd> pegar</span>
+        </div>
+        <p className="radar-mensaje" role="status" aria-live="polite">{deshacer?.texto ?? ''} {mensaje}</p>
+        {actual.r?.avisos.length ? <p className="radar-falta">Avisos: {actual.r.avisos.join(' · ')}</p> : null}
+      </section> : <p>No hay negocios ocupados para este piloto.</p>}
     </div>
-    {avisoLocal && <p role="alert" className="radar-error">El navegador impidió guardar el borrador local. Exporta los resultados antes de cerrar.</p>}
+    {errorGuardado && <p role="alert" className="radar-error">El navegador impidió guardar el borrador. Exporta una copia antes de cerrar.</p>}
   </main>;
+}
+
+function Evidencia({ e }: { e: EvidenciaRadar }) {
+  return <span className="radar-evidencia">
+    <Enlace url={e.url}>{corta(e.url)}</Enlace>
+    {e.detalle && <span className="radar-detalle">{e.detalle}</span>}
+    <span className="radar-criterios">
+      {/* «Declarado en OpenStreetMap» ya se ve en el enlace de procedencia. */}
+      {e.criterios.filter((c) => c !== 'osm').map((c) => <span key={c} className={`radar-chip c-${c}`}>{TEXTO_CRITERIO[c]}</span>)}
+      {e.procedencias.map((p) => <span key={p.fuente + p.origen} className="radar-procedencia">
+        <Enlace url={p.origen} titulo={`Comprobar en la fuente: ${p.origen}`}>{TEXTO_FUENTE[p.fuente]}</Enlace></span>)}
+    </span>
+    {nivelEvidencia(e) === 'encontrado' && e.campo !== 'ventaOnline' && !e.criterios.includes('marca') &&
+      <span className="radar-por-que">Falta {e.criterios.includes('nombre') ? 'la calle o el municipio' : 'el nombre'} para considerarlo relacionado.</span>}
+  </span>;
 }
