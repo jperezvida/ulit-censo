@@ -80,8 +80,8 @@ describe('IT1 · franquicias, interacción teclado y aceptación masiva',()=>{
     fireEvent.keyDown(document.body,{key:'Enter'});
     await waitFor(()=>expect(screen.getByText('Panadería Ficticia')).toBeInTheDocument());
     fireEvent.keyDown(document.body,{key:'Delete'});
-    await waitFor(()=>expect(screen.getByRole('button',{name:/2 · Completar franquicias/})).toHaveTextContent('2 pendientes'));
-    fireEvent.click(screen.getByRole('button',{name:/2 · Completar franquicias/}));
+    await waitFor(()=>expect(screen.getByRole('button',{name:/Completar franquicias/})).toHaveTextContent('2 pendientes'));
+    fireEvent.click(screen.getByRole('button',{name:/Completar franquicias/}));
     expect(screen.getByText('Panadería Ficticia')).toBeInTheDocument();
     expect(document.activeElement).toHaveAttribute('aria-label','Paso 2 · Completar');
     fireEvent.keyDown(document.activeElement!,{key:'Delete'});
@@ -113,7 +113,7 @@ describe('IT1 · franquicias, interacción teclado y aceptación masiva',()=>{
   it('después de cambiar con ratón se recupera el foco y funcionan Enter/Supr',async()=>{
     render(<Pantalla/>);
     await waitFor(()=>expect(screen.getByRole('button',{name:/Correcto/})).toBeEnabled());
-    const paso2 = screen.getByRole('button',{name:/2 · Completar franquicias/});
+    const paso2 = screen.getByRole('button',{name:/Completar franquicias/});
     fireEvent.mouseDown(paso2);
     fireEvent.click(paso2);
     const ficha = screen.getByRole('region',{name:'Paso 2 · Completar'});
@@ -144,7 +144,7 @@ describe('IT1 · franquicias, interacción teclado y aceptación masiva',()=>{
     await waitFor(()=>expect(guardarFranquiciaIT1).toHaveBeenCalledWith(
       {accion:'aceptar-todas',ids:['reg-11','reg-22']},20));
     await waitFor(()=>expect(screen.getByRole('status',{name:'Estado del guardado'})).toHaveTextContent('2 de 3 confirmadas'));
-    fireEvent.click(screen.getByRole('button',{name:/2 · Completar franquicias/}));
+    fireEvent.click(screen.getByRole('button',{name:/Completar franquicias/}));
     expect(screen.getByText('Peluquería Ficticia')).toBeInTheDocument();
     expect(screen.getByRole('status',{name:'Estado del guardado'})).toHaveTextContent('1 pendientes por decidir');
   });
