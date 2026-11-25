@@ -10,6 +10,9 @@ import type { CambioRevisionGeneralReal } from '../../store/revisionGeneralReal'
 import { guardarCategoriaIT1, type CambioCategoriaIT1 } from '../../store/categoriaIT1Real';
 import { crearColaCategoriaIT1, type DecisionCategoriaIT1,
   type EstadoColaCategoriaIT1 } from '../../store/colaCategoriaIT1';
+import { crearColaFranquiciaIT1, type EstadoColaFranquiciaIT1 } from '../../store/colaFranquiciaIT1';
+import { guardarFranquiciaIT1, type CambioFranquiciaIT1 } from '../../store/franquiciaIT1Real';
+import type { DecisionFranquiciaIT1 } from '../../domain/revisionFranquiciaIT1';
 import { verificarEspacio, personaEspacio } from '../../domain/espacios';
 import type { BaseDatos } from '../../domain/db';
 import type { Rol } from '../../domain/types';
@@ -41,11 +44,14 @@ export default function AplicacionUnica() {
   const [estadoColaCategoriaIT1, setEstadoColaCategoriaIT1] = useState<EstadoColaCategoriaIT1>({
     pendientes: [], error: '',
   });
+  const colaFranquiciaRef = useRef<ReturnType<typeof crearColaFranquiciaIT1> | null>(null);
+  const [estadoColaFranquiciaIT1, setEstadoColaFranquiciaIT1] = useState<EstadoColaFranquiciaIT1>({ pendientes:[], error:'' });
 
   // No permitir cerrar o recargar la pestaña con operaciones todavía sin verificar.
   useEffect(() => {
     const aviso = (event: BeforeUnloadEvent) => {
-      if (!colaCategoriaRef.current?.consultar().pendientes.length) return;
+      if (!colaCategoriaRef.current?.consultar().pendientes.length &&
+          !colaFranquiciaRef.current?.consultar().pendientes.length) return;
       event.preventDefault();
       event.returnValue = '';
     };
@@ -54,8 +60,9 @@ export default function AplicacionUnica() {
   }, []);
 
   const recargar = useCallback(async () => {
-    if (colaCategoriaRef.current?.consultar().pendientes.length) {
-      throw new Error('Hay categorías pendientes de guardar. No recargues hasta confirmarlas.');
+    if (colaCategoriaRef.current?.consultar().pendientes.length ||
+        colaFranquiciaRef.current?.consultar().pendientes.length) {
+      throw new Error('Hay decisiones pendientes de guardar. No recargues hasta confirmarlas.');
     }
     const cliente = clienteServidor();
     if (!cliente) throw new Error('No está configurada la conexión institucional a Supabase.');
@@ -90,6 +97,7 @@ export default function AplicacionUnica() {
       throw new Error('La cuenta no tiene acceso a un espacio auténtico verificable.');
     }
     colaCategoriaRef.current?.sincronizarVersion(info.version);
+    colaFranquiciaRef.current?.sincronizarVersion(info.version);
     setLectura({ db, rol: info.rol as Rol, personaId: info.personaId, version: info.version });
   }, []);
 
@@ -162,7 +170,8 @@ export default function AplicacionUnica() {
   }, []);
 
   const encolarCategoriaIT1 = useCallback((decision: DecisionCategoriaIT1): boolean => {
-    if (!lectura || !['administrador', 'coordinador'].includes(lectura.rol)) return false;
+    if (!lectura || !['administrador', 'coordinador'].includes(lectura.rol) ||
+      colaFranquiciaRef.current?.consultar().pendientes.length) return false;
     if (!colaCategoriaRef.current) {
       colaCategoriaRef.current = crearColaCategoriaIT1(
         lectura.version, guardarCategoriaIT1, aplicarRevisionCategoriaReal, setEstadoColaCategoriaIT1,
@@ -175,6 +184,39 @@ export default function AplicacionUnica() {
     colaCategoriaRef.current?.reintentar();
   }, []);
 
+  // Las dos RPC comparten una versión global. Nunca permitir colas paralelas en esta pestaña.
+  const aplicarRevisionFranquiciaReal = useCallback((cambio: CambioFranquiciaIT1) => {
+    setLectura((anterior) => {
+      if (!anterior || anterior.version + 1 !== cambio.version ||
+          !cambio.revisiones.every((r) => !!anterior.db.registros[r.registroId])) return anterior;
+      const revisiones = { ...(anterior.db.revisionesFranquiciaRegistros ?? {}) };
+      for (const r of cambio.revisiones) revisiones[r.registroId] = r;
+      return { ...anterior, version: cambio.version,
+        db: { ...anterior.db, revisionesFranquiciaRegistros: revisiones } };
+    });
+  }, []);
+
+  const encolarFranquiciaIT1 = useCallback((decision: DecisionFranquiciaIT1): boolean => {
+    if (!lectura || !['administrador','coordinador'].includes(lectura.rol) ||
+        colaCategoriaRef.current?.consultar().pendientes.length) return false;
+    if (!colaFranquiciaRef.current) {
+      colaFranquiciaRef.current = crearColaFranquiciaIT1(
+        lectura.version, guardarFranquiciaIT1, aplicarRevisionFranquiciaReal, setEstadoColaFranquiciaIT1);
+    }
+    return colaFranquiciaRef.current.encolar(decision);
+  }, [lectura, aplicarRevisionFranquiciaReal]);
+
+  const reintentarColaFranquiciaIT1 = useCallback(() => { colaFranquiciaRef.current?.reintentar(); }, []);
+
+  // Sincronizar una cola inactiva cuando la otra obtiene una nueva versión del servidor.
+  useEffect(() => {
+    if (!lectura) return;
+    if (!colaCategoriaRef.current?.consultar().pendientes.length)
+      colaCategoriaRef.current?.sincronizarVersion(lectura.version);
+    if (!colaFranquiciaRef.current?.consultar().pendientes.length)
+      colaFranquiciaRef.current?.sincronizarVersion(lectura.version);
+  }, [lectura?.version]);
+
   const actual = lectura?.db.campanas[campanaId] ? campanaId :
     Object.values(lectura?.db.campanas ?? {}).sort((a,b) => b.anio - a.anio)[0]?.id ?? '';
   const fuente = useMemo(() => lectura && actual ? ({
@@ -182,10 +224,12 @@ export default function AplicacionUnica() {
     roles: [lectura.rol] as Rol[], soloLectura: true as const,
     versionReal: lectura.version, elegirCampana: setCampanaId, recargarReal: recargar, aplicarCorreccionReal, aplicarRevisionCategoriaReal,
     estadoColaCategoriaIT1, encolarCategoriaIT1, reintentarColaCategoriaIT1,
+    estadoColaFranquiciaIT1, encolarFranquiciaIT1, reintentarColaFranquiciaIT1,
     // Ninguna escritura genérica sobre datos auténticos. IT1/2026 utiliza RPC específica.
     aplicar: () => false,
   }) : null, [lectura, actual, recargar, aplicarCorreccionReal, aplicarRevisionCategoriaReal,
-    estadoColaCategoriaIT1, encolarCategoriaIT1, reintentarColaCategoriaIT1]);
+    estadoColaCategoriaIT1, encolarCategoriaIT1, reintentarColaCategoriaIT1,
+    estadoColaFranquiciaIT1, encolarFranquiciaIT1, reintentarColaFranquiciaIT1]);
 
   if (cargando || !fuente) return <PantallaAcceso
     cargando={cargando} faseCarga={faseCarga} sinSesion={sinSesion} error={error}
