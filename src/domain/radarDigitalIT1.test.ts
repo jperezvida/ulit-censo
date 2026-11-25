@@ -3,6 +3,7 @@ import { baseVacia } from './db';
 import {
   negociosPilotoRadar, interpretarPresenciaExcel, enlacesBusquedaRadar,
   leerBorradoresRadar, guardarBorradoresRadar, resumenPilotoRadar,
+  normalizarPerfilRadar, enlaceCandidatoRadar, validarHallazgosRadar, nombreCompatibleRadar,
 } from './radarDigitalIT1';
 import { extraerEnlacesPublicos } from './radarAnalisisWeb';
 
@@ -102,5 +103,58 @@ describe('Radar Digital: extracción de enlaces reales, sin afirmaciones automá
     const r=extraerEnlacesPublicos('<p>Consulte nuestra web</p>','https://comercio-ficticio.es/');
     expect(r.redes).toEqual({});
     expect(r.indiciosVenta).toEqual([]);
+  });
+});
+
+describe('Radar · modelo de evidencia y confirmación',()=>{
+  it('distingue indicios de la web, perfiles manuales y decisiones validadas',()=>{
+    const b={
+      sitioWeb:'https://ejemplo.es/',
+      hallazgo:{urlFinal:'https://ejemplo.es/',titulo:'Ejemplo peluquería',
+        analizadoEn:'2026-11-25T12:00:00Z',
+        redes:{instagram:'https://www.instagram.com/ficticia/'},
+        indiciosVenta:['Tecnología de tienda (Shopify)']},
+      perfilesManuales:{facebook:'https://www.facebook.com/ficticia/?ref=hl'},
+      webValidada:false,redesValidadas:{},ventaOnline:'pendiente' as const,
+      estado:'pendiente' as const,actualizado:'',
+    };
+    expect(enlaceCandidatoRadar(b,'instagram')?.origen).toBe('web');
+    expect(enlaceCandidatoRadar(b,'facebook')?.origen).toBe('manual');
+    expect(enlaceCandidatoRadar(b,'twitter')).toBeNull();
+    expect(b.redesValidadas).toEqual({});
+    const val=validarHallazgosRadar(b);
+    expect(val.webValidada).toBe(true);
+    expect(val.redesValidadas).toMatchObject({instagram:true,facebook:true});
+    expect(val.redesValidadas?.twitter).toBeUndefined();
+    expect(val.estado).toBe('pendiente');
+    expect(b.webValidada).toBe(false);
+  });
+  it('bloquea enlaces de compartir, javascript y sitios ajenos a la plataforma',()=>{
+    expect(normalizarPerfilRadar('instagram','javascript:alert(1)')).toBeNull();
+    expect(normalizarPerfilRadar('instagram','https://www.instagram.com/p/foto')).toBeNull();
+    expect(normalizarPerfilRadar('facebook','https://facebook.com/sharer/sharer.php?u=x')).toBeNull();
+    expect(normalizarPerfilRadar('instagram','https://instagram.com.evil.es/tienda')).toBeNull();
+    expect(normalizarPerfilRadar('instagram','http://instagram.com/tienda')).toBeNull();
+    expect(normalizarPerfilRadar('facebook','https://www.facebook.com/tienda?ref=nav'))
+      .toBe('https://www.facebook.com/tienda');
+  });
+  it('detecta coincidencias de título como pista, sin convertirlas en validación',()=>{
+    expect(nombreCompatibleRadar('Peluquería Las Flores','Las Flores · Peluquería')).toBe(true);
+    expect(nombreCompatibleRadar('Peluquería Las Flores','Inicio | Otro Comercio')).toBe(false);
+    expect(nombreCompatibleRadar('Las Flores','')).toBeNull();
+  });
+  it('sanea enlaces conservados de una sesión anterior y nunca revalida por cargar el borrador',()=>{
+    const viejo={r1:{
+      sitioWeb:'https://ejemplo.es/',webValidada:false,
+      hallazgo:{urlFinal:'https://ejemplo.es/',
+        redes:{instagram:'javascript:alert(1)',facebook:'https://www.facebook.com/tienda/'},
+        indiciosVenta:[]},
+      redesValidadas:{},ventaOnline:'pendiente',estado:'pendiente',actualizado:'',
+    }};
+    localStorage.setItem('ulit-censo-radar-it1-piloto-v1:c26',JSON.stringify(viejo));
+    const c=leerBorradoresRadar('c26').r1;
+    expect(c.hallazgo?.redes.instagram).toBeUndefined();
+    expect(c.hallazgo?.redes.facebook).toBe('https://www.facebook.com/tienda/');
+    expect(c.webValidada).toBe(false);
   });
 });
