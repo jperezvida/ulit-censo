@@ -72,10 +72,10 @@ begin
   end if;
   if p_ids is null or pg_catalog.array_length(p_ids,1) is null
     or pg_catalog.array_length(p_ids,1) > 200
-    or (select count(distinct x) from pg_catalog.unnest(p_ids) x) <> pg_catalog.array_length(p_ids,1)
-    or exists(select 1 from pg_catalog.unnest(p_ids) x where x is null or length(x) not between 5 and 350)
+    or (select count(distinct a.id) from pg_catalog.unnest(p_ids) as a(id)) <> pg_catalog.array_length(p_ids,1)
+    or exists(select 1 from pg_catalog.unnest(p_ids) as a(id) where a.id is null or length(a.id) not between 5 and 350)
     or (p_accion <> 'aceptar-todas' and pg_catalog.array_length(p_ids,1) <> 1)
-    or (p_accion='resolver' and p_respuesta is distinct from all(array['si','no']))
+    or (p_accion='resolver' and (p_respuesta is null or p_respuesta not in ('si','no')))
     or (p_accion <> 'resolver' and p_respuesta is not null) then
     raise exception 'ULIT Censo: decisión de franquicia inválida'
       using errcode='22023';
