@@ -8,6 +8,7 @@ import { indicePertenencia } from './ambito';
 import { catalogoDeCampana, clasificar } from './clasificacion';
 import { AVISO_SIN_CLASIFICAR, avisosClasificacion } from './avisosClasificacion';
 import { revisionFranquicia } from './franquicias';
+import { prepararRevisionCategoriaIT1 } from './revisionCategoriaIT1';
 import { problemasDigitales, type EstadoDigital } from './digital';
 import { estadoTramo, progresoItinerario } from './planificacion';
 import type { ClasificacionCampana, Confianza, EstadoOficinaItinerario, FranquiciaCampana, Id, Itinerario, LocalFisico, Negocio, Observacion, Revision } from './types';
@@ -189,7 +190,9 @@ export interface ResumenItinerario {
   cierre?: { accion: string; porId: Id; fecha: string; motivo?: string };
   calles: { total: number; completadas: number; sinLocales: number; enCurso: number; pendientes: number; parciales: number };
   campo: Contador; // locales registrados frente a pendientes de visita
-  categorizacion: Contador; // ocupados registrados
+  categorizacion: Contador; // locales físicos ocupados registrados; estado de Oficina independiente
+  /** Filas ocupadas del Excel IT1 revisadas y confirmadas por RPC. Nunca valida locales físicos. */
+  categorizacionExcel?: Contador;
   digital: Contador; // ocupados registrados
   franquicias: Contador; // ocupados registrados
   incidencias: number;
@@ -226,7 +229,17 @@ export function resumenDeFilas(filas: FilaOficina[]) {
 /** Progreso independiente de cada itinerario de la campaña (y de lo que queda fuera de ellos). */
 export function resumenItinerarios(db: BaseDatos, campanaId: Id, filas: FilaOficina[]): ResumenItinerario[] {
   const out: ResumenItinerario[] = [];
-  for (const it of itinerariosDe(db, campanaId)) {
+  const itinerarios = itinerariosDe(db, campanaId);
+  // La revisión IT1 se guarda POR FILA de Excel, incluso sin local vinculado. El seguimiento
+  // anterior de Oficina es POR LOCAL. Mostrar ambos, sin trasladar automáticamente estados.
+  const registrosIT1 = db.campanas[campanaId]?.anio === 2026
+    && itinerarios.some((it) => it.codigo === 'IT1')
+    ? prepararRevisionCategoriaIT1(db, campanaId) : [];
+  const categorizacionExcel: Contador | undefined = registrosIT1.length ? {
+    hechos: registrosIT1.filter((f) => f.confirmada).length,
+    pendientes: registrosIT1.filter((f) => !f.confirmada).length,
+  } : undefined;
+  for (const it of itinerarios) {
     const propias = filas.filter((f) => f.itinerarioIds.includes(it.id));
     const p = progresoItinerario(db, it);
     const est = db.oficinaItinerarios[it.id];
@@ -238,6 +251,7 @@ export function resumenItinerarios(db: BaseDatos, campanaId: Id, filas: FilaOfic
         pendientes: p.porEstado.pendiente, parciales: p.porEstado['parcial-incidencias'],
       },
       ...resumenDeFilas(propias),
+      ...(it.codigo === 'IT1' && categorizacionExcel ? { categorizacionExcel } : {}),
     });
   }
   const fuera = filas.filter((f) => !f.itinerarioIds.length);

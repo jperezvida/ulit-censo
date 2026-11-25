@@ -92,10 +92,19 @@ function TarjetaItinerario({ r, quien, onAbrir, onCategorizarIT1 }: { r: Resumen
         {r.calles.enCurso ? ` · ${r.calles.enCurso} en curso` : ''}{r.calles.parciales ? ` · ${r.calles.parciales} parciales` : ''}
       </div>
       <Progreso titulo="Trabajo de campo" c={r.campo} etiquetaHechos="registrados" icono={<Store size={13} />} onClick={r.campo.pendientes ? () => onAbrir('?tarea=todos&filtro=sin-visitar') : undefined} />
-      <Progreso titulo="Categorización" c={r.categorizacion} icono={<Tags size={13} />}
+      {r.categorizacionExcel ? <>
+        <Progreso titulo="Categorización del Excel" c={r.categorizacionExcel} icono={<Tags size={13} />}
+          onClick={onCategorizarIT1} />
+        <div className="muted" style={{ fontSize: 12, padding: '3px 0 9px' }}
+          title="La categorización revisada por fila del Excel no equivale a validar un local físico ni resuelve las filas sin vincular.">
+          Revisión de locales físicos: <b>{fmt(r.categorizacion.hechos)} de {fmt(r.categorizacion.hechos + r.categorizacion.pendientes)}</b> con revisión de Oficina
+          {' · '}<button type="button" className="btn s fantasma" style={{ padding: '0 3px', fontSize: 12 }}
+            onClick={() => onAbrir('?tarea=categorizacion&filtro=pendientes')}>Ver seguimiento de locales</button>
+        </div>
+      </> : <Progreso titulo="Categorización" c={r.categorizacion} icono={<Tags size={13} />}
         onClick={() => r.codigo === 'IT1'
           ? onCategorizarIT1()
-          : onAbrir('?tarea=categorizacion&filtro=pendientes')} />
+          : onAbrir('?tarea=categorizacion&filtro=pendientes')} />}
       <Progreso titulo="Presencia digital" c={r.digital} icono={<Globe size={13} />} onClick={() => onAbrir('?tarea=digital&filtro=pendientes')} />
       <Progreso titulo="Franquicias" c={r.franquicias} icono={<BadgeCheck size={13} />} onClick={() => onAbrir('?tarea=franquicias&filtro=pendientes')} />
       <button className="ofi-fila-dato ofi-incid" onClick={() => onAbrir('?tarea=incidencias&filtro=pendientes')} disabled={!r.incidencias && !r.errores}>

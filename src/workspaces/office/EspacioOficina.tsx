@@ -122,6 +122,14 @@ export default function EspacioOficina({ municipal = false }: { municipal?: bool
           </div>
         )}
 
+        {it?.codigo === 'IT1' && campana.anio === 2026 && soloLecturaReal && tarea === 'categorizacion' && (
+          <div className="t-info" role="note">
+            Aquí se muestran las revisiones de <b>locales físicos</b>. Las categorías revisadas por fila del Excel IT1
+            se conservan por separado y no validan un local sin una correspondencia acreditada.
+            {' '}<Link to="/oficina/categoria-it1">Ver categorización del Excel IT1</Link>.
+          </div>
+        )}
+
         <nav className="ofi-tareas" aria-label="Tareas">
           {TAREAS.map((t) => {
             const c = cuentas[t.id];
