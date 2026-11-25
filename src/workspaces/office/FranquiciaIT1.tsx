@@ -28,7 +28,8 @@ export default function FranquiciaIT1() {
   const [paso, setPaso] = useState<Paso>(1);
   const tarjeta = useRef<HTMLElement>(null);
   // El foco vuelve a la ficha: Enter/Supr funcionan aunque se cambie de pestaña con un clic.
-  useEffect(() => { tarjeta.current?.focus({ preventScroll: true }); }, [paso]);
+  // También al recuperar una ficha ya revisada desde el buscador.
+  useEffect(() => { tarjeta.current?.focus({ preventScroll: true }); }, [paso, viendo]);
   const [viendo, setViendo] = useState<string | null>(null);
   const [confirmandoTodas, setConfirmandoTodas] = useState(false);
   const [saltados, setSaltados] = useState<string[]>([]);
