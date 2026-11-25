@@ -28,13 +28,15 @@ export function negociosPilotoRadar(db: BaseDatos, campanaId: string): NegocioPi
   return auditarRevisionGeneral(db, campanaId).filas
     .filter((f) => f.itinerario === 'IT1' && f.estado === 'ocupado' && !!f.nombre.trim())
     .slice(0,10)
-    .map((f) => ({
-      id: f.id, nombre: f.nombre, direccion: f.direccion, numero: f.numero,
-      fila: f.registro.fila,
-      datosExcel: Object.fromEntries(CAMPOS_DIGITALES_EXCEL.map((campo) =>
-        [campo.clave, datoRevisionGeneral(f.registro, campo.clave, f.correccion?.valores)]))
-        as NegocioPiloto['datosExcel'],
-    }));
+    .map((f) => {
+      const datosExcel = Object.fromEntries(CAMPOS_DIGITALES_EXCEL.map((campo) =>
+        [campo.clave, datoRevisionGeneral(f.registro, campo.clave, f.correccion?.valores)],
+      )) as NegocioPiloto['datosExcel'];
+      return {
+        id: f.id, nombre: f.nombre, direccion: f.direccion, numero: f.numero,
+        fila: f.registro.fila, datosExcel,
+      };
+    });
 }
 
 export function interpretarPresenciaExcel(valor: string): 'si' | 'no' | 'sin-dato' {
