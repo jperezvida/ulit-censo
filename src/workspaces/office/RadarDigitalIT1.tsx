@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowLeft, ArrowRight, CheckCircle2, ExternalLink, Globe2, Instagram, Facebook,
-  Search, ScanSearch, LoaderCircle, ShieldCheck, FileDown, AlertCircle,
+  ScanSearch, LoaderCircle, ShieldCheck, FileDown, AlertCircle,
 } from 'lucide-react';
 import { useContexto } from '../../store/contexto';
 import { useFuenteOficina } from '../../store/fuenteOficina';
