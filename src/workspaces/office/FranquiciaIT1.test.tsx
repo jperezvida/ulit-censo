@@ -14,6 +14,7 @@ vi.mock('../../store/franquiciaIT1Real',()=>({
 }));
 function fixture(){
   const db=baseVacia();
+  db.municipios.medina={id:'medina',nombre:'Villa Ficticia',provincia:'Valladolid',fuenteCallejero:'simulado'};
   db.campanas.c26={id:'c26',municipioId:'medina',anio:2026,nombre:'Censo 2026',
     tipo:'actualizacion',periodo:{inicio:'2026-01-01'},ambitoCalleIds:[],ampliacionCalleIds:[],
     estados:{planificacion:'pendiente',campo:'pendiente',revision:'pendiente',validacion:'pendiente'},
