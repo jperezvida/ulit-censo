@@ -248,48 +248,99 @@ export default function RadarDigitalIT1() {
 
             <div className="radar-bloque">
               <h3><span>2</span> Revisar evidencias encontradas</h3>
-              {!draft.hallazgo
-                ? <p className="radar-sin-evidencia">Aún no hay resultados de análisis. También puedes investigar manualmente con los enlaces de búsqueda.</p>
-                : <>
-                  <div className="radar-resultado">
-                    <Globe2 size={16}/>
+              {draft.hallazgo ? <>
+                <div className="radar-modelo">
+                  <div className="radar-modelo-fuente">
+                    <span className="radar-modelo-etiqueta">Fuente consultada</span>
                     {enlace(draft.hallazgo.urlFinal,'Página analizada')}
-                    <label><input type="checkbox" checked={draft.webValidada}
+                    {draft.hallazgo.analizadoEn && <small>
+                      Analizada: {new Date(draft.hallazgo.analizadoEn).toLocaleString('es-ES')}
+                    </small>}
+                  </div>
+                  {draft.hallazgo.titulo && <p className="radar-modelo-titulo">
+                    Título de la página: <b>{draft.hallazgo.titulo}</b>
+                  </p>}
+                  {compatibilidad===true && <p className="radar-concordancia">El nombre aparece en el título: indicio orientativo.</p>}
+                  {compatibilidad===false && <p className="radar-discrepancia">
+                    El título no coincide claramente con el nombre del comercio. Comprueba la dirección.
+                  </p>}
+                  <label className="radar-verificar">
+                    <input type="checkbox" checked={draft.webValidada}
                       onChange={e=>actualizar(n.id,{webValidada:e.target.checked,estado:'pendiente'})}/>
-                      Web oficial verificada por mí</label>
-                  </div>
-                  {REDES_RADAR.map(red=>{
-                    const item=draft.hallazgo?.redes[red];
-                    const Icono=REDES[red].icono;
-                    return <div className="radar-resultado" key={red}>
-                      <Icono size={16}/>
-                      <b>{REDES[red].nombre}</b>
-                      {item ? <>
-                        {enlace(item,'Perfil enlazado desde la web')}
-                        <label><input type="checkbox" checked={draft.redesValidadas[red]===true}
-                          onChange={e=>actualizar(n.id,{
-                            redesValidadas:{...draft.redesValidadas,[red]:e.target.checked},
-                            estado:'pendiente',
-                          })}/> Confirmado</label>
-                      </> : <span className="radar-falta">No aparece enlazado; no significa que no exista</span>}
-                    </div>;
-                  })}
-                  <div className="radar-venta">
-                    <b>Posible venta online</b>
-                    {draft.hallazgo.indiciosVenta.length
-                      ? <p>{draft.hallazgo.indiciosVenta.join(' · ')}</p>
-                      : <p>No se han detectado indicios; no implica que no venda.</p>}
-                    <label>Comprobación humana
-                      <select value={draft.ventaOnline} onChange={e=>actualizar(n.id,{
-                        ventaOnline:e.target.value as BorradorRadar['ventaOnline'],estado:'pendiente',
-                      })}>
-                        <option value="pendiente">Pendiente</option>
-                        <option value="si">Sí, permite comprar online</option>
-                        <option value="no">No vende online</option>
-                      </select>
-                    </label>
-                  </div>
-                </>}
+                    Web oficial verificada por mí
+                  </label>
+                </div>
+                <div className="radar-lote">
+                  <span><b>{porValidar}</b> propuestas sin confirmar</span>
+                  <button type="button" className="btn primario" disabled={porValidar===0}
+                    onClick={confirmarLote}>
+                    <CheckCircle2 size={16}/> Confirmar web y enlaces comprobados
+                  </button>
+                </div>
+                <p className="radar-ayuda">La confirmación agrupada es una decisión tuya: abre los enlaces antes de aceptarlos.</p>
+              </> : <div className="radar-sin-evidencia">
+                <p>Sin análisis automático. Puedes comprobar la web y los perfiles manualmente.</p>
+                {draft.sitioWeb.trim() && <div className="radar-sin-analisis-acciones">
+                  {(() => {
+                    try {
+                      const u=new URL(draft.sitioWeb);
+                      return u.protocol==='https:' && u.hostname.includes('.') ? enlace(u.toString(),'Abrir web candidata') : null;
+                    } catch { return null; }
+                  })()}
+                  <button type="button" className="btn s" onClick={confirmarWebManual}>
+                    {draft.webValidada ? 'Desmarcar web verificada':'He comprobado que es la web oficial'}
+                  </button>
+                </div>}
+              </div>}
+              <div className="radar-redes">
+                <h4>Perfiles sociales <small>Solo los que hayas encontrado y comprobado</small></h4>
+                {candidatos.map(({red,datos})=>{
+                  const Icono=REDES[red].icono;
+                  return <div className="radar-resultado" key={red}>
+                    <Icono size={16} aria-hidden="true"/>
+                    <b>{REDES[red].nombre}</b>
+                    {datos ? <>
+                      {enlace(datos.url,'Abrir perfil propuesto')}
+                      <span className="radar-origen">{datos.origen==='web'?'Enlazado desde la web':'Encontrado manualmente'}</span>
+                      <label><input type="checkbox" checked={draft.redesValidadas[red]===true}
+                        onChange={e=>actualizar(n.id,{
+                          redesValidadas:{...draft.redesValidadas,[red]:e.target.checked},
+                          estado:'pendiente',
+                        })}/> Confirmado</label>
+                    </> : <span className="radar-falta">Sin enlace identificado · No equivale a ausencia</span>}
+                  </div>;
+                })}
+                <details className="radar-manuales">
+                  <summary>Añadir perfiles encontrados manualmente</summary>
+                  <p>Introduce la URL completa del perfil correspondiente a este comercio. No se confirma automáticamente.</p>
+                  {REDES_RADAR.map(red=><div className="radar-manual-fila" key={red}>
+                    <label htmlFor={`radar-manual-${red}`}>{REDES[red].nombre}</label>
+                    <input id={`radar-manual-${red}`} type="url"
+                      placeholder={red==='instagram'?'https://www.instagram.com/negocio/':
+                        red==='facebook'?'https://www.facebook.com/negocio/':'https://x.com/negocio/'}
+                      value={draft.perfilesManuales?.[red]??''}
+                      onChange={e=>actualizarPerfil(red,e.target.value)} />
+                    {!!draft.perfilesManuales?.[red] && !normalizarPerfilRadar(red,draft.perfilesManuales[red]!) &&
+                      <small className="radar-error-inline">Dirección de perfil no válida</small>}
+                  </div>)}
+                </details>
+              </div>
+              <div className="radar-venta">
+                <b>Venta online</b>
+                {draft.hallazgo ? draft.hallazgo.indiciosVenta.length
+                  ? <p>Indicios detectados: {draft.hallazgo.indiciosVenta.join(' · ')}. Comprueba si realmente permite comprar.</p>
+                  : <p>No se han detectado indicios. Esto no significa que no venda online.</p>
+                  : <p>Puedes comprobarla manualmente aunque no haya web analizada.</p>}
+                <label>Comprobación humana
+                  <select value={draft.ventaOnline} onChange={e=>actualizar(n.id,{
+                    ventaOnline:e.target.value as BorradorRadar['ventaOnline'],estado:'pendiente',
+                  })}>
+                    <option value="pendiente">Pendiente</option>
+                    <option value="si">Sí, permite comprar online</option>
+                    <option value="no">No vende online</option>
+                  </select>
+                </label>
+              </div>
               <details className="radar-excel">
                 <summary>Ver valores originales del Excel (sin cambios)</summary>
                 <div>{CAMPOS_DIGITALES_EXCEL.map(c=><span key={c.clave}>
