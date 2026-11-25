@@ -170,8 +170,8 @@ describe('IT1 · coherencia de progreso entre Excel y locales físicos', () => {
     const carniceria = categoriasDelCatalogo(
       OPCIONES_CATEGORIAS_2026.find((o) => o.etiqueta.includes('Carnicería'))!.id);
     for (const f of prepararRevisionCategoriaIT1(db, 'c26')) {
-      db.revisionesCategoriaRegistros![f.id] = {
-        id: f.id, registroId: f.id, campanaId: 'c26',
+      db.revisionesCategoriaRegistros![f.fila.id] = {
+        id: f.fila.id, registroId: f.fila.id, campanaId: 'c26',
         estado: f.tienePropuesta ? 'aceptada' : 'corregida',
         valores: f.tienePropuesta ? f.existentes : carniceria,
         porId: 'responsable', fecha: '2026-11-25T10:00:00Z',
