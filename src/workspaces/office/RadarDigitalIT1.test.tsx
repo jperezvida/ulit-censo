@@ -90,7 +90,7 @@ describe('Radar Digital IT1: piloto sin escritura al censo',()=>{
     fireEvent.click(screen.getByRole('button',{name:'Analizar web'}));
     const lote=await screen.findByRole('button',{name:/Confirmar web y enlaces comprobados/});
     expect(lote).toBeEnabled();
-    expect(screen.getByText(/coincidencia/i)).toBeInTheDocument();
+    expect(screen.getByText(/nombre aparece en el título/i)).toBeInTheDocument();
     fireEvent.click(lote);
     await waitFor(()=>{
       const d=JSON.parse(localStorage.getItem('ulit-censo-radar-it1-piloto-v1:c26')!);
