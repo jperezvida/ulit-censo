@@ -49,7 +49,7 @@ export default function PanelItinerarios() {
 
       <div className="ofi-tarjetas">
         {its.map((r) => (
-          <TarjetaItinerario key={r.itinerarioId} r={r} quien={r.cierre ? db.personas[r.cierre.porId]?.nombre ?? r.cierre.porId : undefined} onAbrir={(q) => nav(`/oficina/it/${r.itinerarioId}${q}`)} onCategorizarIT1={() => nav('/oficina/categoria-it1')} onFranquiciaIT1={() => nav('/oficina/franquicia-it1')} />
+          <TarjetaItinerario key={r.itinerarioId} r={r} quien={r.cierre ? db.personas[r.cierre.porId]?.nombre ?? r.cierre.porId : undefined} onAbrir={(q) => nav(`/oficina/it/${r.itinerarioId}${q}`)} onCategorizarIT1={() => nav('/oficina/categoria-it1')} onFranquiciaIT1={() => nav('/oficina/franquicia-it1')} onRadarDigitalIT1={() => nav('/oficina/radar-digital-it1')} />
         ))}
       </div>
 
@@ -77,7 +77,7 @@ function Progreso({ titulo, c, icono, onClick, etiquetaHechos = 'revisados' }: {
   );
 }
 
-function TarjetaItinerario({ r, quien, onAbrir, onCategorizarIT1, onFranquiciaIT1 }: { r: ResumenItinerario; quien?: string; onAbrir: (query: string) => void; onCategorizarIT1: () => void; onFranquiciaIT1: () => void }) {
+function TarjetaItinerario({ r, quien, onAbrir, onCategorizarIT1, onFranquiciaIT1, onRadarDigitalIT1 }: { r: ResumenItinerario; quien?: string; onAbrir: (query: string) => void; onCategorizarIT1: () => void; onFranquiciaIT1: () => void; onRadarDigitalIT1: () => void }) {
   const cerrada = r.estado === 'revision-cerrada';
   return (
     <article className={`ofi-tarjeta ${cerrada ? 'cerrada' : ''} ${r.estado === 'validado' ? 'validada' : ''}`} aria-label={`Itinerario ${r.codigo}`}>
@@ -106,6 +106,13 @@ function TarjetaItinerario({ r, quien, onAbrir, onCategorizarIT1, onFranquiciaIT
           ? onCategorizarIT1()
           : onAbrir('?tarea=categorizacion&filtro=pendientes')} />}
       <Progreso titulo="Presencia digital" c={r.digital} icono={<Globe size={13} />} onClick={() => onAbrir('?tarea=digital&filtro=pendientes')} />
+      {r.codigo === 'IT1' && r.categorizacionExcel && <div className="muted"
+        style={{ fontSize: 12, padding: '3px 0 9px' }}>
+        <button type="button" className="btn s fantasma" onClick={onRadarDigitalIT1}>
+          <Globe size={13}/> Radar Digital · piloto gratuito de 10 negocios
+        </button>
+        <span style={{ display:'block', fontSize: 11 }}>Resultados provisionales; no cuentan como revisión digital del censo.</span>
+      </div>}
       {r.franquiciasExcel ? <>
         <Progreso titulo="Franquicias del Excel" c={r.franquiciasExcel} icono={<BadgeCheck size={13} />} onClick={onFranquiciaIT1} />
         <div className="muted" style={{ fontSize: 12, padding: '3px 0 9px' }}>
