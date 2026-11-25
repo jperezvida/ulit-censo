@@ -162,6 +162,23 @@ export default function RadarDigitalIT1() {
   const candidatos=REDES_RADAR.map(red=>({red,datos:enlaceCandidatoRadar(draft,red)}));
   const porValidar=candidatos.filter(({red,datos})=>!!datos && draft.redesValidadas[red]!==true).length +
     (draft.hallazgo&&!draft.webValidada?1:0);
+  const irSiguientePendiente=()=>{
+    const siguiente=negocios.findIndex((item,i)=>
+      i>seleccion && borradores[item.id]?.estado!=='revisado');
+    const primerPendiente=negocios.findIndex(item=>borradores[item.id]?.estado!=='revisado');
+    setSeleccion(siguiente>=0?siguiente:primerPendiente>=0?primerPendiente:
+      Math.min(seleccion+1,negocios.length-1));
+    setError('');
+  };
+  const terminarInvestigacion=()=>{
+    if(!n) return;
+    const terminada=draft.estado!=='revisado';
+    actualizar(n.id,{estado:terminada?'revisado':'pendiente'});
+    if(terminada){
+      const siguiente=negocios.findIndex((item,i)=>i>seleccion && borradores[item.id]?.estado!=='revisado');
+      if(siguiente>=0){setSeleccion(siguiente);setError('');}
+    }
+  };
   const listaResultados=negocios.map((negocio,i)=>({
     id:negocio.id,nombre:negocio.nombre,
     datosExcel:negocio.datosExcel,
@@ -351,14 +368,12 @@ export default function RadarDigitalIT1() {
           </div>
           <div className="radar-pie">
             <button type="button" className={'btn '+(draft.estado==='revisado'?'':'primario')}
-              onClick={()=>actualizar(n.id,{estado:draft.estado==='revisado'?'pendiente':'revisado'})}>
-              <CheckCircle2 size={16}/>{draft.estado==='revisado'?'Volver a pendiente':'Marcar investigación revisada'}
+              onClick={terminarInvestigacion}>
+              <CheckCircle2 size={16}/>{draft.estado==='revisado'?'Volver a pendiente':'Marcar investigación revisada y avanzar'}
             </button>
-            <span>«Revisada» no significa que tenga web ni valida el censo.</span>
-            <button className="btn" type="button" disabled={seleccion>=negocios.length-1}
-              onClick={()=>{setSeleccion(x=>Math.min(x+1,negocios.length-1));setError('');}}>
-              Siguiente <ArrowRight size={15}/>
-            </button>
+            <span>«Revisada» significa investigación realizada, no que todos los datos estén confirmados en el censo.</span>
+            <button className="btn" type="button" disabled={negocios.length<2}
+              onClick={irSiguientePendiente}>Siguiente pendiente <ArrowRight size={15}/></button>
           </div>
         </>}
       </section>
