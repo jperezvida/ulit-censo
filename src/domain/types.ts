@@ -441,6 +441,22 @@ export interface RegistroOrigen {
   exclusion?: { porId: Id; fecha: string; motivo: string };
 }
 
+/** Revisión explícita de franquicia por FILA del Excel operativo, sin vincularla a un local.
+ * «aceptada» confirma el 0/1 original, «rechazada» queda pendiente, «corregida» fija Sí/No.
+ * Una confirmación masiva deja la misma traza individual que una pulsación de Enter. */
+export interface RevisionFranquiciaRegistro {
+  id: Id;
+  registroId: Id;
+  campanaId: Id;
+  estado: 'aceptada' | 'rechazada' | 'corregida';
+  /** «si» o «no» solo si hay respuesta confirmada; ausente en un rechazo. */
+  respuesta?: 'si' | 'no';
+  porId: Id;
+  fecha: string;
+  /** Confirmación global explícita de propuestas existentes. */
+  masiva?: boolean;
+}
+
 /** Revisión explícita de la clasificación de UNA fila de itinerario 2026.
  * No implica que el registro esté conciliado con un local físico.
  * «Aceptada» obliga a conservar la propuesta vista; «rechazada» queda pendiente.
