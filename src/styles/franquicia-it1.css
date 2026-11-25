@@ -1,0 +1,168 @@
+/* Franquicias IT1: un solo punto de atención, sin desplazamientos entre fichas. */
+.franquicia-it1 {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 24px 24px 44px;
+  color: #17304f;
+}
+.franquicia-cabecera { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.franquicia-cabecera .rotulo { margin-top: 8px; }
+.franquicia-cabecera h1 { margin: 3px 0 0; font-size: clamp(25px, 3vw, 32px); line-height: 1.15; }
+.franquicia-cabecera p { margin: 0; font-size: 14px; color: #65768c; line-height: 1.45; }
+
+.franquicia-resumen { display: flex; gap: 9px; flex-wrap: wrap; margin: 18px 0 14px; }
+.franquicia-resumen > span {
+  display: inline-flex; align-items: baseline; gap: 7px;
+  background: #fff; border: 1px solid #dce5ee; border-radius: 11px;
+  padding: 9px 13px; font-size: 12px; color: #52657b; white-space: nowrap;
+}
+.franquicia-resumen strong { font-size: 21px; line-height: 1; color: #132c4a; font-variant-numeric: tabular-nums; }
+.franquicia-resumen-cola strong { color: #986013; }
+
+.franquicia-pasos {
+  display: grid; grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 10px; margin: 0 0 14px;
+}
+.franquicia-paso {
+  min-width: 0; border: 1px solid #dce5ee; border-radius: 12px;
+  background: #fff; padding: 13px 15px; cursor: pointer;
+  color: #193650; display: flex; gap: 11px; align-items: center; text-align: left;
+}
+.franquicia-paso:hover { background: #f8fbff; }
+.franquicia-paso.activo { border-color: #2680e8; background: #edf5ff; box-shadow: inset 0 0 0 1px #2680e8; }
+.franquicia-paso:focus-visible { outline: 3px solid #8abcf4; outline-offset: 2px; }
+.franquicia-paso-num {
+  display: grid; flex: 0 0 30px; place-items: center; border-radius: 50%;
+  height: 30px; background: #e8eef5; font-weight: 700;
+}
+.franquicia-paso.activo .franquicia-paso-num { background: #2680e8; color: #fff; }
+.franquicia-paso-texto { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.franquicia-paso-texto b { font-size: 14px; line-height: 1.25; }
+.franquicia-paso-texto small { font-size: 12px; color: #61758c; font-variant-numeric: tabular-nums; }
+
+/* La misma ficha y los mismos elementos permanecen montados al avanzar. */
+.franquicia-ficha {
+  max-width: 620px; min-height: 385px; margin: 0 auto;
+  border: 1px solid #dae4ee; border-radius: 16px; background: #fff;
+  padding: 17px 23px 20px; outline: none;
+  box-shadow: 0 4px 20px rgba(20, 45, 75, .045);
+}
+.franquicia-ficha:focus-visible { box-shadow: 0 0 0 3px #b9d8fb; }
+.franquicia-ficha-progreso {
+  display: flex; justify-content: space-between; align-items: center;
+  min-height: 23px; font-size: 12px; color: #698097;
+  font-variant-numeric: tabular-nums; border-bottom: 1px solid #edf1f5;
+  padding-bottom: 10px;
+}
+.franquicia-ficha-progreso strong { color: #375c83; }
+.franquicia-ficha-contenido {
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center; width: 100%;
+}
+.franquicia-negocio { width: 100%; height: 96px; padding: 13px 0 0; }
+.franquicia-negocio h2 {
+  margin: 0 auto; max-width: 100%; min-height: 52px;
+  line-height: 1.25; font-size: clamp(19px,2.6vw,24px); font-weight: 750;
+  color: #142e4c; overflow: hidden; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
+.franquicia-negocio p {
+  margin: 1px auto 0; height: 28px; line-height: 1.3; font-size: 12px;
+  color: #64768b; overflow: hidden; text-overflow: ellipsis;
+}
+.franquicia-valor {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: flex-start; min-height: 134px; width: 100%;
+}
+.franquicia-valor > span {
+  font-size: 11px; font-weight: 750; letter-spacing: .065em; color: #647891;
+  height: 19px;
+}
+.franquicia-valor strong {
+  display: grid; place-items: center; min-height: 65px;
+  font-size: clamp(34px, 5vw, 44px); font-weight: 800; letter-spacing: -.025em;
+  line-height: 1; color: #172d49;
+}
+.franquicia-valor p { margin: 0; font-size: 15px; font-weight: 650; color: #3a526d; }
+.franquicia-decisiones {
+  display: grid; grid-template-columns: repeat(2, minmax(0,1fr));
+  width: 100%; max-width: 440px; gap: 10px; height: 62px;
+}
+.franquicia-decision {
+  width: 100%; height: 56px; padding: 9px 12px; display: flex;
+  justify-content: center; align-items: center; gap: 7px;
+  border: 1px solid #cdd8e5; border-radius: 10px; cursor: pointer;
+  font-family: inherit; font-size: 14px; font-weight: 650;
+}
+.franquicia-decision.principal { color: #fff; border-color: #146bd6; background: #146bd6; }
+.franquicia-decision.principal:hover:enabled { background: #0858bd; }
+.franquicia-decision.secundaria { color: #213a56; background: #fff; }
+.franquicia-decision.secundaria:hover:enabled { background: #f2f6fb; }
+.franquicia-decision:disabled { opacity: .5; cursor: not-allowed; }
+.franquicia-decision:focus-visible { outline: 3px solid #8abcf4; outline-offset: 2px; }
+.franquicia-it1 kbd {
+  font: inherit; font-size: 11px; border: 1px solid #ced9e7;
+  border-bottom-width: 2px; border-radius: 5px; background: #f5f8fc;
+  color: #35516c; padding: 2px 6px; white-space: nowrap;
+}
+.franquicia-decision.principal kbd { background: rgba(255,255,255,.18); border-color: rgba(255,255,255,.5); color: #fff; }
+.franquicia-ficha-pie {
+  display: flex; align-items: center; justify-content: center;
+  gap: 12px; width: 100%; height: 33px; margin-top: 4px;
+  font-size: 12px; color: #728299;
+}
+.franquicia-estado-ficha { min-width: 0; }
+.franquicia-posponer {
+  border: none; background: transparent; color: #325c86;
+  font: inherit; cursor: pointer; padding: 6px 4px; white-space: nowrap;
+}
+.franquicia-posponer:disabled { opacity: .5; cursor: not-allowed; }
+.franquicia-posponer:focus-visible { outline: 2px solid #8abcf4; }
+.franquicia-ficha-fin { min-height: 310px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px; text-align: center; }
+.franquicia-ficha-fin svg { color: #267148; }
+.franquicia-ficha-fin h2 { margin: 0; font-size: 21px; }
+.franquicia-ficha-fin p { margin: 0 0 10px; color: #64768b; font-size: 13px; }
+
+.franquicia-secundario { margin: 17px auto 0; max-width: 620px; }
+.franquicia-masiva { border-top: 1px solid #dee7f0; padding-top: 15px; }
+.franquicia-masiva .btn { font-size: 13px; }
+.franquicia-masiva > p, .franquicia-masiva > div + p {
+  color: #61758b; margin: 7px 0 0; font-size: 12px;
+}
+.franquicia-confirmar-todas {
+  background: #fff8ed; border: 1px solid #edcd9a;
+  border-radius: 10px; padding: 12px 15px; font-size: 13px; color: #684917;
+}
+.franquicia-confirmar-todas p { margin: 0 0 10px; line-height: 1.5; }
+.franquicia-confirmar-botones { display: flex; gap: 8px; flex-wrap: wrap; }
+.franquicia-aviso {
+  display: flex; gap: 7px; align-items: center; font-size: 13px;
+  border-radius: 9px; padding: 12px 14px; color: #875712; background: #fff3dc;
+}
+.franquicia-buscar { margin-top: 17px; font-size: 13px; color: #60748b; }
+.franquicia-buscar summary { cursor: pointer; padding: 6px 0; }
+.franquicia-buscar .campo { margin: 10px 0; width: 100%; max-width: 420px; }
+.franquicia-resultados { max-height: 240px; overflow: auto; }
+.franquicia-resultados .btn { display: block; margin: 3px 0; }
+
+@media (max-width: 640px) {
+  .franquicia-it1 { padding: 16px 13px 28px; }
+  .franquicia-cabecera h1 { font-size: 25px; }
+  .franquicia-resumen { gap: 6px; }
+  .franquicia-resumen > span { padding: 7px 9px; font-size: 11px; }
+  .franquicia-resumen strong { font-size: 18px; }
+  .franquicia-pasos { gap: 7px; }
+  .franquicia-paso { padding: 9px; gap: 7px; }
+  .franquicia-paso-num { flex-basis: 25px; height: 25px; }
+  .franquicia-paso-texto b { font-size: 12px; }
+  .franquicia-paso-texto small { font-size: 11px; }
+  .franquicia-ficha { min-height: 371px; padding: 13px 14px 17px; }
+  .franquicia-negocio { height: 100px; }
+  .franquicia-negocio h2 { font-size: 21px; }
+  .franquicia-ficha-pie { font-size: 11px; gap: 5px; }
+  .franquicia-decision { font-size: 13px; padding: 8px 5px; gap: 4px; }
+  .franquicia-decision svg { width: 16px; height: 16px; flex: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .franquicia-it1 *, .franquicia-it1 *::before, .franquicia-it1 *::after { transition: none !important; animation: none !important; }
+}
