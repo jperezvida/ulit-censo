@@ -45,15 +45,27 @@ export function negociosPilotoRadar(db: BaseDatos, campanaId: string): NegocioPi
     });
 }
 
+/**
+ * Búsquedas manuales preparadas. La AMPLIA (nombre + plataforma, sin calle ni `site:`) va primero:
+ * un perfil puede omitir la dirección, X conserva URLs antiguas de twitter.com y los directorios
+ * enlazan a la cuenta. La ESPECÍFICA restringe a la plataforma y añade el municipio (homónimos).
+ */
 export function enlacesBusquedaRadar(negocio: Pick<NegocioPiloto,'nombre'|'direccion'|'numero'>) {
-  const consulta = [negocio.nombre, negocio.direccion, negocio.numero, 'Medina del Campo'].filter(Boolean).join(' ');
-  const crear = (base:string, texto:string) => base + encodeURIComponent(texto);
+  const nombre = negocio.nombre.trim();
+  const g = (texto:string) => 'https://www.google.com/search?q=' + encodeURIComponent(texto);
   return {
-    web: crear('https://www.google.com/search?q=', consulta + ' sitio web oficial'),
-    google: crear('https://www.google.com/maps/search/?api=1&query=', consulta),
-    instagram: crear('https://www.google.com/search?q=', consulta + ' site:instagram.com'),
-    facebook: crear('https://www.google.com/search?q=', consulta + ' site:facebook.com'),
-    twitter: crear('https://www.google.com/search?q=', consulta + ' site:x.com'),
+    web: g(`${nombre} Medina del Campo`),
+    google: 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(
+      [nombre, negocio.direccion, negocio.numero, 'Medina del Campo'].filter(Boolean).join(' ')),
+    instagram: g(`${nombre} instagram`),
+    facebook: g(`${nombre} facebook`),
+    twitter: g(`${nombre} twitter`),
+    especifica: {
+      web: g(`"${nombre}" Medina del Campo -site:facebook.com -site:instagram.com -site:x.com -site:twitter.com`),
+      instagram: g(`"${nombre}" Medina del Campo site:instagram.com`),
+      facebook: g(`"${nombre}" Medina del Campo site:facebook.com`),
+      twitter: g(`"${nombre}" (site:twitter.com OR site:x.com)`),
+    },
   };
 }
 

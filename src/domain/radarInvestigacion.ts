@@ -353,6 +353,8 @@ export interface ResultadoAuto {
    * consultar una fuente no es lo mismo que no haber encontrado nada.
    */
   incompleto?: string[];
+  /** Webs ya solicitadas (para reintentar una fuente sin repetir las demás). */
+  analizadas?: string[];
 }
 export type ResultadosAuto = Record<string, ResultadoAuto>;
 
@@ -373,6 +375,7 @@ export function resultadoVigente(r: ResultadoAuto | undefined, n: NegocioPiloto,
 export async function investigarNegocio(
   n: NegocioPiloto, municipio: string, lugares: LugarOSM[], marcas: Map<string, MarcaWikidata>,
   servicios: Pick<ServiciosRadar, 'paginas'>, webManual?: string, fuentesFallidas: string[] = [],
+  yaAnalizadas: string[] = [],
 ): Promise<ResultadoAuto> {
   const coincidencias = emparejarOSM(n, lugares);
   // Cadena o franquicia: por el Excel/la revisión de franquicias o por la marca en OpenStreetMap.
@@ -390,7 +393,7 @@ export async function investigarNegocio(
   if (manual && !fuenteDe.has(manual)) fuenteDe.set(manual, { fuente: 'manual' });
   // Solo se deducen dominios si ninguna fuente declara una web: ahorra peticiones y falsos positivos.
   if (!fuenteDe.size) for (const d of dominiosProbables(n.nombre)) fuenteDe.set(d, { fuente: 'dominio' });
-  const urls = [...fuenteDe.keys()].slice(0, 4);
+  const urls = [...fuenteDe.keys()].slice(0, 4).filter((u) => !yaAnalizadas.includes(u));
   const avisos: string[] = [];
   const incompleto = [...fuentesFallidas];
   if (urls.length) {
@@ -427,7 +430,47 @@ export async function investigarNegocio(
   return {
     huella: huellaNegocio(n), fecha: new Date().toISOString(), evidencias: unirEvidencias(ev), avisos,
     ...(incompleto.length ? { incompleto } : {}),
+    analizadas: [...new Set([...yaAnalizadas, ...urls])].slice(0, 12),
   };
+}
+
+export const esFalloOSM = (x: string) => x.startsWith('OpenStreetMap');
+/**
+ * Reintento AISLADO de OpenStreetMap: conserva las evidencias ya obtenidas (webs, Wikidata) y
+ * solo analiza una web nueva si OSM la declara. Las decisiones humanas no se tocan (van aparte).
+ */
+export async function completarConOSM(
+  r: ResultadoAuto, n: NegocioPiloto, municipio: string, lugares: LugarOSM[], marcas: Map<string, MarcaWikidata>,
+  servicios: Pick<ServiciosRadar, 'paginas'>,
+): Promise<ResultadoAuto> {
+  const nuevo = await investigarNegocio(n, municipio, lugares, marcas, servicios, undefined,
+    (r.incompleto ?? []).filter((x) => !esFalloOSM(x) && x !== 'Web declarada'), r.analizadas ?? []);
+  return {
+    ...nuevo,
+    evidencias: unirEvidencias([...r.evidencias, ...nuevo.evidencias]),
+    avisos: [...new Set([...r.avisos, ...nuevo.avisos])].slice(0, 8),
+  };
+}
+/** «Continuar sin OSM»: se deja constancia de que no se consultó y deja de contar como incompleta. */
+export function continuarSinOSM(r: ResultadoAuto): ResultadoAuto {
+  const incompleto = (r.incompleto ?? []).filter((x) => !esFalloOSM(x));
+  const { incompleto: _, ...resto } = r;
+  return { ...resto, ...(incompleto.length ? { incompleto } : {}),
+    avisos: [...new Set([...r.avisos, 'OpenStreetMap no consultado: se continuó con búsqueda manual.'])] };
+}
+
+/** Causa legible de un fallo de fuente, solo con lo que el servidor sabe (nunca se inventa). */
+export function causaFallo(e: unknown): string {
+  const status = (e as { status?: number })?.status;
+  const msg = e instanceof Error ? e.message : '';
+  const prov = msg.match(/\((\d{3})\)/)?.[1];
+  if (status === 503 && /desactivad/i.test(msg)) return 'desactivado en este despliegue';
+  if (prov === '429' || status === 429) return 'límite de uso del proveedor (429)';
+  if (/tiempo|timeout|abort/i.test(msg)) return 'tiempo de espera agotado';
+  if (prov && prov.startsWith('5')) return `servidor no disponible (${prov})`;
+  if (status === 401 || status === 403) return 'sin autorización';
+  if (status && status >= 500) return `servicio no disponible (${status})`;
+  return 'causa no identificada';
 }
 const sinBarra = (u: string) => u.replace(/\/+$/, '').replace(/^https:\/\/www\./, 'https://');
 
@@ -461,6 +504,9 @@ export interface VistaCampo {
   propuesta?: EvidenciaRadar;
   alternativas: EvidenciaRadar[];
 }
+// Lo que la persona pega va primero (es lo que quiere comprobar); después, lo relacionado.
+const peso = (e: EvidenciaRadar) => (e.procedencias.some((p) => p.fuente === 'manual') ? 2 : 0)
+  + (nivelEvidencia(e) === 'relacionado' ? 1 : 0);
 export function vistaCampo(campo: CampoRadar, evidencias: EvidenciaRadar[], t: TrabajoRadar): VistaCampo {
   const propias = evidencias.filter((e) => e.campo === campo);
   const manual = t.manuales[campo];
@@ -468,8 +514,7 @@ export function vistaCampo(campo: CampoRadar, evidencias: EvidenciaRadar[], t: T
     propias.push({ campo, url: manual, procedencias: [{ fuente: 'manual', origen: manual }], criterios: [] });
   }
   const vivas = propias.filter((e) => !t.descartadas.includes(claveEvidencia(e)))
-    .sort((a, b) => (nivelEvidencia(b) === 'relacionado' ? 1 : 0) - (nivelEvidencia(a) === 'relacionado' ? 1 : 0)
-      || b.criterios.length - a.criterios.length);
+    .sort((a, b) => peso(b) - peso(a) || b.criterios.length - a.criterios.length);
   const decision = t.decisiones[campo];
   const [propuesta, ...alternativas] = vivas;
   const estado: EstadoCampo = decision ? 'confirmado'
@@ -677,8 +722,9 @@ export function sanearResultado(r: Partial<ResultadoAuto> | null | undefined): R
     huella: r.huella.slice(0, 600), fecha: r.fecha!,
     evidencias: r.evidencias.map(evidenciaValida).filter((e): e is EvidenciaRadar => !!e).slice(0, 60),
     avisos: Array.isArray(r.avisos) ? r.avisos.filter((a): a is string => typeof a === 'string').map((a) => a.slice(0, 200)).slice(0, 8) : [],
+    ...(Array.isArray(r.analizadas) ? { analizadas: r.analizadas.flatMap((u) => { const w = webSegura(u as string); return w ? [w] : []; }).slice(0, 12) } : {}),
     ...(Array.isArray(r.incompleto) && r.incompleto.length
-      ? { incompleto: r.incompleto.filter((a): a is string => typeof a === 'string').map((a) => a.slice(0, 60)).slice(0, 5) } : {}),
+      ? { incompleto: r.incompleto.filter((a): a is string => typeof a === 'string').map((a) => a.slice(0, 120)).slice(0, 5) } : {}),
   };
 }
 export function leerResultadosAuto(campanaId: string): ResultadosAuto {

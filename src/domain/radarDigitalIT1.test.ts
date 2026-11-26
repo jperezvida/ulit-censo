@@ -53,9 +53,15 @@ describe('Radar Digital: selección del piloto',()=>{
   it('prepara búsquedas manuales con nombre, calle y municipio (camino manual más corto)',()=>{
     const links=enlacesBusquedaRadar({nombre:'La Óptica',direccion:'Calle Mayor',numero:'12'});
     expect(decodeURIComponent(links.web)).toContain('Medina del Campo');
-    expect(decodeURIComponent(links.instagram)).toContain('site:instagram.com');
-    expect(decodeURIComponent(links.twitter)).toContain('site:x.com');
+    expect(decodeURIComponent(links.especifica.instagram)).toContain('site:instagram.com');
     expect(links.google).toContain('google.com/maps/search');
+  });
+  it('regresión «Heladería La Flor Medinense»: la búsqueda de X es amplia y no exige calle ni solo x.com',()=>{
+    const links=enlacesBusquedaRadar({nombre:'Heladería La Flor Medinense',direccion:'Calle Ficticia',numero:'1'});
+    expect(links.twitter).toBe('https://www.google.com/search?q='+encodeURIComponent('Heladería La Flor Medinense twitter'));
+    expect(decodeURIComponent(links.twitter)).not.toContain('Calle Ficticia');
+    expect(decodeURIComponent(links.especifica.twitter)).toBe('https://www.google.com/search?q="Heladería La Flor Medinense" (site:twitter.com OR site:x.com)');
+    expect(decodeURIComponent(links.instagram)).toBe('https://www.google.com/search?q=Heladería La Flor Medinense instagram');
   });
 });
 

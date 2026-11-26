@@ -119,3 +119,5 @@
   .radar-pie .btn.primario { width: 100%; justify-content: center; white-space: normal; text-align: left; }
   .radar-filtro { min-height: 40px; }
 }
+.radar-acciones-fuente { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.radar-acciones-fuente .btn { display: inline-flex; align-items: center; gap: 6px; }

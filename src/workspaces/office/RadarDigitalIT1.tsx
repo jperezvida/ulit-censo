@@ -12,7 +12,7 @@ import {
   CAMPOS_RADAR, TEXTO_BANDEJA, TEXTO_CRITERIO, TEXTO_ESTADO, TEXTO_FUENTE,
   bandejaDe, campoDeEnlace, medirPiloto, confirmarRelacionadas, csvRadar, discrepaExcel, emparejarOSM,
   fusionarTrabajos, guardarResultadosAuto, guardarTrabajos, huellaNegocio,
-  investigarNegocio, leerResultadosAuto, leerTrabajos, nivelEvidencia, resultadoVigente,
+  investigarNegocio, leerResultadosAuto, causaFallo, completarConOSM, continuarSinOSM, esFalloOSM, leerTrabajos, nivelEvidencia, resultadoVigente,
   sanearResultado, trabajosDesdeTexto, turnosEspaciados, trabajoVacio, vistaCampo,
   type BandejaRadar, type CampoRadar, type EvidenciaRadar, type LugarOSM, type MarcaWikidata,
   type PaginaRadar, type ResultadoAuto, type ResultadosAuto, type ServiciosRadar, type TrabajoRadar, type TrabajosRadar,
@@ -48,6 +48,16 @@ function descargar(nombre: string, contenido: string, tipo: string) {
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
 }
+/**
+ * Enfriamiento de OpenStreetMap: tras un error no se insiste (política de uso del proveedor).
+ * Se guarda en el navegador para que una recarga no reinicie los reintentos.
+ */
+const CLAVE_PAUSA_OSM = 'ulit-censo-radar-osm-pausa';
+const PAUSA_OSM_MS = 10 * 60_000;
+const pausaOSMHasta = () => { try { return Number(localStorage.getItem(CLAVE_PAUSA_OSM)) || 0; } catch { return 0; } };
+const pausarOSM = () => { try { localStorage.setItem(CLAVE_PAUSA_OSM, String(Date.now() + PAUSA_OSM_MS)); } catch { /* solo afecta al enfriamiento */ } };
+const horaCorta = (ms: number) => new Date(ms).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+
 /** El ratón no deja el foco en botones: Enter sigue sirviendo para confirmar y avanzar. */
 const SIN_FOCO = { onMouseDown: (e: { preventDefault(): void }) => e.preventDefault() };
 const enCampoDeTexto = (t: EventTarget | null) =>
@@ -62,7 +72,7 @@ async function llamarRadar<T>(cuerpo: unknown): Promise<T> {
     body: JSON.stringify(cuerpo),
   });
   const datos = await r.json().catch(() => ({})) as T & { error?: string };
-  if (!r.ok) throw Error(datos.error || 'El servicio del Radar no respondió.');
+  if (!r.ok) throw Object.assign(Error(datos.error || 'El servicio del Radar no respondió.'), { status: r.status });
   return datos;
 }
 const SERVICIOS = (municipio: string, provincia?: string): ServiciosRadar => ({
@@ -140,6 +150,17 @@ export default function RadarDigitalIT1() {
     setProgreso({ hechos: 0, total: lista.length });
     // Política de Nominatim: como máximo una consulta por segundo.
     const esperarTurno = turnosEspaciados();
+    // Consultas a OSM en serie: si una falla, las siguientes ven la pausa y no se lanzan.
+    let colaOSM: Promise<unknown> = Promise.resolve();
+    const consultarOSM = (nombre: string) => {
+      const p = colaOSM.then(async () => {
+        await esperarTurno();
+        if (Date.now() < pausaOSMHasta()) throw Object.assign(Error('pausa'), { pausa: true });
+        return servicios.lugares(nombre);
+      });
+      colaOSM = p.catch(() => undefined);
+      return p;
+    };
     const marcas = new Map<string, MarcaWikidata>();
     const avisar = (a: string) => { if (!nuevosAvisos.includes(a)) nuevosAvisos.push(a); };
     // Dos negocios a la vez: rápido sin saturar las webs ni la función del servidor.
@@ -151,15 +172,22 @@ export default function RadarDigitalIT1() {
           // Fuentes no consultadas: el negocio queda «incompleto», nunca «sin evidencias».
           const fallidas: string[] = [];
           let lugares: LugarOSM[] = [];
-          try { await esperarTurno(); lugares = await servicios.lugares(n.nombre); }
-          catch (e) { fallidas.push('OpenStreetMap'); avisar(`OpenStreetMap: ${e instanceof Error ? e.message : 'no disponible'}`); }
+          try { lugares = await consultarOSM(n.nombre); }
+          catch (e) {
+            if ((e as { pausa?: boolean }).pausa) fallidas.push(`OpenStreetMap — en pausa hasta las ${horaCorta(pausaOSMHasta())} tras un error`);
+            else {
+              fallidas.push(`OpenStreetMap — ${causaFallo(e)}`);
+              avisar(`OpenStreetMap: ${causaFallo(e)}. No se insiste hasta las ${horaCorta(Date.now() + PAUSA_OSM_MS)}.`);
+              pausarOSM();
+            }
+          }
           const ids = [...new Set(emparejarOSM(n, lugares).flatMap((c) => c.lugar.marcaWd && !marcas.has(c.lugar.marcaWd) ? [c.lugar.marcaWd] : []))];
           if (ids.length) {
             try { for (const m of await servicios.marcas(ids)) marcas.set(m.id, m); }
-            catch (e) { fallidas.push('Wikidata'); avisar(`Wikidata: ${e instanceof Error ? e.message : 'no disponible'}`); }
+            catch (e) { fallidas.push(`Wikidata — ${causaFallo(e)}`); avisar(`Wikidata: ${causaFallo(e)}`); }
           }
           const web = webs[n.id] ?? trabajos[n.id]?.decisiones.web?.url ?? trabajos[n.id]?.manuales.web;
-          const r = sanearResultado(await investigarNegocio(n, municipio, lugares, marcas, servicios, web, fallidas));
+          const r = sanearResultado(await investigarNegocio(n, municipio, lugares, marcas, servicios, web, fallidas, resultados[n.id]?.analizadas && webs[n.id] ? resultados[n.id].analizadas : []));
           if (r) setResultados((prev) => {
             const sig = { ...prev, [n!.id]: r };
             guardarResultadosAuto(campana.id, sig);
@@ -175,6 +203,31 @@ export default function RadarDigitalIT1() {
     setAvisos(nuevosAvisos);
     setProgreso(null);
     setMensaje(`Investigación terminada: ${hechos} negocios. Revisa primero los que requieren intervención.`);
+  };
+
+  const guardarResultado = (id: string, r: ResultadoAuto | null) => {
+    if (!campana || !r) return;
+    setResultados((prev) => { const sig = { ...prev, [id]: r }; guardarResultadosAuto(campana.id, sig); return sig; });
+  };
+  /** Solo OpenStreetMap: no repite webs ni Wikidata ya obtenidos ni toca las decisiones. */
+  const reintentarOSM = async (n: NegocioPiloto, r: ResultadoAuto) => {
+    if (progreso) return;
+    if (Date.now() < pausaOSMHasta()) return setMensaje(`OpenStreetMap en pausa hasta las ${horaCorta(pausaOSMHasta())} para no saturar el servicio. Puedes continuar sin OSM.`);
+    const servicios = SERVICIOS(municipio, provincia);
+    setProgreso({ hechos: 0, total: 1 });
+    try {
+      const lugares = await servicios.lugares(n.nombre);
+      const marcas = new Map<string, MarcaWikidata>();
+      const ids = [...new Set(emparejarOSM(n, lugares).flatMap((c) => c.lugar.marcaWd ? [c.lugar.marcaWd] : []))];
+      if (ids.length) { try { for (const m of await servicios.marcas(ids)) marcas.set(m.id, m); } catch { /* se conserva lo previo */ } }
+      guardarResultado(n.id, sanearResultado(await completarConOSM(r, n, municipio, lugares, marcas, servicios)));
+      setMensaje('OpenStreetMap consultado de nuevo; se conserva todo lo anterior.');
+    } catch (e) {
+      pausarOSM();
+      guardarResultado(n.id, sanearResultado({ ...r, fecha: new Date().toISOString(),
+        incompleto: [...(r.incompleto ?? []).filter((x) => !esFalloOSM(x)), `OpenStreetMap — ${causaFallo(e)}`] }));
+      setMensaje(`OpenStreetMap sigue sin responder (${causaFallo(e)}). Puedes continuar sin OSM y buscar a mano.`);
+    } finally { setProgreso(null); }
   };
 
   const siguientePendiente = useCallback((desdeId: string) => {
@@ -229,7 +282,7 @@ export default function RadarDigitalIT1() {
       const decisiones = { ...t.decisiones };
       if (decisiones[campo]) delete decisiones[campo];
       else decisiones[campo] = v.propuesta
-        ? { valor: 'si', url: v.propuesta.url, fecha: new Date().toISOString() }
+        ? { valor: 'si', url: v.propuesta.url, fecha: new Date().toISOString(), ...(deTi(v.propuesta) ? { manual: true } : {}) }
         : { valor: 'no', fecha: new Date().toISOString() };
       return { ...t, decisiones, estado: 'pendiente' };
     });
@@ -237,8 +290,9 @@ export default function RadarDigitalIT1() {
   const decidirNo = (campo: CampoRadar) => actual && actual.n && actualizar(actual.n.id, (t) => ({
     ...t, estado: 'pendiente', decisiones: { ...t.decisiones, [campo]: { valor: 'no', fecha: new Date().toISOString() } },
   }));
+  const deTi = (e: EvidenciaRadar) => e.procedencias.some((p) => p.fuente === 'manual');
   const aceptar = (e: EvidenciaRadar) => actual && actualizar(actual.n.id, (t) => ({
-    ...t, estado: 'pendiente', decisiones: { ...t.decisiones, [e.campo]: { valor: 'si', url: e.url, fecha: new Date().toISOString() } },
+    ...t, estado: 'pendiente', decisiones: { ...t.decisiones, [e.campo]: { valor: 'si', url: e.url, fecha: new Date().toISOString(), ...(deTi(e) ? { manual: true } : {}) } },
   }));
   const descartar = (e: EvidenciaRadar) => actual && actualizar(actual.n.id, (t) => ({
     ...t, estado: 'pendiente', descartadas: [...t.descartadas, `${e.campo}|${e.url}`],
@@ -248,18 +302,24 @@ export default function RadarDigitalIT1() {
     delete decisiones[campo];
     return { ...t, decisiones, estado: 'pendiente' };
   });
-  /** Un enlace pegado (perfil, ficha o web) se asigna solo a su campo y queda confirmado. */
+  /**
+   * Un enlace pegado (perfil, ficha o web) se asigna a su campo como CANDIDATO PENDIENTE: hay que
+   * comprobar que la cuenta es la del local y confirmarlo con su número o «Sí».
+   */
   const usarEnlace = (texto: string): boolean => {
     if (!actual) return false;
     const destino = campoDeEnlace(texto);
-    if (!destino) { setMensaje('Ese texto no es un enlace HTTPS de web, Instagram, Facebook, X o Google Maps.'); return false; }
-    actualizar(actual.n.id, (t) => ({
-      ...t, estado: 'pendiente',
-      decisiones: { ...t.decisiones, [destino.campo]: { valor: 'si', url: destino.url, fecha: new Date().toISOString(), manual: true } },
-    }));
+    if (!destino) { setMensaje('Ese texto no es un enlace HTTPS de web, Instagram, Facebook, X/Twitter o Google Maps.'); return false; }
+    const i = CAMPOS_RADAR.findIndex((c) => c.clave === destino.campo);
+    actualizar(actual.n.id, (t) => {
+      const decisiones = { ...t.decisiones };
+      delete decisiones[destino.campo];
+      return { ...t, estado: 'pendiente', decisiones, manuales: { ...t.manuales, [destino.campo]: destino.url },
+        descartadas: t.descartadas.filter((k) => k !== `${destino.campo}|${destino.url}`) };
+    });
     // Una web pegada se analiza al momento: sus redes y su ficha aparecen sin más pasos.
     if (destino.campo === 'web' && !progreso) void investigar([actual.n], { [actual.n.id]: destino.url });
-    setMensaje(`${CAMPOS_RADAR.find((c) => c.clave === destino.campo)!.etiqueta} confirmado con el enlace pegado${destino.campo === 'web' ? '; analizando sus enlaces…' : '.'}`);
+    setMensaje(`${CAMPOS_RADAR[i].etiqueta}: enlace añadido como candidato sin validar. Comprueba la cuenta y pulsa ${i + 1} o «Sí» para confirmarlo${destino.campo === 'web' ? '; analizando sus enlaces…' : '.'}`);
     return true;
   };
 
@@ -354,7 +414,7 @@ export default function RadarDigitalIT1() {
       Fuentes automáticas: OpenStreetMap (Nominatim; datos <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© colaboradores de OpenStreetMap</a>, ODbL), Wikidata (marcas)
       {' '}y las webs encontradas. Sin APIs de pago; resultados guardados 30 días.
       {!progreso && Object.keys(resultados).length > 0 && <button type="button" className="btn-enlace" onClick={() => void investigar(negocios)}>
-        <RefreshCw size={12}/> Reinvestigar todo</button>}
+        <RefreshCw size={12} aria-hidden="true"/> Reinvestigar todo</button>}
     </p>
     {avisos.length > 0 && <details className="radar-avisos"><summary>{avisos.length} avisos de la última investigación</summary>
       <ul>{avisos.map((a) => <li key={a}>{a}</li>)}</ul></details>}
@@ -401,10 +461,21 @@ export default function RadarDigitalIT1() {
           </div>
         </div>
         {!actual.r && <p className="radar-sin-investigar">Aún sin investigar. Pulsa «Investigar» arriba, o busca a mano con los enlaces de cada fila y pega aquí lo que encuentres.</p>}
-        {actual.r?.incompleto?.length ? <p className="radar-sin-investigar">Investigación incompleta: no se pudo consultar {actual.r.incompleto.join(', ')}.
-          {' '}Lo que falta no significa que no exista. <button type="button" className="btn-enlace" disabled={!!progreso} onClick={() => void investigar([actual.n])}><RefreshCw size={12}/> Reintentar</button></p>
+        {actual.r?.incompleto?.length ? <div className="radar-sin-investigar" role="status" aria-label="Estado de las fuentes">
+          <b>Investigación incompleta.</b> No se pudo consultar: {actual.r.incompleto.join(' · ')}. Último intento: {horaCorta(Date.parse(actual.r.fecha))}.
+          {' '}Puedes revisar y decidir igualmente; «sin evidencia» no significa «no tiene».
+          <span className="radar-acciones-fuente">
+            {actual.r.incompleto.some(esFalloOSM) ? <>
+              <button type="button" {...SIN_FOCO} className="btn s" disabled={!!progreso || Date.now() < pausaOSMHasta()}
+                onClick={() => void reintentarOSM(actual.n, actual.r!)}><RefreshCw size={13} aria-hidden="true"/>
+                {Date.now() < pausaOSMHasta() ? `Reintentar OpenStreetMap (desde las ${horaCorta(pausaOSMHasta())})` : 'Reintentar OpenStreetMap'}</button>
+              <button type="button" {...SIN_FOCO} className="btn s" onClick={() => guardarResultado(actual.n.id, continuarSinOSM(actual.r!))}>
+                Continuar sin OSM y buscar a mano</button>
+            </> : <button type="button" {...SIN_FOCO} className="btn s" disabled={!!progreso} onClick={() => void investigar([actual.n])}>
+              <RefreshCw size={13} aria-hidden="true"/>Reintentar</button>}
+          </span></div>
         : antiguo && <p className="radar-sin-investigar">Resultados del {new Date(actual.r!.fecha).toLocaleDateString('es-ES')}: pueden estar desactualizados.
-          {' '}<button type="button" className="btn-enlace" disabled={!!progreso} onClick={() => void investigar([actual.n])}><RefreshCw size={12}/> Reinvestigar</button></p>}
+          {' '}<button type="button" className="btn-enlace" disabled={!!progreso} onClick={() => void investigar([actual.n])}><RefreshCw size={12} aria-hidden="true"/> Reinvestigar</button></p>}
 
         <div className="radar-campos" role="table" aria-label="Presencia digital">
           <div className="radar-campo cab" role="row">
@@ -420,16 +491,19 @@ export default function RadarDigitalIT1() {
               <span role="cell" className="radar-excel" title="Valor original del Excel (no se modifica)">{excelTexto(excel)}</span>
               <span role="cell" className="radar-propuesta">
                 <span className={`radar-estado s-${v.estado}`}>{v.estado === 'confirmado'
-                  ? (v.decision!.valor === 'si' ? 'Confirmado: Sí' : 'Confirmado: No tiene') : TEXTO_ESTADO[v.estado]}</span>
+                  ? (v.decision!.valor === 'si' ? 'Confirmado por ti: Sí' : 'Confirmado por ti: No tiene') : TEXTO_ESTADO[v.estado]}</span>
                 {v.decision?.url && <Enlace url={v.decision.url}>{corta(v.decision.url)}</Enlace>}
                 {v.decision?.manual && <span className="radar-chip">Pegado por ti</span>}
                 {!v.decision && v.propuesta && <Evidencia e={v.propuesta}/>}
                 {!v.decision && v.alternativas.slice(0, 2).map((a) => <span key={a.url} className="radar-alternativa">
                   Otra coincidencia: <Enlace url={a.url}>{corta(a.url)}</Enlace>
                   <button type="button" {...SIN_FOCO} className="btn-enlace" onClick={() => aceptar(a)}>Usar esta</button></span>)}
-                {!v.decision && !v.propuesta && busqueda && <span className="radar-manual">
-                  Sin coincidencias automáticas.{' '}<Enlace url={busqueda[BUSQUEDA[v.campo]]}>Buscar a mano</Enlace>
-                  {excel.trim() === '1' && <em> · El Excel indica Sí</em>}</span>}
+                {!v.decision && busqueda && <span className="radar-manual">
+                  {!v.propuesta && 'Sin coincidencias automáticas. '}
+                  <Enlace url={busqueda[BUSQUEDA[v.campo]]} titulo="Búsqueda amplia: nombre y plataforma">{v.campo === 'googleBusiness' ? 'Buscar en Maps' : `Buscar ${v.campo === 'twitter' ? 'X' : meta.etiqueta.split(' ')[0]}`}</Enlace>
+                  {v.campo !== 'googleBusiness' && v.campo !== 'ventaOnline' && <>{' · '}
+                    <Enlace url={busqueda.especifica[v.campo]} titulo="Solo en la plataforma, con el municipio">específica</Enlace></>}
+                  {!v.propuesta && excel.trim() === '1' && <em> · El Excel indica Sí</em>}</span>}
                 {discrepa && <span className="radar-discrepa">Discrepa del Excel</span>}
               </span>
               <span role="cell" className="radar-decision">
@@ -449,7 +523,7 @@ export default function RadarDigitalIT1() {
         <label className="radar-pegar">
           <ClipboardPaste size={16} aria-hidden="true"/>
           <span className="visualmente-oculto">Pegar enlace encontrado</span>
-          <input type="url" value={pegado} placeholder="Pega aquí (o Ctrl+V en cualquier parte) un enlace de web, Instagram, Facebook, X o Google Maps: se asigna solo"
+          <input type="url" value={pegado} placeholder="Pega aquí (o Ctrl+V en cualquier parte) un enlace de web, Instagram, Facebook, X/Twitter o Google Maps: queda como candidato para confirmar"
             onChange={(e) => setPegado(e.target.value)}
             onPaste={(e) => { const t = e.clipboardData.getData('text'); if (usarEnlace(t)) { e.preventDefault(); setPegado(''); } }}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); if (usarEnlace(pegado)) setPegado(''); } }}/>
