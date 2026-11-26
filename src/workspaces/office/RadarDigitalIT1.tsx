@@ -11,9 +11,9 @@ import { enlacesBusquedaRadar, negociosPilotoRadar, type NegocioPiloto } from '.
 import {
   CAMPOS_RADAR, TEXTO_BANDEJA, TEXTO_CRITERIO, TEXTO_ESTADO, TEXTO_FUENTE,
   bandejaDe, campoDeEnlace, medirPiloto, confirmarRelacionadas, csvRadar, discrepaExcel, emparejarOSM,
-  fusionarTrabajos, guardarCopiaOSM, guardarResultadosAuto, guardarTrabajos, huellaNegocio,
-  investigarNegocio, leerCopiaOSM, leerResultadosAuto, leerTrabajos, nivelEvidencia, resultadoVigente,
-  sanearResultado, trabajosDesdeTexto, trabajoVacio, vistaCampo,
+  fusionarTrabajos, guardarResultadosAuto, guardarTrabajos, huellaNegocio,
+  investigarNegocio, leerResultadosAuto, leerTrabajos, nivelEvidencia, resultadoVigente,
+  sanearResultado, trabajosDesdeTexto, turnosEspaciados, trabajoVacio, vistaCampo,
   type BandejaRadar, type CampoRadar, type EvidenciaRadar, type LugarOSM, type MarcaWikidata,
   type PaginaRadar, type ResultadoAuto, type ResultadosAuto, type ServiciosRadar, type TrabajoRadar, type TrabajosRadar,
 } from '../../domain/radarInvestigacion';
@@ -66,7 +66,7 @@ async function llamarRadar<T>(cuerpo: unknown): Promise<T> {
   return datos;
 }
 const SERVICIOS = (municipio: string, provincia?: string): ServiciosRadar => ({
-  lugares: async () => (await llamarRadar<{ lugares: LugarOSM[] }>({ accion: 'osm', municipio, provincia })).lugares ?? [],
+  lugares: async (nombre) => (await llamarRadar<{ lugares: LugarOSM[] }>({ accion: 'osm', nombre, municipio, provincia })).lugares ?? [],
   marcas: async (ids) => (await llamarRadar<{ marcas: MarcaWikidata[] }>({ accion: 'marcas', ids })).marcas ?? [],
   paginas: async (urls, contexto) => {
     const r = await llamarRadar<{ resultados: { url: string; pagina?: PaginaRadar; error?: string }[] }>({ accion: 'paginas', urls, contexto });
@@ -86,7 +86,6 @@ export default function RadarDigitalIT1() {
   const provincia = (campana && db.municipios[campana.municipioId]?.provincia) || undefined;
   const [trabajos, setTrabajos] = useState<TrabajosRadar>(() => campana ? leerTrabajos(campana.id) : {});
   const [resultados, setResultados] = useState<ResultadosAuto>(() => campana ? leerResultadosAuto(campana.id) : {});
-  const [copiaOSM, setCopiaOSM] = useState(() => leerCopiaOSM(municipio));
   const [seleccionId, setSeleccionId] = useState<string | null>(null);
   const [filtro, setFiltro] = useState<Filtro>('todos');
   const [progreso, setProgreso] = useState<{ hechos: number; total: number } | null>(null);
@@ -134,43 +133,33 @@ export default function RadarDigitalIT1() {
   }, [campana]);
 
   /** `webs`: web conocida por negocio (p. ej. recién pegada) para analizarla aunque el estado aún no la refleje. */
-  const investigar = async (lista: NegocioPiloto[], refrescarFuentes = false, webs: Record<string, string> = {}) => {
+  const investigar = async (lista: NegocioPiloto[], webs: Record<string, string> = {}) => {
     if (!campana || progreso || !lista.length) return;
     const servicios = SERVICIOS(municipio, provincia);
     const nuevosAvisos: string[] = [];
-    // Fuentes no consultadas: los negocios quedan «incompletos», nunca «sin evidencias».
-    const fallidas: string[] = [];
     setProgreso({ hechos: 0, total: lista.length });
-    let lugares = refrescarFuentes ? undefined : leerCopiaOSM(municipio)?.lugares;
-    if (!lugares) {
-      try {
-        const recibidos = await servicios.lugares();
-        // Cero lugares en un municipio con comercio indica que no se encontró el término municipal.
-        if (!recibidos.length) throw Error(`no devolvió lugares para ${municipio}`);
-        guardarCopiaOSM(municipio, recibidos);
-        const copia = leerCopiaOSM(municipio);
-        setCopiaOSM(copia);
-        lugares = copia?.lugares ?? [];
-      } catch (e) {
-        nuevosAvisos.push(`OpenStreetMap: ${e instanceof Error ? e.message : 'no disponible'}. Se investigan solo las webs.`);
-        fallidas.push('OpenStreetMap');
-        lugares = [];
-      }
-    }
-    const ids = [...new Set(lista.flatMap((n) => emparejarOSM(n, lugares!).flatMap((c) => c.lugar.marcaWd ? [c.lugar.marcaWd] : [])))];
+    // Política de Nominatim: como máximo una consulta por segundo.
+    const esperarTurno = turnosEspaciados();
     const marcas = new Map<string, MarcaWikidata>();
-    if (ids.length) {
-      try { for (const m of await servicios.marcas(ids)) marcas.set(m.id, m); }
-      catch (e) { nuevosAvisos.push(`Wikidata: ${e instanceof Error ? e.message : 'no disponible'}.`); fallidas.push('Wikidata'); }
-    }
+    const avisar = (a: string) => { if (!nuevosAvisos.includes(a)) nuevosAvisos.push(a); };
     // Dos negocios a la vez: rápido sin saturar las webs ni la función del servidor.
     const cola = [...lista];
     let hechos = 0;
     const trabajar = async () => {
       for (let n = cola.shift(); n; n = cola.shift()) {
         try {
+          // Fuentes no consultadas: el negocio queda «incompleto», nunca «sin evidencias».
+          const fallidas: string[] = [];
+          let lugares: LugarOSM[] = [];
+          try { await esperarTurno(); lugares = await servicios.lugares(n.nombre); }
+          catch (e) { fallidas.push('OpenStreetMap'); avisar(`OpenStreetMap: ${e instanceof Error ? e.message : 'no disponible'}`); }
+          const ids = [...new Set(emparejarOSM(n, lugares).flatMap((c) => c.lugar.marcaWd && !marcas.has(c.lugar.marcaWd) ? [c.lugar.marcaWd] : []))];
+          if (ids.length) {
+            try { for (const m of await servicios.marcas(ids)) marcas.set(m.id, m); }
+            catch (e) { fallidas.push('Wikidata'); avisar(`Wikidata: ${e instanceof Error ? e.message : 'no disponible'}`); }
+          }
           const web = webs[n.id] ?? trabajos[n.id]?.decisiones.web?.url ?? trabajos[n.id]?.manuales.web;
-          const r = sanearResultado(await investigarNegocio(n, municipio, lugares!, marcas, servicios, web, fallidas));
+          const r = sanearResultado(await investigarNegocio(n, municipio, lugares, marcas, servicios, web, fallidas));
           if (r) setResultados((prev) => {
             const sig = { ...prev, [n!.id]: r };
             guardarResultadosAuto(campana.id, sig);
@@ -269,7 +258,7 @@ export default function RadarDigitalIT1() {
       decisiones: { ...t.decisiones, [destino.campo]: { valor: 'si', url: destino.url, fecha: new Date().toISOString(), manual: true } },
     }));
     // Una web pegada se analiza al momento: sus redes y su ficha aparecen sin más pasos.
-    if (destino.campo === 'web' && !progreso) void investigar([actual.n], false, { [actual.n.id]: destino.url });
+    if (destino.campo === 'web' && !progreso) void investigar([actual.n], { [actual.n.id]: destino.url });
     setMensaje(`${CAMPOS_RADAR.find((c) => c.clave === destino.campo)!.etiqueta} confirmado con el enlace pegado${destino.campo === 'web' ? '; analizando sus enlaces…' : '.'}`);
     return true;
   };
@@ -362,10 +351,10 @@ export default function RadarDigitalIT1() {
       aria-valuemin={0} aria-valuemax={progreso.total} aria-valuenow={progreso.hechos}>
       <span style={{ width: `${(progreso.hechos / Math.max(1, progreso.total)) * 100}%` }}/></div>}
     <p className="radar-fuentes">
-      Fuentes automáticas: OpenStreetMap{copiaOSM ? ` (${copiaOSM.lugares.length} lugares, copia del ${new Date(copiaOSM.fecha).toLocaleDateString('es-ES')})` : ''},
-      {' '}Wikidata (marcas) y las webs encontradas. Sin APIs de pago.
-      {copiaOSM && !progreso && <button type="button" className="btn-enlace" onClick={() => void investigar(negocios, true)}>
-        <RefreshCw size={12}/> Reinvestigar todo con fuentes actualizadas</button>}
+      Fuentes automáticas: OpenStreetMap (Nominatim; datos © colaboradores de OpenStreetMap, ODbL), Wikidata (marcas)
+      {' '}y las webs encontradas. Sin APIs de pago; resultados guardados 30 días.
+      {!progreso && Object.keys(resultados).length > 0 && <button type="button" className="btn-enlace" onClick={() => void investigar(negocios)}>
+        <RefreshCw size={12}/> Reinvestigar todo</button>}
     </p>
     {avisos.length > 0 && <details className="radar-avisos"><summary>{avisos.length} avisos de la última investigación</summary>
       <ul>{avisos.map((a) => <li key={a}>{a}</li>)}</ul></details>}

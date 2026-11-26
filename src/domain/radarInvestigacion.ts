@@ -159,8 +159,38 @@ export function webSegura(valor: string | undefined): string | null {
   } catch { return null; }
 }
 
-/** Convierte la respuesta de Overpass en una lista compacta y validada. */
-export function lugaresDesdeOverpass(json: unknown): LugarOSM[] {
+/**
+ * Lugares de OpenStreetMap a partir de la búsqueda de Nominatim (una consulta por negocio, con
+ * `extratags` y `addressdetails`). Solo se conservan los del municipio indicado.
+ */
+export function lugaresDesdeNominatim(json: unknown, municipio: string): LugarOSM[] {
+  if (!Array.isArray(json)) return [];
+  const m = normalizar(municipio);
+  return lugaresDesdeEtiquetas({ elements: json.slice(0, 20).flatMap((r) => {
+    const x = r as { osm_type?: unknown; osm_id?: unknown; name?: unknown; address?: Record<string, unknown>; extratags?: Record<string, unknown> };
+    const a = x.address ?? {};
+    const localidad = [a.town, a.city, a.village, a.municipality].find((v) => typeof v === 'string') as string | undefined;
+    if (!localidad || normalizar(localidad) !== m) return [];
+    return [{ type: x.osm_type, id: x.osm_id, tags: {
+      ...(x.extratags ?? {}), name: x.name, 'addr:street': a.road ?? a.pedestrian ?? a.square, 'addr:housenumber': a.house_number,
+    } }];
+  }) });
+}
+
+/** Política de uso de Nominatim: como máximo 1 consulta por segundo (con margen). Ajustable en pruebas. */
+export const RITMO_RADAR = { nominatimMs: 1100 };
+/** Devuelve una función que, encadenada, deja al menos `ms` entre turnos consecutivos. */
+export function turnosEspaciados(ms = RITMO_RADAR.nominatimMs): () => Promise<void> {
+  let turno = Promise.resolve();
+  let primero = true;
+  return () => (turno = turno.then(() => {
+    if (primero) { primero = false; return; }
+    return new Promise<void>((r) => setTimeout(r, ms));
+  }));
+}
+
+/** Convierte elementos con etiquetas OSM en una lista compacta y validada. */
+export function lugaresDesdeEtiquetas(json: unknown): LugarOSM[] {
   const elementos = (json as { elements?: unknown })?.elements;
   if (!Array.isArray(elementos)) return [];
   const res: LugarOSM[] = [];
@@ -309,8 +339,8 @@ export function unirEvidencias(lista: EvidenciaRadar[]): EvidenciaRadar[] {
 // ───────────────────────── Investigación automática ─────────────────────────
 
 export interface ServiciosRadar {
-  /** Lugares del municipio (OpenStreetMap). */
-  lugares(): Promise<LugarOSM[]>;
+  /** Lugares de OpenStreetMap con ese nombre en el municipio (Nominatim). */
+  lugares(nombre: string): Promise<LugarOSM[]>;
   /** Cuentas oficiales de marcas por identificador Wikidata. */
   marcas(ids: string[]): Promise<MarcaWikidata[]>;
   /** Análisis de hasta 4 webs públicas; las que fallan se devuelven en `fallos`. */
@@ -338,7 +368,7 @@ export function resultadoVigente(r: ResultadoAuto | undefined, n: NegocioPiloto,
 /**
  * Investiga un negocio: OpenStreetMap (nombre y dirección) → marca (Wikidata) → webs candidatas
  * (declaradas, aportadas o deducidas del nombre) → enlaces publicados en esas webs.
- * Un dominio deducido solo se conserva si la página contiene el nombre del negocio.
+ * Un dominio deducido solo se conserva si la página contiene el nombre y la calle o el municipio.
  */
 export async function investigarNegocio(
   n: NegocioPiloto, municipio: string, lugares: LugarOSM[], marcas: Map<string, MarcaWikidata>,
@@ -379,7 +409,10 @@ export async function investigarNegocio(
       const pedida = p.solicitada ?? p.url;
       const f = fuenteDe.get(pedida) ?? [...fuenteDe.entries()].find(([u]) => sinBarra(u) === sinBarra(pedida))?.[1]
         ?? { fuente: 'web' as const };
-      if (f.fuente === 'dominio' && !p.menciones.includes('nombre')) continue;
+      // Un dominio deducido solo vale si la página es de ESTE local: nombre + (calle o municipio).
+      // Medido en Medina: con solo el nombre eran homónimos de otras localidades (ruido para revisar).
+      if (f.fuente === 'dominio' && !(p.menciones.includes('nombre')
+        && (p.menciones.includes('calle') || p.menciones.includes('municipio')))) continue;
       const delaPagina = evidenciasPagina(p, f.fuente, f.origen);
       // En una cadena, una página que no menciona la calle del local (portada, localizador) y sus
       // redes son corporativas: se marcan como «marca» y nunca se proponen como del establecimiento.
@@ -531,7 +564,6 @@ export function campoDeEnlace(texto: string): { campo: CampoRadar; url: string }
 
 const CLAVE_TRABAJO = 'ulit-censo-radar-trabajo-v2';
 const CLAVE_AUTO = 'ulit-censo-radar-auto-v1';
-const CLAVE_OSM = 'ulit-censo-radar-osm-v1';
 const ahoraISO = () => new Date().toISOString();
 const esCampo = (c: unknown): c is CampoRadar => CAMPOS_RADAR.some((x) => x.clave === c);
 const fechaValida = (f: unknown) => typeof f === 'string' && f.length <= 40 && !Number.isNaN(Date.parse(f));
@@ -664,28 +696,6 @@ export function leerResultadosAuto(campanaId: string): ResultadosAuto {
 }
 export function guardarResultadosAuto(campanaId: string, r: ResultadosAuto): boolean {
   try { localStorage.setItem(`${CLAVE_AUTO}:${campanaId}`, JSON.stringify(r)); return true; } catch { return false; }
-}
-
-/** Copia local de los lugares del municipio: se reutiliza 7 días para no repetir consultas. */
-export interface CopiaOSM { municipio: string; fecha: string; lugares: LugarOSM[] }
-export function leerCopiaOSM(municipio: string, ahora = Date.now()): CopiaOSM | null {
-  try {
-    const c = JSON.parse(localStorage.getItem(CLAVE_OSM) ?? 'null') as CopiaOSM | null;
-    if (!c || c.municipio !== municipio || !fechaValida(c.fecha) || ahora - Date.parse(c.fecha) > 7 * 86_400_000) return null;
-    return { municipio, fecha: c.fecha, lugares: lugaresDesdeOverpass({ elements: (c.lugares ?? []).map(aElementoOSM) }) };
-  } catch { return null; }
-}
-export function guardarCopiaOSM(municipio: string, lugares: LugarOSM[]): void {
-  try { localStorage.setItem(CLAVE_OSM, JSON.stringify({ municipio, fecha: ahoraISO(), lugares })); } catch { /* solo es caché */ }
-}
-/** Vuelve a la forma de Overpass para revalidar la copia con el mismo filtro. */
-function aElementoOSM(l: LugarOSM) {
-  const [type, id] = (l?.id ?? '').split('/');
-  return { type, id: Number(id), tags: {
-    name: l.nombre, brand: l.marca, 'brand:wikidata': l.marcaWd, 'addr:street': l.calle,
-    'addr:housenumber': l.numero, website: l.web, 'contact:instagram': l.instagram,
-    'contact:facebook': l.facebook, 'contact:twitter': l.twitter,
-  } };
 }
 
 // ───────────────────────── Exportación ─────────────────────────

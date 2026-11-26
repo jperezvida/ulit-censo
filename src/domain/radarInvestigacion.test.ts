@@ -4,7 +4,7 @@ import { CLAVE_RADAR, type NegocioPiloto } from './radarDigitalIT1';
 import {
   bandejaDe, campoDeEnlace, confirmarRelacionadas, csvRadar, dominiosProbables, emparejarOSM,
   evidenciasPagina, fusionarTrabajos, guardarResultadosAuto, guardarTrabajos, huellaNegocio,
-  investigarNegocio, leerResultadosAuto, leerTrabajos, lugaresDesdeOverpass, marcaDesdeWikidata,
+  investigarNegocio, leerResultadosAuto, leerTrabajos, lugaresDesdeEtiquetas, marcaDesdeWikidata,
   mencionesEnTexto, nivelEvidencia, nombresEquivalentes, perfilDesdeValor, resultadoVigente,
   trabajoVacio, vistaCampo, webSegura, type EvidenciaRadar, type LugarOSM, type ServiciosRadar,
 } from './radarInvestigacion';
@@ -55,17 +55,17 @@ describe('Radar · coincidencias comprensibles', () => {
 
 describe('Radar · fuentes públicas gratuitas', () => {
   it('OpenStreetMap: compacta, valida y descarta enlaces inseguros o de compartir', () => {
-    const lugares = lugaresDesdeOverpass(overpass);
+    const lugares = lugaresDesdeEtiquetas(overpass);
     expect(lugares).toHaveLength(4);
     expect(lugares[0]).toMatchObject({ id: 'node/1', web: 'https://www.opticavisionclara.es/',
       instagram: 'https://www.instagram.com/opticavisionclara' });
     expect(lugares[1].facebook).toBeUndefined();
     expect(lugares[3]).toMatchObject({ marcaWd: 'Q999' });
     expect(lugares[3].web).toBeUndefined();
-    expect(lugaresDesdeOverpass({ nada: 1 })).toEqual([]);
+    expect(lugaresDesdeEtiquetas({ nada: 1 })).toEqual([]);
   });
   it('empareja por nombre y prioriza la misma calle y número', () => {
-    const r = emparejarOSM(negocio(), lugaresDesdeOverpass(overpass));
+    const r = emparejarOSM(negocio(), lugaresDesdeEtiquetas(overpass));
     expect(r.map((c) => c.lugar.id)).toEqual(['node/1', 'node/2']);
     expect(r[0].criterios).toEqual(['osm', 'nombre', 'calle', 'numero']);
     expect(r[1].criterios).toEqual(['osm', 'nombre']);
@@ -139,7 +139,7 @@ describe('Radar · investigación automática de un negocio', () => {
       paginas: [pagina(urls[0], ['nombre', 'municipio'], { redes: { facebook: 'https://www.facebook.com/opticavisionclara' } })],
       fallos: [],
     }));
-    const r = await investigarNegocio(negocio(), MUNICIPIO, lugaresDesdeOverpass(overpass), new Map(), { paginas });
+    const r = await investigarNegocio(negocio(), MUNICIPIO, lugaresDesdeEtiquetas(overpass), new Map(), { paginas });
     expect(paginas).toHaveBeenCalledWith(['https://www.opticavisionclara.es/'], expect.objectContaining({ municipio: MUNICIPIO }));
     const web = r.evidencias.find((e) => e.campo === 'web')!;
     expect(web.procedencias.map((p) => p.fuente)).toEqual(['osm', 'web']);
@@ -159,10 +159,18 @@ describe('Radar · investigación automática de un negocio', () => {
     expect(r.evidencias).toEqual([]);
     expect(r.avisos).toEqual([]);
   });
-  it('las cuentas de una cadena (Wikidata) se proponen como «marca», nunca como relacionadas', async () => {
+  it('un dominio deducido con el nombre pero sin calle ni municipio (homónimo de otra localidad) se descarta', async () => {
+    const n = negocio({ nombre: 'Farmacia Ficticia Puente', direccion: 'Calle Real' });
+    const r = await investigarNegocio(n, MUNICIPIO, [], new Map(), {
+      paginas: async (urls) => ({ paginas: [pagina(urls[0], ['nombre']), pagina(urls[1], ['nombre', 'municipio'])], fallos: [] }),
+    });
+    expect(r.evidencias.map((e) => e.url)).toEqual(['https://www.farmaciaficticiapuente.com/']);
+    expect(nivelEvidencia(r.evidencias[0])).toBe('relacionado');
+  });
+    it('las cuentas de una cadena (Wikidata) se proponen como «marca», nunca como relacionadas', async () => {
     const n = negocio({ nombre: 'Calzados Ficticios', direccion: 'Calle Gamazo' });
     const m = new Map([['Q999', { id: 'Q999', instagram: 'https://www.instagram.com/calzadosficticios' }]]);
-    const r = await investigarNegocio(n, MUNICIPIO, lugaresDesdeOverpass(overpass), m, {
+    const r = await investigarNegocio(n, MUNICIPIO, lugaresDesdeEtiquetas(overpass), m, {
       paginas: async () => ({ paginas: [], fallos: [] }),
     });
     const ig = r.evidencias.find((e) => e.campo === 'instagram')!;
@@ -272,14 +280,35 @@ describe('Radar · conservación de borradores', () => {
   });
 });
 
-describe('Radar · copia de OpenStreetMap', () => {
-  it('se reutiliza durante 7 días y solo para el mismo municipio', async () => {
-    const { guardarCopiaOSM, leerCopiaOSM } = await import('./radarInvestigacion');
-    const lugares: LugarOSM[] = lugaresDesdeOverpass(overpass);
-    guardarCopiaOSM(MUNICIPIO, lugares);
-    expect(leerCopiaOSM(MUNICIPIO)?.lugares).toEqual(lugares);
-    expect(leerCopiaOSM('Otro')).toBeNull();
-    expect(leerCopiaOSM(MUNICIPIO, Date.now() + 8 * 86_400_000)).toBeNull();
+describe('Radar · OpenStreetMap vía Nominatim', () => {
+  it('espacia las consultas al menos 1,1 s (política de uso), sin retrasar la primera', async () => {
+    const { turnosEspaciados, RITMO_RADAR } = await import('./radarInvestigacion');
+    expect(RITMO_RADAR.nominatimMs).toBeGreaterThanOrEqual(1000);
+    vi.useFakeTimers();
+    const turno = turnosEspaciados(1100);
+    const hechos: number[] = [];
+    for (let i = 0; i < 3; i++) void turno().then(() => hechos.push(Date.now()));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(hechos).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1099);
+    expect(hechos).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(hechos).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(hechos).toHaveLength(3);
+    vi.useRealTimers();
+  });
+  it('convierte resultados de Nominatim (forma real) y descarta los de otros municipios', async () => {
+    const { lugaresDesdeNominatim } = await import('./radarInvestigacion');
+    const lugares = lugaresDesdeNominatim([
+      { osm_type: 'node', osm_id: 11, name: 'Supermercado Ficticio', address: { road: 'Calle de José Zorrilla', house_number: '7', town: 'Medina del Campo' },
+        extratags: { website: 'https://www.super-ficticio.es', brand: 'Super Ficticio', 'brand:wikidata': 'Q999' } },
+      { osm_type: 'way', osm_id: 12, name: 'Supermercado Ficticio', address: { road: 'Calle Mayor', city: 'Valladolid' }, extratags: {} },
+      { osm_type: 'node', osm_id: 13, name: 'Sin municipio', address: {} },
+    ], MUNICIPIO);
+    expect(lugares).toEqual([{ id: 'node/11', nombre: 'Supermercado Ficticio', marca: 'Super Ficticio', marcaWd: 'Q999',
+      calle: 'Calle de José Zorrilla', numero: '7', web: 'https://www.super-ficticio.es/' }]);
+    expect(lugaresDesdeNominatim({ error: 'x' }, MUNICIPIO)).toEqual([]);
   });
 });
 
@@ -339,7 +368,7 @@ describe('Radar · revisión técnica: cadenas, homónimos y fuentes caídas', (
     expect(dos[0].lugar.id).toBe('node/8');
   });
   it('si fallan las fuentes, se conserva lo obtenido y queda «incompleta» (nunca «sin evidencias»)', async () => {
-    const r = await investigarNegocio(negocio(), MUNICIPIO, lugaresDesdeOverpass(overpass), new Map(), {
+    const r = await investigarNegocio(negocio(), MUNICIPIO, lugaresDesdeEtiquetas(overpass), new Map(), {
       paginas: async () => { throw Error('caída'); },
     }, undefined, ['Wikidata']);
     expect(r.evidencias.find((e) => e.campo === 'instagram')).toBeDefined();

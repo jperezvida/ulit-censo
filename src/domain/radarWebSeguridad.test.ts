@@ -33,6 +33,7 @@ describe('Radar web: seguridad de destinos y acceso',()=>{
     expect((await pedir({accion:'paginas',urls:[]})).status).toBe(400);
     expect((await pedir({accion:'osm',municipio:'"];out;'})).status).toBe(400);
     expect((await pedir({accion:'osm',municipio:''})).status).toBe(400);
+    expect((await pedir({accion:'osm',municipio:'Medina del Campo'})).status).toBe(400);
     expect((await pedir({accion:'osm',municipio:'Medina del Campo',provincia:'x"];out;'})).status).toBe(400);
     expect((await pedir({accion:'marcas',ids:['Q1);drop']})).status).toBe(400);
     expect((await pedir({accion:'marcas',ids:Array.from({length:41},(_,i)=>'Q'+(i+1))})).status).toBe(400);

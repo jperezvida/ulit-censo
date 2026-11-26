@@ -3,7 +3,7 @@ import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
 import { analizarPagina } from '../src/domain/radarAnalisisWeb';
 import {
-  lugaresDesdeOverpass, marcaDesdeWikidata, type ContextoNegocio, type MarcaWikidata,
+  lugaresDesdeNominatim, marcaDesdeWikidata, type ContextoNegocio, type MarcaWikidata,
 } from '../src/domain/radarInvestigacion';
 
 const PROYECTO = 'https://ldegybookaubncnayhep.supabase.co';
@@ -129,29 +129,19 @@ function conPlazo<T>(p:Promise<T>,ms:number,mensaje:string):Promise<T> {
 }
 const texto=(v:unknown,max:number)=>typeof v==='string'&&v.length<=max?v.trim():null;
 
-/** Lugares con nombre del municipio en OpenStreetMap (datos abiertos ODbL, sin clave ni coste). */
-async function lugaresMunicipio(municipio:string, provincia?:string) {
-  // El término municipal (nivel 8) se busca dentro de su provincia (nivel 6) para evitar homónimos.
-  const termino=`rel["boundary"="administrative"]["admin_level"="8"]["name"="${municipio}"]`;
-  const q='[out:json][timeout:7];'
-    +(provincia?`area["boundary"="administrative"]["admin_level"="6"]["name"="${provincia}"]->.p;${termino}(area.p);`:`${termino};`)
-    +'map_to_area->.a;'
-    +'nwr(area.a)["name"](if:is_tag("shop")||is_tag("amenity")||is_tag("office")||is_tag("craft")||is_tag("healthcare")||is_tag("tourism")||is_tag("leisure"));out tags 5000;';
-  let estado='sin respuesta';
-  // Servidor principal y un espejo público: si uno está saturado, se prueba el otro.
-  for(const servidor of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']){
-    try{
-      const r=await fetch(servidor,{
-        method:'POST',
-        headers:{'content-type':'application/x-www-form-urlencoded','user-agent':AGENTE},
-        body:'data='+encodeURIComponent(q),
-        signal:AbortSignal.timeout(PLAZO_MS/2),
-      });
-      if(r.ok) return lugaresDesdeOverpass(await r.json());
-      estado=String(r.status);
-    }catch{estado='tiempo agotado';}
-  }
-  throw Error('OpenStreetMap no está disponible ahora mismo ('+estado+'). Inténtalo más tarde.');
+/**
+ * Lugares de OpenStreetMap con ese nombre en el municipio, vía Nominatim (datos abiertos ODbL,
+ * sin clave ni coste). Overpass no es accesible desde la red de Vercel (comprobado: tiempo agotado
+ * en 4 servidores). Política de Nominatim: agente identificado y ≤1 petición/s (lo espacia el
+ * cliente) con resultados guardados 30 días.
+ */
+async function lugaresNominatim(nombre:string, municipio:string, provincia?:string) {
+  const u=new URL('https://nominatim.openstreetmap.org/search');
+  u.search=new URLSearchParams({q:[nombre,municipio,provincia].filter(Boolean).join(', '),format:'jsonv2',
+    extratags:'1',addressdetails:'1',limit:'5',countrycodes:'es','accept-language':'es'}).toString();
+  const r=await fetch(u,{headers:{'user-agent':AGENTE},signal:AbortSignal.timeout(PLAZO_MS/2)});
+  if(!r.ok) throw Error('OpenStreetMap (Nominatim) no está disponible ahora mismo ('+r.status+').');
+  return lugaresDesdeNominatim(await r.json(),municipio);
 }
 
 /** Cuentas oficiales de marcas (P856, P2003, P2013, P2002) en Wikidata. */
@@ -191,9 +181,11 @@ export default async function handler(req:Request):Promise<Response> {
     const nombreValido=(v:string|null)=>!!v&&/^[\p{L}][\p{L} .'-]{1,59}$/u.test(v);
     const municipio=texto(body.municipio,60);
     const provincia=body.provincia===undefined?undefined:texto(body.provincia,60);
+    const nombre=texto(body.nombre,200);
     if(!nombreValido(municipio)) return respuesta(400,{error:'Municipio no válido.'});
     if(provincia!==undefined&&!nombreValido(provincia)) return respuesta(400,{error:'Provincia no válida.'});
-    tarea=async()=>respuesta(200,{lugares:await lugaresMunicipio(municipio!,provincia??undefined)});
+    if(!nombre||nombre.length<2) return respuesta(400,{error:'Falta el nombre del negocio.'});
+    tarea=async()=>respuesta(200,{lugares:await lugaresNominatim(nombre,municipio!,provincia??undefined)});
   } else if(accion==='marcas'){
     const ids=Array.isArray(body.ids)?body.ids.filter((x):x is string=>typeof x==='string'&&/^Q\d{1,10}$/.test(x)):[];
     if(!ids.length||ids.length>40) return respuesta(400,{error:'Indica entre 1 y 40 marcas.'});

@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { baseVacia } from '../../domain/db';
 import { FuenteOficinaContext } from '../../store/fuenteOficina';
 import RadarDigitalIT1 from './RadarDigitalIT1';
+import { RITMO_RADAR } from '../../domain/radarInvestigacion';
 
 vi.mock('../../store/clienteSupabase',()=>({
   clienteServidor:vi.fn(()=>({auth:{getSession:async()=>({data:{session:{access_token:'test-jwt'}}})}})),
@@ -33,8 +34,11 @@ function Pantalla(){
   }}><MemoryRouter><RadarDigitalIT1/></MemoryRouter></FuenteOficinaContext.Provider>;
 }
 /** Servidor simulado: OpenStreetMap, Wikidata y webs ficticias. */
+let marcas:number[]=[];
 function servidor(){
+  marcas=[];
   return vi.spyOn(globalThis,'fetch').mockImplementation(async(_url,init)=>{
+    marcas.push(Date.now());
     const cuerpo=JSON.parse(String(init?.body));
     const json=(d:unknown)=>new Response(JSON.stringify(d),{status:200,headers:{'content-type':'application/json'}});
     if(cuerpo.accion==='osm') return json({lugares:[
@@ -60,7 +64,7 @@ async function investigarTodo(){
   await waitFor(()=>expect(screen.getByText(/Investigación terminada/)).toBeInTheDocument());
 }
 
-beforeEach(()=>{localStorage.clear();vi.restoreAllMocks();db=fixture();});
+beforeEach(()=>{localStorage.clear();vi.restoreAllMocks();db=fixture();RITMO_RADAR.nominatimMs=15;});
 describe('Radar Digital IT1 · bandeja de investigación automática',()=>{
   it('antes de investigar: 10 negocios, valores del Excel visibles y búsqueda manual preparada',()=>{
     render(<Pantalla/>);
@@ -77,15 +81,16 @@ describe('Radar Digital IT1 · bandeja de investigación automática',()=>{
     const original=JSON.stringify(db.registros);
     await investigarTodo();
     const acciones=red.mock.calls.map(([,init])=>JSON.parse(String(init?.body)).accion);
-    expect(acciones.filter(a=>a==='osm')).toHaveLength(1);
+    // Una consulta a OpenStreetMap por negocio, espaciadas ≥1,1 s (política de Nominatim).
+    expect(acciones.filter(a=>a==='osm')).toHaveLength(10);
+    const tiempos=red.mock.calls.flatMap(([,init],i)=>JSON.parse(String(init?.body)).accion==='osm'?[marcas[i]]:[]);
+    for(let i=1;i<tiempos.length;i++) expect(tiempos[i]-tiempos[i-1]).toBeGreaterThanOrEqual(14);
     expect(acciones.filter(a=>a==='paginas')).toHaveLength(10);
     // 1: web relacionada pero el Excel dice No · 2: Instagram sin calle · 3: Instagram con nombre y calle.
     expect(screen.getByRole('button',{name:/^1 Listos para confirmar/})).toBeInTheDocument();
     expect(screen.getByRole('button',{name:/^2 Requieren intervención/})).toBeInTheDocument();
     expect(screen.getByRole('button',{name:/^7 Sin evidencias automáticas/})).toBeInTheDocument();
     expect(JSON.stringify(db.registros)).toBe(original);
-    // La copia de OpenStreetMap se reutiliza: una segunda investigación no vuelve a pedirla.
-    expect(localStorage.getItem('ulit-censo-radar-osm-v1')).toContain('node/1');
   });
 
   it('muestra procedencia verificable y criterios; Enter confirma solo lo relacionado, avanza y se deshace con Z',async()=>{
