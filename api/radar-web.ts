@@ -9,7 +9,31 @@ import {
 const PROYECTO = 'https://ldegybookaubncnayhep.supabase.co';
 const ESPACIO = 'real-medina-del-campo-2026';
 const LIMITE_BYTES = 300_000;
-const AGENTE = 'ULIT-Censo-Radar/0.2 (investigacion asistida de comercios; contacto via ULIT Censo)';
+/** Contacto del responsable (correo o URL) para la identificación que exigen OSM y Wikimedia. */
+export function contactoValido(v:string|undefined):string|null {
+  const c=v?.trim();
+  return c && c.length<=120 && (/^[^\s@()<>;]+@[^\s@()<>;]+\.[a-z]{2,}$/i.test(c) || /^https:\/\/[^\s()<>;]+$/.test(c)) ? c : null;
+}
+const AGENTE = 'ULIT-Censo-Radar/0.3 (investigacion asistida de comercios'
+  + (contactoValido(process.env.RADAR_CONTACTO) ? '; '+contactoValido(process.env.RADAR_CONTACTO) : '') + ')';
+/**
+ * Proveedor de OpenStreetMap configurable sin cambiar código (variable de Vercel y redespliegue):
+ * `RADAR_NOMINATIM_URL` (otra instancia HTTPS, p. ej. autohospedada) o `RADAR_OSM=desactivado`.
+ */
+export function proveedorNominatim(env:Record<string,string|undefined>=process.env):URL|null {
+  if(env.RADAR_OSM==='desactivado') return null;
+  try{
+    const u=new URL(env.RADAR_NOMINATIM_URL||'https://nominatim.openstreetmap.org/search');
+    return u.protocol==='https:'&&!u.username&&!u.password?u:null;
+  }catch{return null;}
+}
+/** Además del espaciado del navegador, cada instancia del servidor no consulta Nominatim más de 1 vez/s. */
+let ultimaNominatim=0;
+async function turnoNominatim(){
+  const espera=ultimaNominatim+1100-Date.now();
+  ultimaNominatim=Math.max(Date.now(),ultimaNominatim+1100);
+  if(espera>0) await new Promise(r=>setTimeout(r,espera));
+}
 /** Cada petición debe terminar holgadamente dentro del límite de una función de Vercel. */
 const PLAZO_MS = 8000;
 
@@ -135,8 +159,9 @@ const texto=(v:unknown,max:number)=>typeof v==='string'&&v.length<=max?v.trim():
  * en 4 servidores). Política de Nominatim: agente identificado y ≤1 petición/s (lo espacia el
  * cliente) con resultados guardados 30 días.
  */
-async function lugaresNominatim(nombre:string, municipio:string, provincia?:string) {
-  const u=new URL('https://nominatim.openstreetmap.org/search');
+async function lugaresNominatim(base:URL, nombre:string, municipio:string, provincia?:string) {
+  const u=new URL(base.toString());
+  await turnoNominatim();
   u.search=new URLSearchParams({q:[nombre,municipio,provincia].filter(Boolean).join(', '),format:'jsonv2',
     extratags:'1',addressdetails:'1',limit:'5',countrycodes:'es','accept-language':'es'}).toString();
   const r=await fetch(u,{headers:{'user-agent':AGENTE},signal:AbortSignal.timeout(PLAZO_MS/2)});
@@ -185,7 +210,9 @@ export default async function handler(req:Request):Promise<Response> {
     if(!nombreValido(municipio)) return respuesta(400,{error:'Municipio no válido.'});
     if(provincia!==undefined&&!nombreValido(provincia)) return respuesta(400,{error:'Provincia no válida.'});
     if(!nombre||nombre.length<2) return respuesta(400,{error:'Falta el nombre del negocio.'});
-    tarea=async()=>respuesta(200,{lugares:await lugaresNominatim(nombre,municipio!,provincia??undefined)});
+    const proveedor=proveedorNominatim();
+    if(!proveedor) return respuesta(503,{error:'La consulta a OpenStreetMap está desactivada en este despliegue.'});
+    tarea=async()=>respuesta(200,{lugares:await lugaresNominatim(proveedor,nombre,municipio!,provincia??undefined)});
   } else if(accion==='marcas'){
     const ids=Array.isArray(body.ids)?body.ids.filter((x):x is string=>typeof x==='string'&&/^Q\d{1,10}$/.test(x)):[];
     if(!ids.length||ids.length>40) return respuesta(400,{error:'Indica entre 1 y 40 marcas.'});

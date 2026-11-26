@@ -351,7 +351,7 @@ export default function RadarDigitalIT1() {
       aria-valuemin={0} aria-valuemax={progreso.total} aria-valuenow={progreso.hechos}>
       <span style={{ width: `${(progreso.hechos / Math.max(1, progreso.total)) * 100}%` }}/></div>}
     <p className="radar-fuentes">
-      Fuentes automáticas: OpenStreetMap (Nominatim; datos © colaboradores de OpenStreetMap, ODbL), Wikidata (marcas)
+      Fuentes automáticas: OpenStreetMap (Nominatim; datos <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© colaboradores de OpenStreetMap</a>, ODbL), Wikidata (marcas)
       {' '}y las webs encontradas. Sin APIs de pago; resultados guardados 30 días.
       {!progreso && Object.keys(resultados).length > 0 && <button type="button" className="btn-enlace" onClick={() => void investigar(negocios)}>
         <RefreshCw size={12}/> Reinvestigar todo</button>}

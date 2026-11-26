@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import handler, { validarDestinoWeb } from '../../api/radar-web';
+import handler, { contactoValido, proveedorNominatim, validarDestinoWeb } from '../../api/radar-web';
 
 const pedir = (cuerpo: unknown, token = 'A'.repeat(80)) => handler(new Request('https://ulit-censo.example/api/radar-web', {
   method: 'POST', headers: { authorization: 'Bearer ' + token }, body: JSON.stringify(cuerpo),
@@ -43,5 +43,19 @@ describe('Radar web: seguridad de destinos y acceso',()=>{
   });
   it('rechaza solicitudes demasiado grandes',async()=>{
     expect((await pedir({accion:'paginas',urls:['https://a.es/'],relleno:'x'.repeat(7000)})).status).toBe(413);
+  });
+  it('Nominatim: proveedor configurable o desactivable sin cambiar código; contacto validado', async () => {
+    expect(proveedorNominatim({})?.hostname).toBe('nominatim.openstreetmap.org');
+    expect(proveedorNominatim({ RADAR_NOMINATIM_URL: 'https://osm.ejemplo-propio.es/search' })?.hostname).toBe('osm.ejemplo-propio.es');
+    expect(proveedorNominatim({ RADAR_NOMINATIM_URL: 'http://inseguro.es/search' })).toBeNull();
+    expect(proveedorNominatim({ RADAR_OSM: 'desactivado' })).toBeNull();
+    expect(contactoValido('censo@ejemplo.es')).toBe('censo@ejemplo.es');
+    expect(contactoValido('https://ejemplo.es/contacto')).toBe('https://ejemplo.es/contacto');
+    expect(contactoValido('x); inyección')).toBeNull();
+    const red = vi.spyOn(globalThis, 'fetch');
+    process.env.RADAR_OSM = 'desactivado';
+    try { expect((await pedir({ accion: 'osm', nombre: 'Bar', municipio: 'Medina del Campo' })).status).toBe(503); }
+    finally { delete process.env.RADAR_OSM; }
+    expect(red).not.toHaveBeenCalled();
   });
 });
