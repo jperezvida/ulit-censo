@@ -35,11 +35,12 @@ export const TEXTO_FUENTE: Record<FuenteRadar, string> = {
   manual: 'Aportado por ti',
 };
 
-export type CriterioRadar = 'nombre' | 'calle' | 'numero' | 'municipio' | 'enlazado' | 'osm' | 'marca' | 'tienda';
+export type CriterioRadar = 'nombre' | 'calle' | 'numero' | 'otro-numero' | 'municipio' | 'enlazado' | 'osm' | 'marca' | 'tienda';
 export const TEXTO_CRITERIO: Record<CriterioRadar, string> = {
   nombre: 'Mismo nombre',
   calle: 'Misma calle',
   numero: 'Mismo número',
+  'otro-numero': 'Otro número de portal',
   municipio: 'Menciona el municipio',
   enlazado: 'Enlazado desde la web',
   osm: 'Declarado en OpenStreetMap',
@@ -60,12 +61,13 @@ export interface EvidenciaRadar {
 }
 export type NivelRadar = 'encontrado' | 'relacionado';
 
-/** Regla única y comprensible: nombre + (calle o municipio), salvo cuentas de marca y venta online. */
+/**
+ * Regla única y comprensible: nombre + (calle o municipio), salvo cuentas de marca o cadena,
+ * venta online y homónimos en otro número de portal, que siempre requieren una persona.
+ */
 export function nivelEvidencia(e: EvidenciaRadar): NivelRadar {
   const c = new Set(e.criterios);
-  // La venta online exige comprobar que realmente se puede comprar; la cuenta de una cadena,
-  // decidir si cuenta para el establecimiento. Nunca se proponen como «relacionado».
-  if (e.campo === 'ventaOnline' || c.has('marca')) return 'encontrado';
+  if (e.campo === 'ventaOnline' || c.has('marca') || c.has('otro-numero')) return 'encontrado';
   return c.has('nombre') && (c.has('calle') || c.has('municipio')) ? 'relacionado' : 'encontrado';
 }
 export const claveEvidencia = (e: Pick<EvidenciaRadar, 'campo' | 'url'>) => `${e.campo}|${e.url}`;
@@ -195,12 +197,16 @@ export function emparejarOSM(n: Pick<NegocioPiloto, 'nombre' | 'direccion' | 'nu
     const criterios: CriterioRadar[] = ['osm', 'nombre'];
     if (lugar.calle && mismaCalle(n.direccion, lugar.calle)) {
       criterios.push('calle');
-      if (numeroDe(n.numero) && numeroDe(n.numero) === numeroDe(lugar.numero ?? '')) criterios.push('numero');
+      const a = numeroDe(n.numero);
+      const b = numeroDe(lugar.numero ?? '');
+      // Mismo nombre y calle pero otro portal: puede ser otro establecimiento (sucursal u homónimo).
+      if (a && b) criterios.push(a === b ? 'numero' : 'otro-numero');
     }
     res.push({ lugar, criterios });
   }
   // shortcut: con más de 2 homónimos se muestran los 2 mejores; si hiciera falta, buscar a mano.
-  return res.sort((a, b) => b.criterios.length - a.criterios.length).slice(0, 2);
+  const peso = (c: CoincidenciaOSM) => c.criterios.length - (c.criterios.includes('otro-numero') ? 3 : 0);
+  return res.sort((a, b) => peso(b) - peso(a)).slice(0, 2);
 }
 export const origenOSM = (id: string) => `https://www.openstreetmap.org/${id}`;
 
@@ -310,7 +316,14 @@ export interface ServiciosRadar {
   /** Análisis de hasta 4 webs públicas; las que fallan se devuelven en `fallos`. */
   paginas(urls: string[], ctx: ContextoNegocio): Promise<{ paginas: PaginaRadar[]; fallos: { url: string; error: string }[] }>;
 }
-export interface ResultadoAuto { huella: string; fecha: string; evidencias: EvidenciaRadar[]; avisos: string[] }
+export interface ResultadoAuto {
+  huella: string; fecha: string; evidencias: EvidenciaRadar[]; avisos: string[];
+  /**
+   * Fuentes que NO se pudieron consultar. «Sin evidencias» solo vale si está vacío: no haber podido
+   * consultar una fuente no es lo mismo que no haber encontrado nada.
+   */
+  incompleto?: string[];
+}
 export type ResultadosAuto = Record<string, ResultadoAuto>;
 
 /** Si cambian nombre o dirección, la investigación anterior deja de valer. */
@@ -319,7 +332,7 @@ export function huellaNegocio(n: Pick<NegocioPiloto, 'nombre' | 'direccion' | 'n
 }
 export const DIAS_VIGENCIA = 30;
 export function resultadoVigente(r: ResultadoAuto | undefined, n: NegocioPiloto, ahora = Date.now()): boolean {
-  return !!r && r.huella === huellaNegocio(n) && ahora - Date.parse(r.fecha) < DIAS_VIGENCIA * 86_400_000;
+  return !!r && !r.incompleto?.length && r.huella === huellaNegocio(n) && ahora - Date.parse(r.fecha) < DIAS_VIGENCIA * 86_400_000;
 }
 
 /**
@@ -329,9 +342,11 @@ export function resultadoVigente(r: ResultadoAuto | undefined, n: NegocioPiloto,
  */
 export async function investigarNegocio(
   n: NegocioPiloto, municipio: string, lugares: LugarOSM[], marcas: Map<string, MarcaWikidata>,
-  servicios: Pick<ServiciosRadar, 'paginas'>, webManual?: string,
+  servicios: Pick<ServiciosRadar, 'paginas'>, webManual?: string, fuentesFallidas: string[] = [],
 ): Promise<ResultadoAuto> {
   const coincidencias = emparejarOSM(n, lugares);
+  // Cadena o franquicia: por el Excel/la revisión de franquicias o por la marca en OpenStreetMap.
+  const cadena = !!n.cadena || coincidencias.some((c) => c.lugar.marca || c.lugar.marcaWd);
   const ev: EvidenciaRadar[] = coincidencias.flatMap(evidenciasOSM);
   for (const c of coincidencias) {
     const m = c.lugar.marcaWd && marcas.get(c.lugar.marcaWd);
@@ -347,19 +362,39 @@ export async function investigarNegocio(
   if (!fuenteDe.size) for (const d of dominiosProbables(n.nombre)) fuenteDe.set(d, { fuente: 'dominio' });
   const urls = [...fuenteDe.keys()].slice(0, 4);
   const avisos: string[] = [];
+  const incompleto = [...fuentesFallidas];
   if (urls.length) {
-    const r = await servicios.paginas(urls, { nombre: n.nombre, calle: n.direccion, municipio });
+    let r: Awaited<ReturnType<ServiciosRadar['paginas']>>;
+    try { r = await servicios.paginas(urls, { nombre: n.nombre, calle: n.direccion, municipio }); }
+    catch (e) {
+      // Si falla el análisis de webs, se conserva lo obtenido de las demás fuentes.
+      r = { paginas: [], fallos: urls.map((url) => ({ url, error: e instanceof Error ? e.message : 'sin respuesta' })) };
+    }
     // Un dominio deducido que no existe es lo esperable: no es un aviso para la persona.
-    for (const f of r.fallos) if (fuenteDe.get(f.url)?.fuente !== 'dominio') avisos.push(`${f.url}: ${f.error}`.slice(0, 200));
+    for (const f of r.fallos) if (fuenteDe.get(f.url)?.fuente !== 'dominio') {
+      avisos.push(`${f.url}: ${f.error}`.slice(0, 200));
+      if (!incompleto.includes('Web declarada')) incompleto.push('Web declarada');
+    }
     for (const p of r.paginas) {
       const pedida = p.solicitada ?? p.url;
       const f = fuenteDe.get(pedida) ?? [...fuenteDe.entries()].find(([u]) => sinBarra(u) === sinBarra(pedida))?.[1]
         ?? { fuente: 'web' as const };
       if (f.fuente === 'dominio' && !p.menciones.includes('nombre')) continue;
-      ev.push(...evidenciasPagina(p, f.fuente === 'osm' ? 'osm' : f.fuente, f.origen));
+      const delaPagina = evidenciasPagina(p, f.fuente, f.origen);
+      // En una cadena, una página que no menciona la calle del local (portada, localizador) y sus
+      // redes son corporativas: se marcan como «marca» y nunca se proponen como del establecimiento.
+      if (cadena && !p.menciones.includes('calle')) for (const e of delaPagina) e.criterios = [...e.criterios, 'marca'];
+      ev.push(...delaPagina);
     }
   }
-  return { huella: huellaNegocio(n), fecha: new Date().toISOString(), evidencias: unirEvidencias(ev), avisos };
+  // En una cadena, los perfiles sociales declarados en OpenStreetMap suelen ser los de la marca.
+  if (cadena) for (const e of ev) {
+    if (['instagram', 'facebook', 'twitter'].includes(e.campo) && !e.criterios.includes('marca')) e.criterios = [...e.criterios, 'marca'];
+  }
+  return {
+    huella: huellaNegocio(n), fecha: new Date().toISOString(), evidencias: unirEvidencias(ev), avisos,
+    ...(incompleto.length ? { incompleto } : {}),
+  };
 }
 const sinBarra = (u: string) => u.replace(/\/+$/, '').replace(/^https:\/\/www\./, 'https://');
 
@@ -410,9 +445,10 @@ export function vistaCampo(campo: CampoRadar, evidencias: EvidenciaRadar[], t: T
   return { campo, estado, decision, propuesta, alternativas };
 }
 
-export type BandejaRadar = 'sin-investigar' | 'listo' | 'intervencion' | 'sin-evidencias' | 'revisado';
+export type BandejaRadar = 'sin-investigar' | 'incompleta' | 'listo' | 'intervencion' | 'sin-evidencias' | 'revisado';
 export const TEXTO_BANDEJA: Record<BandejaRadar, string> = {
   'sin-investigar': 'Sin investigar',
+  incompleta: 'Investigación incompleta',
   listo: 'Listos para confirmar',
   intervencion: 'Requieren intervención',
   'sin-evidencias': 'Sin evidencias automáticas',
@@ -432,7 +468,32 @@ export function bandejaDe(n: NegocioPiloto, r: ResultadoAuto | undefined, t: Tra
   if (!r) return 'sin-investigar';
   const vistas = CAMPOS_RADAR.map((c) => vistaCampo(c.clave, r.evidencias, t));
   if (vistas.some((v) => v.estado === 'encontrado' || discrepaExcel(v, n.datosExcel[v.campo]))) return 'intervencion';
-  return vistas.some((v) => v.estado === 'relacionado') ? 'listo' : 'sin-evidencias';
+  if (vistas.some((v) => v.estado === 'relacionado')) return 'listo';
+  return r.incompleto?.length ? 'incompleta' : 'sin-evidencias';
+}
+
+/**
+ * Medición real del piloto, campo a campo: cuántos reciben propuesta automática y, tras la
+ * revisión humana, cuántas eran correctas (aceptadas tal cual) o incorrectas (descartadas o
+ * sustituidas por otra decisión). Las propuestas sin revisar no cuentan como acierto ni error.
+ */
+export function medirPiloto(items: { r?: ResultadoAuto; t: TrabajoRadar }[]) {
+  const m = { campos: 0, conPropuesta: 0, relacionadas: 0, correctas: 0, incorrectas: 0, sinRevisar: 0, negociosIncompletos: 0 };
+  for (const { r, t } of items) {
+    if (r?.incompleto?.length) m.negociosIncompletos++;
+    for (const { clave } of CAMPOS_RADAR) {
+      m.campos++;
+      const auto = (r?.evidencias ?? []).filter((e) => e.campo === clave);
+      if (!auto.length) continue;
+      m.conPropuesta++;
+      if (auto.some((e) => nivelEvidencia(e) === 'relacionado')) m.relacionadas++;
+      const d = t.decisiones[clave];
+      if (d?.valor === 'si' && auto.some((e) => e.url === d.url)) m.correctas++;
+      else if (d || auto.every((e) => t.descartadas.includes(claveEvidencia(e)))) m.incorrectas++;
+      else m.sinRevisar++;
+    }
+  }
+  return m;
 }
 
 /** Confirmación agrupada: SOLO las propuestas «probablemente relacionadas» aún sin decidir. */
@@ -584,6 +645,8 @@ export function sanearResultado(r: Partial<ResultadoAuto> | null | undefined): R
     huella: r.huella.slice(0, 600), fecha: r.fecha!,
     evidencias: r.evidencias.map(evidenciaValida).filter((e): e is EvidenciaRadar => !!e).slice(0, 60),
     avisos: Array.isArray(r.avisos) ? r.avisos.filter((a): a is string => typeof a === 'string').map((a) => a.slice(0, 200)).slice(0, 8) : [],
+    ...(Array.isArray(r.incompleto) && r.incompleto.length
+      ? { incompleto: r.incompleto.filter((a): a is string => typeof a === 'string').map((a) => a.slice(0, 60)).slice(0, 5) } : {}),
   };
 }
 export function leerResultadosAuto(campanaId: string): ResultadosAuto {

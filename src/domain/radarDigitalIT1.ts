@@ -20,6 +20,8 @@ export interface NegocioPiloto {
   numero: string;
   fila: number;
   datosExcel: Record<(typeof CAMPOS_DIGITALES_EXCEL)[number]['clave'], string>;
+  /** Franquicia o cadena según la revisión de franquicias (si existe) o el Excel. Solo lectura. */
+  cadena?: boolean;
 }
 
 /** Solo 10 negocios ocupados de IT1/2026; nunca 2025 ni los vacíos, sin depender del local físico. */
@@ -32,9 +34,13 @@ export function negociosPilotoRadar(db: BaseDatos, campanaId: string): NegocioPi
       const datosExcel = Object.fromEntries(CAMPOS_DIGITALES_EXCEL.map((campo) =>
         [campo.clave, datoRevisionGeneral(f.registro, campo.clave, f.correccion?.valores)],
       )) as NegocioPiloto['datosExcel'];
+      const revision = db.revisionesFranquiciaRegistros?.[f.id];
+      const respuesta = revision?.campanaId === campanaId ? revision.respuesta : undefined;
+      const cadena = respuesta ? respuesta === 'si'
+        : datoRevisionGeneral(f.registro, 'franquicia', f.correccion?.valores).trim() === '1';
       return {
         id: f.id, nombre: f.nombre, direccion: f.direccion, numero: f.numero,
-        fila: f.registro.fila, datosExcel,
+        fila: f.registro.fila, datosExcel, ...(cadena ? { cadena } : {}),
       };
     });
 }

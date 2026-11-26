@@ -296,3 +296,69 @@ describe('Radar · HTML hostil', () => {
     expect(textoVisible('<p>Hola</p><script>oculto()</script>')).not.toContain('oculto');
   });
 });
+
+describe('Radar · revisión técnica: cadenas, homónimos y fuentes caídas', () => {
+  const pagina = (url: string, menciones: string[], extra = {}) => ({
+    url, solicitada: url, menciones, redes: {}, indiciosVenta: [], ...extra,
+  }) as never;
+  const lugarCadena: LugarOSM = { id: 'node/7', nombre: 'Moda Ficticia', marca: 'Moda Ficticia', calle: 'Calle Gamazo', numero: '3',
+    web: 'https://www.modaficticia.com/', instagram: 'https://www.instagram.com/modaficticia' };
+  const n = negocio({ nombre: 'Moda Ficticia', direccion: 'Calle Gamazo', numero: '3' });
+
+  it('una página de cadena que solo menciona el municipio (localizador) y sus redes son de la marca', async () => {
+    const r = await investigarNegocio(n, MUNICIPIO, [lugarCadena], new Map(), {
+      paginas: async (urls) => ({ paginas: [pagina(urls[0], ['nombre', 'municipio'], {
+        redes: { facebook: 'https://www.facebook.com/modaficticia' }, fichaGoogle: 'https://maps.app.goo.gl/Corporativa' })], fallos: [] }),
+    });
+    for (const campo of ['web', 'instagram', 'facebook', 'googleBusiness'] as const) {
+      const e = r.evidencias.find((x) => x.campo === campo)!;
+      expect(e.criterios).toContain('marca');
+      expect(nivelEvidencia(e)).toBe('encontrado');
+    }
+    expect(confirmarRelacionadas(r, trabajoVacio(), 'f')).toEqual({});
+  });
+  it('si la página de la cadena es la del local (menciona su calle), la web sí puede ser relacionada', async () => {
+    const r = await investigarNegocio({ ...n, cadena: true }, MUNICIPIO, [], new Map(), {
+      paginas: async (urls) => ({ paginas: [pagina(urls[0], ['nombre', 'calle', 'municipio'])], fallos: [] }),
+    }, 'https://www.modaficticia.com/tiendas/medina');
+    expect(nivelEvidencia(r.evidencias.find((x) => x.campo === 'web')!)).toBe('relacionado');
+  });
+  it('la franquicia marcada en el Excel o en la revisión de franquicias también activa la protección', async () => {
+    const r = await investigarNegocio({ ...n, cadena: true }, MUNICIPIO, [], new Map(), {
+      paginas: async (urls) => ({ paginas: [pagina(urls[0], ['nombre', 'municipio'])], fallos: [] }),
+    }, 'https://www.modaficticia.com/');
+    expect(r.evidencias[0].criterios).toContain('marca');
+  });
+  it('homónimo en la misma calle con otro número de portal: nunca se propone como relacionado', () => {
+    const c = emparejarOSM(negocio({ nombre: 'Moda Ficticia', direccion: 'Calle Gamazo', numero: '21' }), [lugarCadena]);
+    expect(c[0].criterios).toContain('otro-numero');
+    expect(nivelEvidencia({ campo: 'web', url: 'https://a.es/', procedencias: [{ fuente: 'osm', origen: 'https://a.es/' }], criterios: c[0].criterios })).toBe('encontrado');
+    // El que coincide en número va primero.
+    const dos = emparejarOSM(negocio({ nombre: 'Moda Ficticia', direccion: 'Calle Gamazo', numero: '21' }),
+      [lugarCadena, { ...lugarCadena, id: 'node/8', numero: '21' }]);
+    expect(dos[0].lugar.id).toBe('node/8');
+  });
+  it('si fallan las fuentes, se conserva lo obtenido y queda «incompleta» (nunca «sin evidencias»)', async () => {
+    const r = await investigarNegocio(negocio(), MUNICIPIO, lugaresDesdeOverpass(overpass), new Map(), {
+      paginas: async () => { throw Error('caída'); },
+    }, undefined, ['Wikidata']);
+    expect(r.evidencias.find((e) => e.campo === 'instagram')).toBeDefined();
+    expect(r.incompleto).toEqual(['Wikidata', 'Web declarada']);
+    expect(resultadoVigente(r, negocio())).toBe(false);
+    const vacio = { ...r, evidencias: [] };
+    expect(bandejaDe(negocio(), vacio, trabajoVacio())).toBe('incompleta');
+    expect(bandejaDe(negocio(), { ...vacio, incompleto: undefined }, trabajoVacio())).toBe('sin-evidencias');
+  });
+  it('medición: correctas (aceptadas tal cual), incorrectas (descartadas o sustituidas) y sin revisar', async () => {
+    const { medirPiloto } = await import('./radarInvestigacion');
+    const ev = (campo: EvidenciaRadar['campo'], url: string): EvidenciaRadar =>
+      ({ campo, url, criterios: ['nombre', 'municipio'], procedencias: [{ fuente: 'web', origen: url }] });
+    const r = { huella: '', fecha: '2026-11-25T00:00:00Z', avisos: [], evidencias: [
+      ev('web', 'https://a.es/'), ev('instagram', 'https://www.instagram.com/a'), ev('facebook', 'https://www.facebook.com/a'), ev('twitter', 'https://x.com/a')] };
+    const t = { ...trabajoVacio(), descartadas: ['instagram|https://www.instagram.com/a'], decisiones: {
+      web: { valor: 'si' as const, url: 'https://a.es/', fecha: '' },
+      facebook: { valor: 'si' as const, url: 'https://www.facebook.com/otra', fecha: '', manual: true } } };
+    expect(medirPiloto([{ r, t }, { t: trabajoVacio() }])).toEqual({
+      campos: 12, conPropuesta: 4, relacionadas: 4, correctas: 1, incorrectas: 2, sinRevisar: 1, negociosIncompletos: 0 });
+  });
+});

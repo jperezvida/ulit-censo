@@ -10,7 +10,7 @@ import { clienteServidor } from '../../store/clienteSupabase';
 import { enlacesBusquedaRadar, negociosPilotoRadar, type NegocioPiloto } from '../../domain/radarDigitalIT1';
 import {
   CAMPOS_RADAR, TEXTO_BANDEJA, TEXTO_CRITERIO, TEXTO_ESTADO, TEXTO_FUENTE,
-  bandejaDe, campoDeEnlace, confirmarRelacionadas, csvRadar, discrepaExcel, emparejarOSM,
+  bandejaDe, campoDeEnlace, medirPiloto, confirmarRelacionadas, csvRadar, discrepaExcel, emparejarOSM,
   fusionarTrabajos, guardarCopiaOSM, guardarResultadosAuto, guardarTrabajos, huellaNegocio,
   investigarNegocio, leerCopiaOSM, leerResultadosAuto, leerTrabajos, nivelEvidencia, resultadoVigente,
   sanearResultado, trabajosDesdeTexto, trabajoVacio, vistaCampo,
@@ -20,8 +20,8 @@ import {
 import '../../styles/radar-digital.css';
 
 type Filtro = 'todos' | BandejaRadar;
-const FILTROS: Filtro[] = ['todos', 'intervencion', 'listo', 'sin-evidencias', 'sin-investigar', 'revisado'];
-const ORDEN_BANDEJA: BandejaRadar[] = ['intervencion', 'listo', 'sin-evidencias', 'sin-investigar', 'revisado'];
+const FILTROS: Filtro[] = ['todos', 'intervencion', 'listo', 'sin-evidencias', 'incompleta', 'sin-investigar', 'revisado'];
+const ORDEN_BANDEJA: BandejaRadar[] = ['intervencion', 'listo', 'sin-evidencias', 'incompleta', 'sin-investigar', 'revisado'];
 const BUSQUEDA: Record<CampoRadar, 'web' | 'google' | 'instagram' | 'facebook' | 'twitter'> = {
   web: 'web', googleBusiness: 'google', instagram: 'instagram', facebook: 'facebook', twitter: 'twitter', ventaOnline: 'web',
 };
@@ -65,8 +65,8 @@ async function llamarRadar<T>(cuerpo: unknown): Promise<T> {
   if (!r.ok) throw Error(datos.error || 'El servicio del Radar no respondió.');
   return datos;
 }
-const SERVICIOS = (municipio: string): ServiciosRadar => ({
-  lugares: async () => (await llamarRadar<{ lugares: LugarOSM[] }>({ accion: 'osm', municipio })).lugares ?? [],
+const SERVICIOS = (municipio: string, provincia?: string): ServiciosRadar => ({
+  lugares: async () => (await llamarRadar<{ lugares: LugarOSM[] }>({ accion: 'osm', municipio, provincia })).lugares ?? [],
   marcas: async (ids) => (await llamarRadar<{ marcas: MarcaWikidata[] }>({ accion: 'marcas', ids })).marcas ?? [],
   paginas: async (urls, contexto) => {
     const r = await llamarRadar<{ resultados: { url: string; pagina?: PaginaRadar; error?: string }[] }>({ accion: 'paginas', urls, contexto });
@@ -83,6 +83,7 @@ export default function RadarDigitalIT1() {
   const fuente = useFuenteOficina();
   const negocios = useMemo(() => campana ? negociosPilotoRadar(db, campana.id) : [], [db, campana?.id]);
   const municipio = (campana && db.municipios[campana.municipioId]?.nombre) || 'Medina del Campo';
+  const provincia = (campana && db.municipios[campana.municipioId]?.provincia) || undefined;
   const [trabajos, setTrabajos] = useState<TrabajosRadar>(() => campana ? leerTrabajos(campana.id) : {});
   const [resultados, setResultados] = useState<ResultadosAuto>(() => campana ? leerResultadosAuto(campana.id) : {});
   const [copiaOSM, setCopiaOSM] = useState(() => leerCopiaOSM(municipio));
@@ -135,18 +136,24 @@ export default function RadarDigitalIT1() {
   /** `webs`: web conocida por negocio (p. ej. recién pegada) para analizarla aunque el estado aún no la refleje. */
   const investigar = async (lista: NegocioPiloto[], refrescarFuentes = false, webs: Record<string, string> = {}) => {
     if (!campana || progreso || !lista.length) return;
-    const servicios = SERVICIOS(municipio);
+    const servicios = SERVICIOS(municipio, provincia);
     const nuevosAvisos: string[] = [];
+    // Fuentes no consultadas: los negocios quedan «incompletos», nunca «sin evidencias».
+    const fallidas: string[] = [];
     setProgreso({ hechos: 0, total: lista.length });
     let lugares = refrescarFuentes ? undefined : leerCopiaOSM(municipio)?.lugares;
     if (!lugares) {
       try {
-        guardarCopiaOSM(municipio, await servicios.lugares());
+        const recibidos = await servicios.lugares();
+        // Cero lugares en un municipio con comercio indica que no se encontró el término municipal.
+        if (!recibidos.length) throw Error(`no devolvió lugares para ${municipio}`);
+        guardarCopiaOSM(municipio, recibidos);
         const copia = leerCopiaOSM(municipio);
         setCopiaOSM(copia);
         lugares = copia?.lugares ?? [];
       } catch (e) {
         nuevosAvisos.push(`OpenStreetMap: ${e instanceof Error ? e.message : 'no disponible'}. Se investigan solo las webs.`);
+        fallidas.push('OpenStreetMap');
         lugares = [];
       }
     }
@@ -154,7 +161,7 @@ export default function RadarDigitalIT1() {
     const marcas = new Map<string, MarcaWikidata>();
     if (ids.length) {
       try { for (const m of await servicios.marcas(ids)) marcas.set(m.id, m); }
-      catch (e) { nuevosAvisos.push(`Wikidata: ${e instanceof Error ? e.message : 'no disponible'}.`); }
+      catch (e) { nuevosAvisos.push(`Wikidata: ${e instanceof Error ? e.message : 'no disponible'}.`); fallidas.push('Wikidata'); }
     }
     // Dos negocios a la vez: rápido sin saturar las webs ni la función del servidor.
     const cola = [...lista];
@@ -163,7 +170,7 @@ export default function RadarDigitalIT1() {
       for (let n = cola.shift(); n; n = cola.shift()) {
         try {
           const web = webs[n.id] ?? trabajos[n.id]?.decisiones.web?.url ?? trabajos[n.id]?.manuales.web;
-          const r = sanearResultado(await investigarNegocio(n, municipio, lugares!, marcas, servicios, web));
+          const r = sanearResultado(await investigarNegocio(n, municipio, lugares!, marcas, servicios, web, fallidas));
           if (r) setResultados((prev) => {
             const sig = { ...prev, [n!.id]: r };
             guardarResultadosAuto(campana.id, sig);
@@ -303,7 +310,7 @@ export default function RadarDigitalIT1() {
 
   const exportarCSV = () => descargar('ulit-radar-digital-it1.csv', csvRadar(negocios, trabajos), 'text/csv;charset=utf-8');
   const exportarCopia = () => descargar('ulit-radar-digital-it1-copia.json', JSON.stringify({
-    formato: 'ulit-radar-trabajo-v2', campanaId: campana.id, exportado: new Date().toISOString(), trabajos,
+    formato: 'ulit-radar-trabajo-v2', campanaId: campana.id, exportado: new Date().toISOString(), medicion: medida, trabajos,
   }, null, 2), 'application/json;charset=utf-8');
   const importarCopia = async (archivo: File | undefined) => {
     if (!archivo || archivo.size > 1_000_000) return setMensaje('Elige una copia JSON del Radar (máximo 1 MB).');
@@ -326,9 +333,7 @@ export default function RadarDigitalIT1() {
   const busqueda = actual ? enlacesBusquedaRadar(actual.n) : null;
   const revisados = cuenta('revisado');
   // Medida del piloto: cuántos campos llegan con propuesta automática y cuántos ya están decididos.
-  const vistasTodas = filas.flatMap((f) => CAMPOS_RADAR.map((c) => vistaCampo(c.clave, f.r?.evidencias ?? [], f.t)));
-  const preparados = vistasTodas.filter((v) => v.propuesta || v.decision?.url && !v.decision.manual).length;
-  const decididos = vistasTodas.filter((v) => v.decision).length;
+  const medida = medirPiloto(filas);
   const antiguo = actual?.r && !resultadoVigente(actual.r, actual.n);
 
   return <main className="pagina radar">
@@ -373,7 +378,9 @@ export default function RadarDigitalIT1() {
           <b>{n}</b> {f === 'todos' ? 'Todos' : TEXTO_BANDEJA[f]}</button>;
       })}
       <span className="radar-avance" role="status" aria-label="Progreso del piloto">{revisados} de {negocios.length} revisados ·
-        {' '}{preparados} de {vistasTodas.length} campos con propuesta automática · {decididos} decididos</span>
+        {' '}{medida.conPropuesta} de {medida.campos} campos con propuesta automática ({medida.relacionadas} relacionadas) ·
+        {' '}correctas {medida.correctas} · incorrectas {medida.incorrectas} · sin revisar {medida.sinRevisar}
+        {medida.negociosIncompletos ? ` · ${medida.negociosIncompletos} incompletos` : ''}</span>
     </div>
 
     <div className="radar-disposicion">
@@ -405,7 +412,9 @@ export default function RadarDigitalIT1() {
           </div>
         </div>
         {!actual.r && <p className="radar-sin-investigar">Aún sin investigar. Pulsa «Investigar» arriba, o busca a mano con los enlaces de cada fila y pega aquí lo que encuentres.</p>}
-        {antiguo && <p className="radar-sin-investigar">Resultados del {new Date(actual.r!.fecha).toLocaleDateString('es-ES')}: pueden estar desactualizados.
+        {actual.r?.incompleto?.length ? <p className="radar-sin-investigar">Investigación incompleta: no se pudo consultar {actual.r.incompleto.join(', ')}.
+          {' '}Lo que falta no significa que no exista. <button type="button" className="btn-enlace" disabled={!!progreso} onClick={() => void investigar([actual.n])}><RefreshCw size={12}/> Reintentar</button></p>
+        : antiguo && <p className="radar-sin-investigar">Resultados del {new Date(actual.r!.fecha).toLocaleDateString('es-ES')}: pueden estar desactualizados.
           {' '}<button type="button" className="btn-enlace" disabled={!!progreso} onClick={() => void investigar([actual.n])}><RefreshCw size={12}/> Reinvestigar</button></p>}
 
         <div className="radar-campos" role="table" aria-label="Presencia digital">

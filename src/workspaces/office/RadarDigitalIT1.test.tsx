@@ -57,7 +57,7 @@ const foco=()=>screen.getByRole('region',{name:'Investigación del establecimien
 async function investigarTodo(){
   render(<Pantalla/>);
   fireEvent.click(screen.getByRole('button',{name:'Investigar 10 automáticamente'}));
-  await waitFor(()=>expect(screen.getByRole('button',{name:'Todo investigado'})).toBeInTheDocument());
+  await waitFor(()=>expect(screen.getByText(/Investigación terminada/)).toBeInTheDocument());
 }
 
 beforeEach(()=>{localStorage.clear();vi.restoreAllMocks();db=fixture();});
@@ -183,6 +183,22 @@ describe('Radar Digital IT1 · bandeja de investigación automática',()=>{
     });
     await investigarTodo();
     expect(screen.getByText('1 avisos de la última investigación')).toBeInTheDocument();
-    expect(screen.getByRole('button',{name:/10 Sin evidencias automáticas/})).toBeInTheDocument();
+    // No haber podido consultar una fuente no es «sin evidencias»: queda incompleta y se puede reintentar.
+    expect(screen.getByRole('button',{name:/^10 Investigación incompleta/})).toBeInTheDocument();
+    expect(screen.getByRole('button',{name:/^0 Sin evidencias automáticas/})).toBeInTheDocument();
+    expect(screen.getByText(/no se pudo consultar OpenStreetMap/)).toBeInTheDocument();
+    expect(screen.getByRole('button',{name:'Investigar 10 automáticamente'})).toBeEnabled();
+  });
+
+  it('mide propuestas correctas e incorrectas tras la revisión humana',async()=>{
+    servidor();
+    await investigarTodo();
+    const avance=screen.getByRole('status',{name:'Progreso del piloto'});
+    expect(avance).toHaveTextContent('6 de 60 campos con propuesta automática (5 relacionadas)');
+    fireEvent.click(fila(2));
+    fireEvent.click(within(within(foco()).getAllByRole('row')[3]).getByRole('button',{name:'Instagram: la coincidencia no corresponde'}));
+    fireEvent.click(fila(1));
+    fireEvent.keyDown(document.body,{key:'Enter'});
+    expect(avance).toHaveTextContent('correctas 4 · incorrectas 1 · sin revisar 1');
   });
 });

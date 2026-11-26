@@ -130,8 +130,12 @@ function conPlazo<T>(p:Promise<T>,ms:number,mensaje:string):Promise<T> {
 const texto=(v:unknown,max:number)=>typeof v==='string'&&v.length<=max?v.trim():null;
 
 /** Lugares con nombre del municipio en OpenStreetMap (datos abiertos ODbL, sin clave ni coste). */
-async function lugaresMunicipio(municipio:string) {
-  const q=`[out:json][timeout:7];area["boundary"="administrative"]["admin_level"="8"]["name"="${municipio}"]->.a;`
+async function lugaresMunicipio(municipio:string, provincia?:string) {
+  // El término municipal (nivel 8) se busca dentro de su provincia (nivel 6) para evitar homónimos.
+  const termino=`rel["boundary"="administrative"]["admin_level"="8"]["name"="${municipio}"]`;
+  const q='[out:json][timeout:7];'
+    +(provincia?`area["boundary"="administrative"]["admin_level"="6"]["name"="${provincia}"]->.p;${termino}(area.p);`:`${termino};`)
+    +'map_to_area->.a;'
     +'nwr(area.a)["name"](if:is_tag("shop")||is_tag("amenity")||is_tag("office")||is_tag("craft")||is_tag("healthcare")||is_tag("tourism")||is_tag("leisure"));out tags 5000;';
   let estado='sin respuesta';
   // Servidor principal y un espejo público: si uno está saturado, se prueba el otro.
@@ -184,9 +188,12 @@ export default async function handler(req:Request):Promise<Response> {
   // Validar la entrada ANTES de consultar la sesión: nada inválido llega a la red.
   let tarea:()=>Promise<Response>;
   if(accion==='osm'){
+    const nombreValido=(v:string|null)=>!!v&&/^[\p{L}][\p{L} .'-]{1,59}$/u.test(v);
     const municipio=texto(body.municipio,60);
-    if(!municipio||!/^[\p{L}][\p{L} .'-]{1,59}$/u.test(municipio)) return respuesta(400,{error:'Municipio no válido.'});
-    tarea=async()=>respuesta(200,{lugares:await lugaresMunicipio(municipio.replace(/["\\]/g,''))});
+    const provincia=body.provincia===undefined?undefined:texto(body.provincia,60);
+    if(!nombreValido(municipio)) return respuesta(400,{error:'Municipio no válido.'});
+    if(provincia!==undefined&&!nombreValido(provincia)) return respuesta(400,{error:'Provincia no válida.'});
+    tarea=async()=>respuesta(200,{lugares:await lugaresMunicipio(municipio!,provincia??undefined)});
   } else if(accion==='marcas'){
     const ids=Array.isArray(body.ids)?body.ids.filter((x):x is string=>typeof x==='string'&&/^Q\d{1,10}$/.test(x)):[];
     if(!ids.length||ids.length>40) return respuesta(400,{error:'Indica entre 1 y 40 marcas.'});
