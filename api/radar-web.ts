@@ -1,11 +1,41 @@
 import { lookup } from 'node:dns/promises';
 import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
-import { extraerEnlacesPublicos } from '../src/domain/radarAnalisisWeb';
+import { analizarPagina } from '../src/domain/radarAnalisisWeb.js';
+import {
+  lugaresDesdeNominatim, marcaDesdeWikidata, type ContextoNegocio, type MarcaWikidata,
+} from '../src/domain/radarInvestigacion.js';
 
 const PROYECTO = 'https://ldegybookaubncnayhep.supabase.co';
 const ESPACIO = 'real-medina-del-campo-2026';
 const LIMITE_BYTES = 300_000;
+/** Contacto del responsable (correo o URL) para la identificación que exigen OSM y Wikimedia. */
+export function contactoValido(v:string|undefined):string|null {
+  const c=v?.trim();
+  return c && c.length<=120 && (/^[^\s@()<>;]+@[^\s@()<>;]+\.[a-z]{2,}$/i.test(c) || /^https:\/\/[^\s()<>;]+$/.test(c)) ? c : null;
+}
+const AGENTE = 'ULIT-Censo-Radar/0.3 (investigacion asistida de comercios'
+  + (contactoValido(process.env.RADAR_CONTACTO) ? '; '+contactoValido(process.env.RADAR_CONTACTO) : '') + ')';
+/**
+ * Proveedor de OpenStreetMap configurable sin cambiar código (variable de Vercel y redespliegue):
+ * `RADAR_NOMINATIM_URL` (otra instancia HTTPS, p. ej. autohospedada) o `RADAR_OSM=desactivado`.
+ */
+export function proveedorNominatim(env:Record<string,string|undefined>=process.env):URL|null {
+  if(env.RADAR_OSM==='desactivado') return null;
+  try{
+    const u=new URL(env.RADAR_NOMINATIM_URL||'https://nominatim.openstreetmap.org/search');
+    return u.protocol==='https:'&&!u.username&&!u.password?u:null;
+  }catch{return null;}
+}
+/** Además del espaciado del navegador, cada instancia del servidor no consulta Nominatim más de 1 vez/s. */
+let ultimaNominatim=0;
+async function turnoNominatim(){
+  const espera=ultimaNominatim+1100-Date.now();
+  ultimaNominatim=Math.max(Date.now(),ultimaNominatim+1100);
+  if(espera>0) await new Promise(r=>setTimeout(r,espera));
+}
+/** Cada petición debe terminar holgadamente dentro del límite de una función de Vercel. */
+const PLAZO_MS = 8000;
 
 const respuesta = (status:number, contenido:unknown) => new Response(JSON.stringify(contenido), {
   status, headers: {
@@ -51,10 +81,10 @@ async function htmlSeguro(url:URL, saltos=0):Promise<{texto:string;url:string}> 
   const resultado=await new Promise<{texto?:string;redireccion?:string}>((resolve,reject)=>{
     const req=httpsRequest({
       hostname:url.hostname, servername:url.hostname, port:443,
-      path:url.pathname+url.search, method:'GET', timeout:5500,
+      path:url.pathname+url.search, method:'GET', timeout:4000,
       lookup:(_host,_opts,cb)=>cb(null,ip,4),
       headers:{
-        'user-agent':'ULIT-Censo-Radar/0.1 (manual pilot; public website links)',
+        'user-agent':AGENTE,
         'accept':'text/html,application/xhtml+xml',
         'accept-encoding':'identity',
       },
@@ -116,34 +146,100 @@ async function accesoPermitido(token:string):Promise<boolean> {
   return dato.habilitada===true && dato.alcance==='it1-franquicias-supervisadas';
 }
 
-/** Lectura bajo demanda de una ÚNICA URL elegida por el revisor.
- * No consulta buscadores, no rastrea redes, no almacena datos y no escribe en Supabase.
+function conPlazo<T>(p:Promise<T>,ms:number,mensaje:string):Promise<T> {
+  let temporizador:ReturnType<typeof setTimeout>|undefined;
+  return Promise.race([p,new Promise<never>((_,reject)=>{temporizador=setTimeout(()=>reject(Error(mensaje)),ms);})])
+    .finally(()=>clearTimeout(temporizador));
+}
+const texto=(v:unknown,max:number)=>typeof v==='string'&&v.length<=max?v.trim():null;
+
+/**
+ * Lugares de OpenStreetMap con ese nombre en el municipio, vía Nominatim (datos abiertos ODbL,
+ * sin clave ni coste). Overpass no es accesible desde la red de Vercel (comprobado: tiempo agotado
+ * en 4 servidores). Política de Nominatim: agente identificado y ≤1 petición/s (lo espacia el
+ * cliente) con resultados guardados 30 días.
  */
-export default async function handler(req:Request):Promise<Response> {
+async function lugaresNominatim(base:URL, nombre:string, municipio:string, provincia?:string) {
+  const u=new URL(base.toString());
+  await turnoNominatim();
+  u.search=new URLSearchParams({q:[nombre,municipio,provincia].filter(Boolean).join(', '),format:'jsonv2',
+    extratags:'1',addressdetails:'1',limit:'5',countrycodes:'es','accept-language':'es'}).toString();
+  const r=await fetch(u,{headers:{'user-agent':AGENTE},signal:AbortSignal.timeout(PLAZO_MS/2)});
+  if(!r.ok) throw Error('OpenStreetMap (Nominatim) no está disponible ahora mismo ('+r.status+').');
+  return lugaresDesdeNominatim(await r.json(),municipio);
+}
+
+/** Cuentas oficiales de marcas (P856, P2003, P2013, P2002) en Wikidata. */
+async function marcasWikidata(ids:string[]):Promise<MarcaWikidata[]> {
+  const r=await fetch('https://www.wikidata.org/w/api.php?action=wbgetentities&props=claims&format=json&ids='
+    +ids.join('|'),{headers:{'user-agent':AGENTE},signal:AbortSignal.timeout(PLAZO_MS)});
+  if(!r.ok) throw Error('Wikidata no está disponible ahora mismo ('+r.status+').');
+  const d=await r.json() as {entities?:Record<string,unknown>};
+  return ids.map(id=>marcaDesdeWikidata(id,d.entities?.[id])).filter((m):m is MarcaWikidata=>!!m);
+}
+
+/**
+ * Radar Digital (solo equipo de Oficina, verificado por RPC; sin service_role ni escritura):
+ * - `paginas`: lee hasta 4 webs HTTPS públicas y devuelve los enlaces que ellas mismas publican.
+ * - `osm`: lugares del municipio en OpenStreetMap. - `marcas`: cuentas oficiales en Wikidata.
+ * No consulta buscadores, no rastrea redes sociales, no almacena nada.
+ */
+export async function handler(req:Request):Promise<Response> {
   if(req.method!=='POST') return respuesta(405,{error:'Usa POST.'});
   const token=req.headers.get('authorization')?.match(/^Bearer ([A-Za-z0-9._-]{40,4000})$/)?.[1];
-  if(!token) return respuesta(401,{error:'Inicia sesión para analizar una web.'});
+  if(!token) return respuesta(401,{error:'Inicia sesión para usar el Radar Digital.'});
   const longitud=Number(req.headers.get('content-length')??'0');
-  if(longitud>3000) return respuesta(413,{error:'Solicitud demasiado grande.'});
-  let body:unknown;
+  if(longitud>6000) return respuesta(413,{error:'Solicitud demasiado grande.'});
+  let body:Record<string,unknown>;
   try {
     const raw=await req.text();
-    if(raw.length>3000) return respuesta(413,{error:'Solicitud demasiado grande.'});
-    body=JSON.parse(raw);
+    if(raw.length>6000) return respuesta(413,{error:'Solicitud demasiado grande.'});
+    const parsed:unknown=JSON.parse(raw);
+    if(!parsed||typeof parsed!=='object'||Array.isArray(parsed)) throw Error();
+    body=parsed as Record<string,unknown>;
   } catch{return respuesta(400,{error:'Solicitud JSON inválida.'});}
-  const urlTexto=(body&&typeof body==='object'&&'url' in body)
-    ? (body as {url?:unknown}).url:null;
-  if(typeof urlTexto!=='string') return respuesta(400,{error:'Falta la dirección web.'});
-  let url:URL;
-  try{url=validarDestinoWeb(urlTexto);}catch(e){return respuesta(400,{error:e instanceof Error?e.message:'URL inválida.'});}
+  const accion=body.accion??'paginas';
+
+  // Validar la entrada ANTES de consultar la sesión: nada inválido llega a la red.
+  let tarea:()=>Promise<Response>;
+  if(accion==='osm'){
+    const nombreValido=(v:string|null)=>!!v&&/^[\p{L}][\p{L} .'-]{1,59}$/u.test(v);
+    const municipio=texto(body.municipio,60);
+    const provincia=body.provincia===undefined?undefined:texto(body.provincia,60);
+    const nombre=texto(body.nombre,200);
+    if(!nombreValido(municipio)) return respuesta(400,{error:'Municipio no válido.'});
+    if(provincia!==undefined&&!nombreValido(provincia)) return respuesta(400,{error:'Provincia no válida.'});
+    if(!nombre||nombre.length<2) return respuesta(400,{error:'Falta el nombre del negocio.'});
+    const proveedor=proveedorNominatim();
+    if(!proveedor) return respuesta(503,{error:'La consulta a OpenStreetMap está desactivada en este despliegue.'});
+    tarea=async()=>respuesta(200,{lugares:await lugaresNominatim(proveedor,nombre,municipio!,provincia??undefined)});
+  } else if(accion==='marcas'){
+    const ids=Array.isArray(body.ids)?body.ids.filter((x):x is string=>typeof x==='string'&&/^Q\d{1,10}$/.test(x)):[];
+    if(!ids.length||ids.length>40) return respuesta(400,{error:'Indica entre 1 y 40 marcas.'});
+    tarea=async()=>respuesta(200,{marcas:await marcasWikidata([...new Set(ids)])});
+  } else if(accion==='paginas'){
+    const lista=Array.isArray(body.urls)?body.urls:[];
+    if(!lista.length||lista.length>4||lista.some(u=>typeof u!=='string')) return respuesta(400,{error:'Indica entre 1 y 4 webs.'});
+    let urls:URL[];
+    try{urls=(lista as string[]).map(validarDestinoWeb);}
+    catch(e){return respuesta(400,{error:e instanceof Error?e.message:'URL inválida.'});}
+    const c=(body.contexto??{}) as Record<string,unknown>;
+    const ctx:ContextoNegocio={nombre:texto(c.nombre,200)??'',calle:texto(c.calle,200)??'',municipio:texto(c.municipio,60)??''};
+    tarea=async()=>{
+      const resultados=await Promise.allSettled(urls.map(url=>conPlazo(htmlSeguro(url),PLAZO_MS,'La web tardó demasiado en responder.')
+        .then(r=>analizarPagina(r.texto,r.url,ctx,url.toString()))));
+      return respuesta(200,{resultados:resultados.map((r,i)=>r.status==='fulfilled'
+        ?{url:urls[i].toString(),pagina:r.value}
+        :{url:urls[i].toString(),error:r.reason instanceof Error?r.reason.message:'No se pudo analizar la página.'})});
+    };
+  } else return respuesta(400,{error:'Acción desconocida.'});
+
   try{
-    if(!await accesoPermitido(token)) return respuesta(403,{error:'Sin autorización para el piloto de IT1.'});
+    if(!await accesoPermitido(token)) return respuesta(403,{error:'Sin autorización para el Radar Digital de IT1.'});
   }catch{return respuesta(503,{error:'No se pudo verificar la sesión del censo.'});}
-  try{
-    const {texto,pagina}=await (async()=>{
-      const r=await htmlSeguro(url);
-      return {texto:r.texto,pagina:r.url};
-    })();
-    return respuesta(200,{hallazgo:extraerEnlacesPublicos(texto,pagina)});
-  }catch(e){return respuesta(422,{error:e instanceof Error?e.message:'No se pudo analizar la página.'});}
+  try{return await tarea();}
+  catch(e){return respuesta(502,{error:e instanceof Error?e.message:'La fuente no respondió.'});}
 }
+
+/** Vercel Web Handler: prevents Node-style req/res from being injected into fetch(Request). */
+export default { fetch: handler };

@@ -1,5 +1,5 @@
 import type { BaseDatos } from './db';
-import { auditarRevisionGeneral, datoRevisionGeneral } from './revisionGeneral';
+import { auditarRevisionGeneral, datoRevisionGeneral } from './revisionGeneral.js';
 
 export const CAMPOS_DIGITALES_EXCEL = [
   { clave: 'web', etiqueta: 'Web' },
@@ -20,6 +20,8 @@ export interface NegocioPiloto {
   numero: string;
   fila: number;
   datosExcel: Record<(typeof CAMPOS_DIGITALES_EXCEL)[number]['clave'], string>;
+  /** Franquicia o cadena según la revisión de franquicias (si existe) o el Excel. Solo lectura. */
+  cadena?: boolean;
 }
 
 /** Solo 10 negocios ocupados de IT1/2026; nunca 2025 ni los vacíos, sin depender del local físico. */
@@ -32,25 +34,38 @@ export function negociosPilotoRadar(db: BaseDatos, campanaId: string): NegocioPi
       const datosExcel = Object.fromEntries(CAMPOS_DIGITALES_EXCEL.map((campo) =>
         [campo.clave, datoRevisionGeneral(f.registro, campo.clave, f.correccion?.valores)],
       )) as NegocioPiloto['datosExcel'];
+      const revision = db.revisionesFranquiciaRegistros?.[f.id];
+      const respuesta = revision?.campanaId === campanaId ? revision.respuesta : undefined;
+      const cadena = respuesta ? respuesta === 'si'
+        : datoRevisionGeneral(f.registro, 'franquicia', f.correccion?.valores).trim() === '1';
       return {
         id: f.id, nombre: f.nombre, direccion: f.direccion, numero: f.numero,
-        fila: f.registro.fila, datosExcel,
+        fila: f.registro.fila, datosExcel, ...(cadena ? { cadena } : {}),
       };
     });
 }
 
-export function interpretarPresenciaExcel(valor: string): 'si' | 'no' | 'sin-dato' {
-  return valor.trim() === '1' ? 'si' : valor.trim() === '0' ? 'no' : 'sin-dato';
-}
-
+/**
+ * Búsquedas manuales preparadas. La AMPLIA (nombre + plataforma, sin calle ni `site:`) va primero:
+ * un perfil puede omitir la dirección, X conserva URLs antiguas de twitter.com y los directorios
+ * enlazan a la cuenta. La ESPECÍFICA restringe a la plataforma y añade el municipio (homónimos).
+ */
 export function enlacesBusquedaRadar(negocio: Pick<NegocioPiloto,'nombre'|'direccion'|'numero'>) {
-  const consulta = [negocio.nombre, negocio.direccion, negocio.numero, 'Medina del Campo'].filter(Boolean).join(' ');
-  const crear = (base:string, texto:string) => base + encodeURIComponent(texto);
+  const nombre = negocio.nombre.trim();
+  const g = (texto:string) => 'https://www.google.com/search?q=' + encodeURIComponent(texto);
   return {
-    web: crear('https://www.google.com/search?q=', consulta + ' sitio web oficial'),
-    google: crear('https://www.google.com/maps/search/?api=1&query=', consulta),
-    instagram: crear('https://www.google.com/search?q=', consulta + ' site:instagram.com'),
-    facebook: crear('https://www.google.com/search?q=', consulta + ' site:facebook.com'),
+    web: g(`${nombre} Medina del Campo`),
+    google: 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(
+      [nombre, negocio.direccion, negocio.numero, 'Medina del Campo'].filter(Boolean).join(' ')),
+    instagram: g(`${nombre} instagram`),
+    facebook: g(`${nombre} facebook`),
+    twitter: g(`${nombre} twitter`),
+    especifica: {
+      web: g(`"${nombre}" Medina del Campo -site:facebook.com -site:instagram.com -site:x.com -site:twitter.com`),
+      instagram: g(`"${nombre}" Medina del Campo site:instagram.com`),
+      facebook: g(`"${nombre}" Medina del Campo site:facebook.com`),
+      twitter: g(`"${nombre}" (site:twitter.com OR site:x.com)`),
+    },
   };
 }
 
@@ -82,11 +97,14 @@ export function normalizarPerfilRadar(red: RedRadar, texto: string): string | nu
     if(!path || /^(?:p|reel|reels|stories|explore|accounts|share|sharer|intent|hashtag|search|home|photo|photos|watch|groups|events|login|dialog|plugins|posts|status|i)(\/|$)/i.test(path))
       return null;
     if(u.searchParams.has('u') || u.searchParams.has('url')) return null;
-    u.search='';u.hash='';
+    // Perfiles de Facebook sin nombre de usuario: el identificador está en ?id=.
+    const id=red==='facebook' && /^profile\.php$/i.test(path) ? u.searchParams.get('id') : null;
+    if(/^profile\.php$/i.test(path) && !(id && /^\d{5,20}$/.test(id))) return null;
+    u.search=id?'?id='+id:'';u.hash='';
     return u.toString();
   } catch { return null; }
 }
-export function enlaceCandidatoRadar(b:BorradorRadar,red:RedRadar): {url:string;origen:'web'|'manual'}|null {
+function enlaceCandidatoRadar(b:BorradorRadar,red:RedRadar): {url:string;origen:'web'|'manual'}|null {
   const manual=b.perfilesManuales?.[red];
   if(manual) {
     const url=normalizarPerfilRadar(red,manual);
@@ -95,27 +113,6 @@ export function enlaceCandidatoRadar(b:BorradorRadar,red:RedRadar): {url:string;
   if (!b.hallazgo) return null;
   const url=b.hallazgo.redes[red]&&normalizarPerfilRadar(red,b.hallazgo.redes[red]);
   return url ? {url,origen:'web'}:null;
-}
-
-/** Una confirmación agrupada es un acto humano explícito, no una clasificación automática. */
-export function validarHallazgosRadar(b:BorradorRadar): Partial<BorradorRadar> {
-  const redesValidadas={...b.redesValidadas};
-  for(const red of REDES_RADAR) if(enlaceCandidatoRadar(b,red)) redesValidadas[red]=true;
-  return {
-    webValidada:!!b.hallazgo && !!b.sitioWeb.trim(),
-    redesValidadas,estado:'pendiente',
-  };
-}
-/** El título de la página es una pista, nunca prueba suficiente por sí sola. */
-export function nombreCompatibleRadar(nombre:string,titulo:string|undefined): boolean|null {
-  if(!titulo?.trim()) return null;
-  const limpiar=(v:string)=>v.normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-    .toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
-  const n=limpiar(nombre);
-  const t=limpiar(titulo);
-  const tokens=n.split(' ').filter(w=>w.length>=4 && !['calle','tienda','comercio','grupo','centro','local','santa','santo','medina','campo'].includes(w));
-  if(!tokens.length) return null;
-  return tokens.filter(w=>t.split(' ').includes(w)).length>=Math.min(2,tokens.length);
 }
 
 export interface BorradorRadar {
@@ -134,7 +131,7 @@ export type BorradoresRadar = Record<string, BorradorRadar>;
 
 export const CLAVE_RADAR = 'ulit-censo-radar-it1-piloto-v1';
 
-/** Solo lectura del navegador actual, nunca se trata como decisión confirmada por Supabase. */
+/** Borrador del piloto anterior (v1): solo se lee para migrarlo al modelo de evidencias. */
 export function leerBorradoresRadar(campanaId: string): BorradoresRadar {
   try {
     const raw = localStorage.getItem(CLAVE_RADAR + ':' + campanaId);
@@ -188,18 +185,4 @@ export function leerBorradoresRadar(campanaId: string): BorradoresRadar {
     }
     return res;
   } catch { return {}; }
-}
-
-export function guardarBorradoresRadar(campanaId: string, data: BorradoresRadar): boolean {
-  try {
-    localStorage.setItem(CLAVE_RADAR + ':' + campanaId, JSON.stringify(data));
-    return true;
-  } catch { return false; }
-}
-
-/** El piloto no envía ni guarda automáticamente estas decisiones en el censo oficial. */
-export function resumenPilotoRadar(negocios: NegocioPiloto[], data: BorradoresRadar) {
-  const finalizados = negocios.filter((n) => data[n.id]?.estado === 'revisado').length;
-  const conWeb = negocios.filter((n) => data[n.id]?.webValidada).length;
-  return { total: negocios.length, finalizados, conWeb, pendientes: negocios.length-finalizados };
 }
