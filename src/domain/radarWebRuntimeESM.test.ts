@@ -40,7 +40,7 @@ describe('Radar: módulos ESM ejecutables en Vercel', () => {
     // Reproducir el cargador ESM de Node sin Vite: antes esto lanzaba ERR_MODULE_NOT_FOUND.
     try {
       const modulo = pathToFileURL(join(salida, 'api/radar-web.js')).href;
-      const script = `const api = await import(${JSON.stringify(modulo)}); const r = await api.default(new Request('https://localhost/api/radar-web', {method:'GET'})); if(r.status!==405) process.exit(1); console.log('RADAR_ESM_OK');`;
+      const script = `const api = await import(${JSON.stringify(modulo)}); if(typeof api.default?.fetch!=='function') process.exit(2); const r = await api.default.fetch(new Request('https://localhost/api/radar-web', {method:'GET'})); if(r.status!==405) process.exit(1); console.log('RADAR_ESM_OK');`;
       const out = execFileSync(process.execPath, ['--input-type=module', '-e', script], {
         timeout: 5000, encoding: 'utf8',
       });
