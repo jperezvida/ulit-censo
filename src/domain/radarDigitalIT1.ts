@@ -1,5 +1,5 @@
 import type { BaseDatos } from './db';
-import { auditarRevisionGeneral, datoRevisionGeneral } from './revisionGeneral';
+import { auditarRevisionGeneral, datoRevisionGeneral } from './revisionGeneral.js';
 
 export const CAMPOS_DIGITALES_EXCEL = [
   { clave: 'web', etiqueta: 'Web' },
