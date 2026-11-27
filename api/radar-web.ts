@@ -184,7 +184,7 @@ async function marcasWikidata(ids:string[]):Promise<MarcaWikidata[]> {
  * - `osm`: lugares del municipio en OpenStreetMap. - `marcas`: cuentas oficiales en Wikidata.
  * No consulta buscadores, no rastrea redes sociales, no almacena nada.
  */
-export default async function handler(req:Request):Promise<Response> {
+export async function handler(req:Request):Promise<Response> {
   if(req.method!=='POST') return respuesta(405,{error:'Usa POST.'});
   const token=req.headers.get('authorization')?.match(/^Bearer ([A-Za-z0-9._-]{40,4000})$/)?.[1];
   if(!token) return respuesta(401,{error:'Inicia sesión para usar el Radar Digital.'});
@@ -240,3 +240,6 @@ export default async function handler(req:Request):Promise<Response> {
   try{return await tarea();}
   catch(e){return respuesta(502,{error:e instanceof Error?e.message:'La fuente no respondió.'});}
 }
+
+/** Vercel Web Handler: prevents Node-style req/res from being injected into fetch(Request). */
+export default { fetch: handler };
