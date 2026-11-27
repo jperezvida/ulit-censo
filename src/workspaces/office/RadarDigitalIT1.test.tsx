@@ -219,6 +219,7 @@ describe('Radar Digital IT1 · bandeja de investigación automática',()=>{
     const evento=new Event('paste',{bubbles:true,cancelable:true}) as Event & {clipboardData:unknown};
     evento.clipboardData={getData:()=>'https://comercio-ficticio-1.es/'};
     act(()=>{document.body.dispatchEvent(evento);});
+    await waitFor(()=>expect(red.mock.calls.length).toBe(1));
     await waitFor(()=>expect(screen.getByText(/Investigación terminada/)).toBeInTheDocument());
     const acciones=red.mock.calls.map(([,init])=>JSON.parse(String(init?.body)).accion);
     expect(acciones).toEqual(['paginas']);
