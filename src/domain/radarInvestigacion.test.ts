@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { analizarPagina, esEnlaceFichaGoogle } from './radarAnalisisWeb';
 import { CLAVE_RADAR, type NegocioPiloto } from './radarDigitalIT1';
 import {
-  bandejaDe, campoDeEnlace, causaFallo, confirmarRelacionadas, csvRadar, dominiosProbables, emparejarOSM,
+  bandejaDe, campoDeEnlace, camposExcelSinEnlace, causaFallo, confirmarRelacionadas, csvRadar, dominiosProbables, emparejarOSM,
   evidenciasPagina, fusionarTrabajos, guardarResultadosAuto, guardarTrabajos, huellaNegocio,
   investigarNegocio, leerResultadosAuto, leerTrabajos, lugaresDesdeEtiquetas, marcaDesdeWikidata,
   mencionesEnTexto, nivelEvidencia, nombresEquivalentes, perfilDesdeValor, resultadoVigente,
@@ -397,5 +397,38 @@ describe('Radar: diagnóstico de los fallos del servidor',()=>{
     const e=Object.assign(new Error('El servicio del Radar no respondió.'),{status:500});
     expect(causaFallo(e)).toContain('servidor del Radar (500)');
     expect(causaFallo(e)).toContain('no de OpenStreetMap');
+  });
+});
+
+describe('Radar: priorización de los Sí del Excel sin enlaces encontrados',()=>{
+  it('un negocio sin evidencias no queda oculto si el Excel declara Google, Instagram o Facebook',()=>{
+    const n=negocio({datosExcel:{
+      web:'0', ventaOnline:'0', googleBusiness:'1', instagram:'1', facebook:'1', twitter:'0',
+    }});
+    const r={huella:huellaNegocio(n),fecha:new Date().toISOString(),evidencias:[],avisos:[]};
+    const t=trabajoVacio();
+    expect(camposExcelSinEnlace(n,r,t)).toEqual(['googleBusiness','instagram','facebook']);
+    expect(bandejaDe(n,r,t)).toBe('intervencion');
+    // La cifra del Excel NO genera por sí misma ninguna decisión humana.
+    expect(t.decisiones).toEqual({});
+    const sinMarcas=negocio({datosExcel:{
+      web:'0', ventaOnline:'0', googleBusiness:'0', instagram:'0', facebook:'0', twitter:'0',
+    }});
+    expect(bandejaDe(sinMarcas,r,trabajoVacio())).toBe('sin-evidencias');
+    const incompleto={...r,incompleto:['OpenStreetMap — servicio temporalmente no disponible']};
+    expect(bandejaDe(n,incompleto,t)).toBe('incompleta');
+  });
+  it('tras introducir un perfil manual o una decisión explícita, deja de pedir ese enlace',()=>{
+    const n=negocio({datosExcel:{
+      web:'0', ventaOnline:'0', googleBusiness:'0', instagram:'1', facebook:'0', twitter:'0',
+    }});
+    const r={huella:huellaNegocio(n),fecha:new Date().toISOString(),evidencias:[],avisos:[]};
+    const t=trabajoVacio();
+    expect(camposExcelSinEnlace(n,r,t)).toEqual(['instagram']);
+    t.manuales.instagram='https://www.instagram.com/tienda/';
+    expect(camposExcelSinEnlace(n,r,t)).toEqual([]);
+    delete t.manuales.instagram;
+    t.decisiones.instagram={valor:'no',fecha:new Date().toISOString()};
+    expect(camposExcelSinEnlace(n,r,t)).toEqual([]);
   });
 });
