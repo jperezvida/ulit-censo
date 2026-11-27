@@ -469,6 +469,7 @@ export function causaFallo(e: unknown): string {
   if (/tiempo|timeout|abort/i.test(msg)) return 'tiempo de espera agotado';
   if (prov && prov.startsWith('5')) return `servidor no disponible (${prov})`;
   if (status === 401 || status === 403) return 'sin autorización';
+  if (status === 500) return 'fallo interno del servidor del Radar (500), no de OpenStreetMap';
   if (status && status >= 500) return `servicio no disponible (${status})`;
   return 'causa no identificada';
 }
