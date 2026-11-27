@@ -142,13 +142,21 @@ describe('Radar Digital IT1 · bandeja de investigación automática',()=>{
     expect(within(foco()).getByRole('heading',{level:2})).not.toHaveTextContent(/^Comercio ficticio 2$/);
   });
 
-  it('teclas 1–6: con propuesta confirma «Sí»; sin propuesta registra «No tiene»; otra pulsación lo deshace',async()=>{
+  it('teclas 1–6: confirma una propuesta, pero sin propuesta BUSCA en vez de inventar «No tiene»',async()=>{
     servidor();
     await investigarTodo();
     fireEvent.click(fila(2));
     fireEvent.keyDown(document.body,{key:'3'});
     expect(trabajo().reg2.decisiones.instagram).toMatchObject({valor:'si',url:'https://www.instagram.com/ficticio2'});
+    const abrir=vi.spyOn(window,'open').mockImplementation(()=>null);
     fireEvent.keyDown(document.body,{key:'5'});
+    expect(abrir).toHaveBeenCalledWith(
+      'https://www.google.com/search?q='+encodeURIComponent('Comercio ficticio 2 twitter'),
+      '_blank','noopener,noreferrer');
+    expect(trabajo().reg2.decisiones.twitter).toBeUndefined();
+    expect(screen.getByText(/sin propuesta que confirmar/)).toBeInTheDocument();
+    fireEvent.click(within(within(foco()).getAllByRole('row')[5])
+      .getByRole('button',{name:'X / Twitter: comprobado que no tiene'}));
     expect(trabajo().reg2.decisiones.twitter).toMatchObject({valor:'no'});
     fireEvent.keyDown(document.body,{key:'5'});
     expect(trabajo().reg2.decisiones.twitter).toBeUndefined();
@@ -200,6 +208,22 @@ describe('Radar Digital IT1 · bandeja de investigación automática',()=>{
     await waitFor(()=>expect(within(foco()).getAllByRole('row')[4]).toHaveTextContent('Probablemente relacionado'));
     expect(within(foco()).getAllByRole('row')[4]).toHaveTextContent('facebook.com/ficticio1');
     expect(within(foco()).getAllByRole('row')[4]).toHaveTextContent('Enlazado desde la web');
+  });
+
+  it('pegar una web analiza solo esa URL: no reconsulta OSM ni pierde las evidencias anteriores',async()=>{
+    const red=servidor();
+    await investigarTodo();
+    fireEvent.click(fila(1));
+    expect(within(foco()).getAllByRole('row')[3]).toHaveTextContent('instagram.com/ficticio1');
+    red.mockClear();
+    const evento=new Event('paste',{bubbles:true,cancelable:true}) as Event & {clipboardData:unknown};
+    evento.clipboardData={getData:()=>'https://comercio-ficticio-1.es/'};
+    act(()=>{document.body.dispatchEvent(evento);});
+    await waitFor(()=>expect(screen.getByText(/Investigación terminada/)).toBeInTheDocument());
+    const acciones=red.mock.calls.map(([,init])=>JSON.parse(String(init?.body)).accion);
+    expect(acciones).toEqual(['paginas']);
+    expect(within(foco()).getAllByRole('row')[3]).toHaveTextContent('instagram.com/ficticio1');
+    expect(within(foco()).getAllByRole('row')[4]).toHaveTextContent('facebook.com/ficticio1');
   });
 
   it('si OpenStreetMap falla, sigue con las webs y lo avisa, sin perder trabajo',async()=>{
