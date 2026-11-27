@@ -10,7 +10,7 @@ import { clienteServidor } from '../../store/clienteSupabase';
 import { enlacesBusquedaRadar, negociosPilotoRadar, type NegocioPiloto } from '../../domain/radarDigitalIT1';
 import {
   CAMPOS_RADAR, TEXTO_BANDEJA, TEXTO_CRITERIO, TEXTO_ESTADO, TEXTO_FUENTE,
-  bandejaDe, campoDeEnlace, medirPiloto, confirmarRelacionadas, csvRadar, discrepaExcel, emparejarOSM,
+  bandejaDe, campoDeEnlace, camposExcelSinEnlace, medirPiloto, confirmarRelacionadas, csvRadar, discrepaExcel, emparejarOSM,
   fusionarTrabajos, guardarResultadosAuto, guardarTrabajos, huellaNegocio,
   investigarNegocio, leerResultadosAuto, causaFallo, completarConOSM, continuarSinOSM, esFalloOSM, leerTrabajos, nivelEvidencia, resultadoVigente,
   sanearResultado, trabajosDesdeTexto, turnosEspaciados, trabajoVacio, unirEvidencias, vistaCampo,
@@ -427,6 +427,8 @@ export default function RadarDigitalIT1() {
     } catch { setMensaje('La copia no es válida o pertenece a otra campaña.'); }
   };
 
+  const camposExcelPendientes = actual ? camposExcelSinEnlace(actual.n, actual.r, actual.t) : [];
+  const primerCampoExcel = CAMPOS_RADAR.find((c) => c.clave === camposExcelPendientes[0]);
   const vistas = actual ? CAMPOS_RADAR.map((c) => vistaCampo(c.clave, actual.r?.evidencias ?? [], actual.t)) : [];
   const relacionadasSinDecidir = vistas.filter((v) => v.estado === 'relacionado').length;
   const porComprobar = vistas.filter((v) => v.estado === 'encontrado').length;
@@ -528,6 +530,20 @@ export default function RadarDigitalIT1() {
         : antiguo && <p className="radar-sin-investigar">Resultados del {new Date(actual.r!.fecha).toLocaleDateString('es-ES')}: pueden estar desactualizados.
           {' '}<button type="button" className="btn-enlace" disabled={!!progreso} onClick={() => void investigar([actual.n])}><RefreshCw size={12} aria-hidden="true"/> Reinvestigar</button></p>}
 
+        {actual.r && !actual.r.incompleto?.length && camposExcelPendientes.length > 0 && <div
+          className="radar-prioridad-excel" role="note">
+          <div>
+            <b>{camposExcelPendientes.length} {camposExcelPendientes.length === 1 ? 'dato pendiente' : 'datos pendientes'} del Excel</b>
+            <p>El Excel indica «Sí» en {camposExcelPendientes.map((campo) =>
+              CAMPOS_RADAR.find((c) => c.clave === campo)?.etiqueta).join(', ')},
+              pero el Radar no ha localizado sus enlaces. Son prioritarios para comprobar, no ausencias confirmadas.</p>
+          </div>
+          {primerCampoExcel && busqueda && <button type="button" className="btn s"
+            onClick={() => window.open(busqueda[BUSQUEDA[primerCampoExcel.clave]], '_blank', 'noopener,noreferrer')}>
+            <ExternalLink size={14} aria-hidden="true"/>
+            Buscar siguiente: {primerCampoExcel.etiqueta}
+          </button>}
+        </div>}
         <div className="radar-campos" role="table" aria-label="Presencia digital">
           <div className="radar-campo cab" role="row">
             <span role="columnheader">Campo</span><span role="columnheader" title="Dato recogido en el Excel original; no está verificado por el Radar">Excel original</span>
