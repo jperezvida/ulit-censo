@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { baseVacia } from '../../domain/db';
 import { FuenteOficinaContext } from '../../store/fuenteOficina';
 import RadarDigitalIT1 from './RadarDigitalIT1';
-import { RITMO_RADAR } from '../../domain/radarInvestigacion';
+import { RITMO_RADAR, guardarResultadosAuto, huellaNegocio } from '../../domain/radarInvestigacion';
 
 vi.mock('../../store/clienteSupabase',()=>({
   clienteServidor:vi.fn(()=>({auth:{getSession:async()=>({data:{session:{access_token:'test-jwt'}}})}})),
@@ -250,6 +250,38 @@ describe('Radar Digital IT1 · bandeja de investigación automática',()=>{
     fireEvent.click(within(foco()).getByRole('button',{name:'Continuar sin OSM y buscar a mano'}));
     expect(screen.getByRole('button',{name:/^9 Investigación incompleta/})).toBeInTheDocument();
     expect(within(foco()).queryByText(/Investigación incompleta\./)).not.toBeInTheDocument();
+  });
+
+  it('un 500 interno del Radar no consulta OpenStreetMap diez veces ni impone pausa del proveedor',async()=>{
+    const red=vi.spyOn(globalThis,'fetch').mockImplementation(async(_u,init)=>{
+      const cuerpo=JSON.parse(String(init?.body));
+      if(cuerpo.accion==='osm') return new Response(JSON.stringify({error:'Error interno del servidor del Radar'}),{status:500});
+      if(cuerpo.accion==='paginas') return new Response(JSON.stringify({resultados:cuerpo.urls.map((u:string)=>({url:u,error:'sin respuesta'}))}),{status:200});
+      return new Response(JSON.stringify({marcas:[]}),{status:200});
+    });
+    await investigarTodo();
+    const tipos=red.mock.calls.map(([,init])=>JSON.parse(String(init?.body)).accion);
+    expect(tipos.filter((t)=>t==='osm')).toHaveLength(1);
+    expect(screen.getByRole('button',{name:/^10 Investigación incompleta/})).toBeInTheDocument();
+    expect(localStorage.getItem('ulit-censo-radar-osm-pausa')).toBeNull();
+    expect(screen.getByText(/Servidor del Radar: error interno \(500\)/)).toBeInTheDocument();
+  });
+
+  it('tras reparar el servidor, elimina una vez el enfriamiento antiguo causado por un 500',async()=>{
+    const n={nombre:'Comercio ficticio 1',direccion:'Calle Inventada',numero:'4'};
+    guardarResultadosAuto('c26',{reg1:{
+      huella:huellaNegocio(n),fecha:new Date().toISOString(),evidencias:[],avisos:[],
+      incompleto:['OpenStreetMap — fallo interno del servidor del Radar (500), no de OpenStreetMap'],
+    }});
+    localStorage.setItem('ulit-censo-radar-osm-pausa',String(Date.now()+600_000));
+    const red=servidor();
+    render(<Pantalla/>);
+    fireEvent.click(screen.getByRole('button',{name:'Reinvestigar todo'}));
+    await waitFor(()=>expect(screen.getByText(/Investigación terminada/)).toBeInTheDocument());
+    const tipos=red.mock.calls.map(([,init])=>JSON.parse(String(init?.body)).accion);
+    expect(tipos.filter((t)=>t==='osm')).toHaveLength(10);
+    expect(localStorage.getItem('ulit-censo-radar-osm-pausa')).toBeNull();
+    expect(localStorage.getItem('ulit-censo-radar-servidor-500-recuperado-v1')).toBe('1');
   });
 
   it('«Reintentar OpenStreetMap» repite SOLO OSM: no vuelve a pedir webs ni borra decisiones',async()=>{
