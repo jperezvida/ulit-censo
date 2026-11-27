@@ -56,6 +56,23 @@ const CLAVE_PAUSA_OSM = 'ulit-censo-radar-osm-pausa';
 const PAUSA_OSM_MS = 10 * 60_000;
 const pausaOSMHasta = () => { try { return Number(localStorage.getItem(CLAVE_PAUSA_OSM)) || 0; } catch { return 0; } };
 const pausarOSM = () => { try { localStorage.setItem(CLAVE_PAUSA_OSM, String(Date.now() + PAUSA_OSM_MS)); } catch { /* solo afecta al enfriamiento */ } };
+/** Un fallo de nuestro servidor no es un 429 de Nominatim: no debe bloquear reintentos diez minutos. */
+const esFalloInternoRadar = (e: unknown): boolean => typeof e === 'object' && e !== null
+  && 'status' in e && e.status === 500;
+const CLAVE_REPARACION_500 = 'ulit-censo-radar-servidor-500-recuperado-v1';
+/** Una única vez, recuperar la pausa antigua provocada por el 500 de la función en Vercel.
+ * Se preservan pausas por 429 u otros fallos reales de OSM, así como todas las decisiones.
+ */
+const recuperarPausaDel500 = (datos: Record<string, ResultadoAuto>) => {
+  try {
+    if (localStorage.getItem(CLAVE_REPARACION_500)) return;
+    const fallos = Object.values(datos).flatMap((r) => r.incompleto ?? []);
+    if (!fallos.some((x) => x.startsWith('OpenStreetMap') && x.includes('servidor del Radar (500)'))) return;
+    if (fallos.some((x) => x.startsWith('OpenStreetMap') && /429|límite de uso del proveedor/i.test(x))) return;
+    localStorage.removeItem(CLAVE_PAUSA_OSM);
+    localStorage.setItem(CLAVE_REPARACION_500, '1');
+  } catch { /* solo desbloqueo local de un fallo interno conocido */ }
+};
 const horaCorta = (ms: number) => new Date(ms).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 
 /** El ratón no deja el foco en botones: Enter sigue sirviendo para confirmar y avanzar. */
@@ -145,6 +162,7 @@ export default function RadarDigitalIT1() {
   /** `webs`: web conocida por negocio (p. ej. recién pegada) para analizarla aunque el estado aún no la refleje. */
   const investigar = async (lista: NegocioPiloto[], webs: Record<string, string> = {}) => {
     if (!campana || progreso || !lista.length) return;
+    recuperarPausaDel500(resultados);
     const servicios = SERVICIOS(municipio, provincia);
     const nuevosAvisos: string[] = [];
     setMensaje('');
@@ -153,8 +171,10 @@ export default function RadarDigitalIT1() {
     const esperarTurno = turnosEspaciados();
     // Consultas a OSM en serie: si una falla, las siguientes ven la pausa y no se lanzan.
     let colaOSM: Promise<unknown> = Promise.resolve();
+    let falloServidorEnLote = false;
     const consultarOSM = (nombre: string) => {
       const p = colaOSM.then(async () => {
+        if (falloServidorEnLote) throw Object.assign(Error('servidor'), { servidor: true });
         await esperarTurno();
         if (Date.now() < pausaOSMHasta()) throw Object.assign(Error('pausa'), { pausa: true });
         return servicios.lugares(nombre);
@@ -178,7 +198,13 @@ export default function RadarDigitalIT1() {
             try { lugares = await consultarOSM(n.nombre); }
             catch (e) {
               if ((e as { pausa?: boolean }).pausa) fallidas.push(`OpenStreetMap — en pausa hasta las ${horaCorta(pausaOSMHasta())} tras un error`);
-              else {
+              else if ((e as { servidor?: boolean }).servidor) {
+                fallidas.push('OpenStreetMap — fallo interno del servidor del Radar (500), no de OpenStreetMap');
+              } else if (esFalloInternoRadar(e)) {
+                falloServidorEnLote = true;
+                fallidas.push(`OpenStreetMap — ${causaFallo(e)}`);
+                avisar('Servidor del Radar: error interno (500). OSM se omite para el resto del lote; no se activa la pausa de Nominatim.');
+              } else {
                 fallidas.push(`OpenStreetMap — ${causaFallo(e)}`);
                 avisar(`OpenStreetMap: ${causaFallo(e)}. No se insiste hasta las ${horaCorta(Date.now() + PAUSA_OSM_MS)}.`);
                 pausarOSM();
@@ -231,6 +257,7 @@ export default function RadarDigitalIT1() {
   /** Solo OpenStreetMap: no repite webs ni Wikidata ya obtenidos ni toca las decisiones. */
   const reintentarOSM = async (n: NegocioPiloto, r: ResultadoAuto) => {
     if (progreso) return;
+    recuperarPausaDel500(resultados);
     if (Date.now() < pausaOSMHasta()) return setMensaje(`OpenStreetMap en pausa hasta las ${horaCorta(pausaOSMHasta())} para no saturar el servicio. Puedes continuar sin OSM.`);
     const servicios = SERVICIOS(municipio, provincia);
     setProgreso({ hechos: 0, total: 1 });
@@ -242,7 +269,7 @@ export default function RadarDigitalIT1() {
       guardarResultado(n.id, sanearResultado(await completarConOSM(r, n, municipio, lugares, marcas, servicios)));
       setMensaje('OpenStreetMap consultado de nuevo; se conserva todo lo anterior.');
     } catch (e) {
-      pausarOSM();
+      if (!esFalloInternoRadar(e)) pausarOSM();
       guardarResultado(n.id, sanearResultado({ ...r, fecha: new Date().toISOString(),
         incompleto: [...(r.incompleto ?? []).filter((x) => !esFalloOSM(x)), `OpenStreetMap — ${causaFallo(e)}`] }));
       setMensaje(`OpenStreetMap sigue sin responder (${causaFallo(e)}). Puedes continuar sin OSM y buscar a mano.`);
