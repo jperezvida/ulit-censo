@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import handler, { contactoValido, proveedorNominatim, validarDestinoWeb } from '../../api/radar-web';
+import webHandler, { handler, contactoValido, proveedorNominatim, validarDestinoWeb } from '../../api/radar-web';
 
 const pedir = (cuerpo: unknown, token = 'A'.repeat(80)) => handler(new Request('https://ulit-censo.example/api/radar-web', {
   method: 'POST', headers: { authorization: 'Bearer ' + token }, body: JSON.stringify(cuerpo),
@@ -7,6 +7,13 @@ const pedir = (cuerpo: unknown, token = 'A'.repeat(80)) => handler(new Request('
 afterEach(() => vi.restoreAllMocks());
 
 describe('Radar web: seguridad de destinos y acceso',()=>{
+  it('exporta el formato Web Handler correcto para Vercel, usando Request y Response nativos', async () => {
+    expect(typeof webHandler.fetch).toBe('function');
+    const r=await webHandler.fetch(new Request('https://ulit-censo.example/api/radar-web',{method:'GET'}));
+    expect(r.status).toBe(405);
+    expect(await r.json()).toEqual({error:'Usa POST.'});
+  });
+
   it('admite solamente URL HTTPS pública, nunca IP/localhost, puertos o credenciales',()=>{
     expect(validarDestinoWeb('https://example.com/').hostname).toBe('example.com');
     for(const url of [
