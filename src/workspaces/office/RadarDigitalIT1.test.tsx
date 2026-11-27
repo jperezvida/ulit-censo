@@ -264,7 +264,8 @@ describe('Radar Digital IT1 · bandeja de investigación automática',()=>{
     await investigarTodo();
     fireEvent.click(fila(1));
     expect(within(foco()).getByRole('status',{name:'Estado de las fuentes'})).toHaveTextContent('límite de uso del proveedor (429)');
-    fireEvent.keyDown(document.body,{key:'5'});
+    // «No tiene» se marca expresamente (la tecla 5 sin propuesta solo abre la búsqueda).
+    fireEvent.click(within(within(foco()).getAllByRole('row')[5]).getByRole('button',{name:'X / Twitter: comprobado que no tiene'}));
     localStorage.removeItem('ulit-censo-radar-osm-pausa');
     osmCae=false;
     const antes=red.mock.calls.length;
