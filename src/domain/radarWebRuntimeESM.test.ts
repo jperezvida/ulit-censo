@@ -18,7 +18,7 @@ describe('Radar: módulos ESM ejecutables en Vercel', () => {
       if (revisados.has(archivo)) continue;
       revisados.add(archivo);
       const fuente = readFileSync(archivo, 'utf8');
-      const relativo = relative(process.cwd(), archivo).replace(/\\.ts$/, '.js');
+      const relativo = relative(process.cwd(), archivo).slice(0, -3) + '.js';
       const destinoJS = join(salida, relativo);
       mkdirSync(dirname(destinoJS), { recursive: true });
       writeFileSync(destinoJS, ts.transpileModule(fuente, {
