@@ -1,7 +1,7 @@
-import { claveCalle, normalizar } from './text';
+import { claveCalle, normalizar } from './text.js';
 import {
   leerBorradoresRadar, normalizarPerfilRadar, REDES_RADAR, type NegocioPiloto, type RedRadar,
-} from './radarDigitalIT1';
+} from './radarDigitalIT1.js';
 
 /**
  * Radar Digital · modelo de investigación por evidencias.
