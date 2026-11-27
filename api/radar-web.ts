@@ -1,10 +1,10 @@
 import { lookup } from 'node:dns/promises';
 import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
-import { analizarPagina } from '../src/domain/radarAnalisisWeb';
+import { analizarPagina } from '../src/domain/radarAnalisisWeb.js';
 import {
   lugaresDesdeNominatim, marcaDesdeWikidata, type ContextoNegocio, type MarcaWikidata,
-} from '../src/domain/radarInvestigacion';
+} from '../src/domain/radarInvestigacion.js';
 
 const PROYECTO = 'https://ldegybookaubncnayhep.supabase.co';
 const ESPACIO = 'real-medina-del-campo-2026';
