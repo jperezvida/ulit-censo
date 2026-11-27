@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { analizarPagina, esEnlaceFichaGoogle } from './radarAnalisisWeb';
 import { CLAVE_RADAR, type NegocioPiloto } from './radarDigitalIT1';
 import {
-  bandejaDe, campoDeEnlace, confirmarRelacionadas, csvRadar, dominiosProbables, emparejarOSM,
+  bandejaDe, campoDeEnlace, causaFallo, confirmarRelacionadas, csvRadar, dominiosProbables, emparejarOSM,
   evidenciasPagina, fusionarTrabajos, guardarResultadosAuto, guardarTrabajos, huellaNegocio,
   investigarNegocio, leerResultadosAuto, leerTrabajos, lugaresDesdeEtiquetas, marcaDesdeWikidata,
   mencionesEnTexto, nivelEvidencia, nombresEquivalentes, perfilDesdeValor, resultadoVigente,
@@ -389,5 +389,13 @@ describe('Radar · revisión técnica: cadenas, homónimos y fuentes caídas', (
       facebook: { valor: 'si' as const, url: 'https://www.facebook.com/otra', fecha: '', manual: true } } };
     expect(medirPiloto([{ r, t }, { t: trabajoVacio() }])).toEqual({
       campos: 12, conPropuesta: 4, relacionadas: 4, correctas: 1, incorrectas: 2, sinRevisar: 1, negociosIncompletos: 0 });
+  });
+});
+
+describe('Radar: diagnóstico de los fallos del servidor',()=>{
+  it('no atribuye a OpenStreetMap los errores 500 internos de Vercel',()=>{
+    const e=Object.assign(new Error('El servicio del Radar no respondió.'),{status:500});
+    expect(causaFallo(e)).toContain('servidor del Radar (500)');
+    expect(causaFallo(e)).toContain('no de OpenStreetMap');
   });
 });
