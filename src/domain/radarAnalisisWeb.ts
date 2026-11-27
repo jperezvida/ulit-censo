@@ -1,5 +1,5 @@
-import { normalizarPerfilRadar, type RedRadar } from './radarDigitalIT1';
-import { mencionesEnTexto, webSegura, type ContextoNegocio, type PaginaRadar } from './radarInvestigacion';
+import { normalizarPerfilRadar, type RedRadar } from './radarDigitalIT1.js';
+import { mencionesEnTexto, webSegura, type ContextoNegocio, type PaginaRadar } from './radarInvestigacion.js';
 
 const RUTA_NO_PERFIL = /^(?:p|reel|reels|stories|explore|accounts|share|sharer|intent|hashtag|search|home|photo|photos|watch|groups|events|login|dialog|plugins|posts|status|i)(\/|$)/;
 
