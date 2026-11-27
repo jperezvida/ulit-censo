@@ -147,6 +147,7 @@ export default function RadarDigitalIT1() {
     if (!campana || progreso || !lista.length) return;
     const servicios = SERVICIOS(municipio, provincia);
     const nuevosAvisos: string[] = [];
+    setMensaje('');
     setProgreso({ hechos: 0, total: lista.length });
     // Política de Nominatim: como máximo una consulta por segundo.
     const esperarTurno = turnosEspaciados();
