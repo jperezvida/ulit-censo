@@ -19,8 +19,8 @@ describe('Radar: módulos ESM ejecutables en Vercel', () => {
             !ts.isStringLiteral(declaracion.moduleSpecifier)) continue;
         const ruta = declaracion.moduleSpecifier.text;
         if (!ruta.startsWith('.')) continue;
-        expect(ruta, archivo).toMatch(/\\.js$/);
-        const destino = resolve(dirname(archivo), ruta.replace(/\\.js$/, '.ts'));
+        expect(ruta.endsWith('.js'), archivo + ' -> ' + ruta).toBe(true);
+        const destino = resolve(dirname(archivo), ruta.slice(0, -3) + '.ts');
         expect(existsSync(destino), archivo + ' -> ' + ruta).toBe(true);
         pendientes.push(destino);
       }
