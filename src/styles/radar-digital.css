@@ -121,3 +121,13 @@
 }
 .radar-acciones-fuente { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .radar-acciones-fuente .btn { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Prioridad operativa: el Excel declara presencia pero el Radar no encontró enlaces. */
+.radar-prioridad-excel {display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:12px 14px;border:1px solid #ead8af;background:#fff9e9;border-radius:10px;
+  margin:12px 0;color:#6b5229;flex-wrap:wrap}
+.radar-prioridad-excel>div {flex:1;min-width:220px}
+.radar-prioridad-excel b {font-size:13px;font-weight:720}
+.radar-prioridad-excel p {margin:4px 0 0;font-size:12px;line-height:1.55;color:#77664e}
+.radar-prioridad-excel .btn {min-height:40px;white-space:normal;text-align:center}
+@media(max-width:640px) {.radar-prioridad-excel .btn {width:100%;justify-content:center}}
