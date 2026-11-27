@@ -13,7 +13,7 @@ import {
   bandejaDe, campoDeEnlace, medirPiloto, confirmarRelacionadas, csvRadar, discrepaExcel, emparejarOSM,
   fusionarTrabajos, guardarResultadosAuto, guardarTrabajos, huellaNegocio,
   investigarNegocio, leerResultadosAuto, causaFallo, completarConOSM, continuarSinOSM, esFalloOSM, leerTrabajos, nivelEvidencia, resultadoVigente,
-  sanearResultado, trabajosDesdeTexto, turnosEspaciados, trabajoVacio, vistaCampo,
+  sanearResultado, trabajosDesdeTexto, turnosEspaciados, trabajoVacio, unirEvidencias, vistaCampo,
   type BandejaRadar, type CampoRadar, type EvidenciaRadar, type LugarOSM, type MarcaWikidata,
   type PaginaRadar, type ResultadoAuto, type ResultadosAuto, type ServiciosRadar, type TrabajoRadar, type TrabajosRadar,
 } from '../../domain/radarInvestigacion';
@@ -169,16 +169,19 @@ export default function RadarDigitalIT1() {
     const trabajar = async () => {
       for (let n = cola.shift(); n; n = cola.shift()) {
         try {
-          // Fuentes no consultadas: el negocio queda «incompleto», nunca «sin evidencias».
+          // Al pegar una web, analizar SOLO esa web: no repetir OSM/Wikidata ni bloquearse por ellas.
+          const soloWeb = !!webs[n.id];
           const fallidas: string[] = [];
           let lugares: LugarOSM[] = [];
-          try { lugares = await consultarOSM(n.nombre); }
-          catch (e) {
-            if ((e as { pausa?: boolean }).pausa) fallidas.push(`OpenStreetMap — en pausa hasta las ${horaCorta(pausaOSMHasta())} tras un error`);
-            else {
-              fallidas.push(`OpenStreetMap — ${causaFallo(e)}`);
-              avisar(`OpenStreetMap: ${causaFallo(e)}. No se insiste hasta las ${horaCorta(Date.now() + PAUSA_OSM_MS)}.`);
-              pausarOSM();
+          if (!soloWeb) {
+            try { lugares = await consultarOSM(n.nombre); }
+            catch (e) {
+              if ((e as { pausa?: boolean }).pausa) fallidas.push(`OpenStreetMap — en pausa hasta las ${horaCorta(pausaOSMHasta())} tras un error`);
+              else {
+                fallidas.push(`OpenStreetMap — ${causaFallo(e)}`);
+                avisar(`OpenStreetMap: ${causaFallo(e)}. No se insiste hasta las ${horaCorta(Date.now() + PAUSA_OSM_MS)}.`);
+                pausarOSM();
+              }
             }
           }
           const ids = [...new Set(emparejarOSM(n, lugares).flatMap((c) => c.lugar.marcaWd && !marcas.has(c.lugar.marcaWd) ? [c.lugar.marcaWd] : []))];
@@ -187,9 +190,24 @@ export default function RadarDigitalIT1() {
             catch (e) { fallidas.push(`Wikidata — ${causaFallo(e)}`); avisar(`Wikidata: ${causaFallo(e)}`); }
           }
           const web = webs[n.id] ?? trabajos[n.id]?.decisiones.web?.url ?? trabajos[n.id]?.manuales.web;
-          const r = sanearResultado(await investigarNegocio(n, municipio, lugares, marcas, servicios, web, fallidas, resultados[n.id]?.analizadas && webs[n.id] ? resultados[n.id].analizadas : []));
+          const r = sanearResultado(await investigarNegocio(n, municipio, lugares, marcas, servicios, web, fallidas));
           if (r) setResultados((prev) => {
-            const sig = { ...prev, [n!.id]: r };
+            const anterior = prev[n!.id];
+            // Al aportar una web nueva, acumular sus evidencias sin perder las obtenidas antes;
+            // reanalizar la URL incluso si ya constaba en la caché.
+            const conservar = soloWeb && anterior?.huella === r.huella;
+            const incompleto = conservar
+              ? [...new Set([...(anterior.incompleto ?? []).filter((x) =>
+                  esFalloOSM(x) || x.startsWith('Wikidata')), ...(r.incompleto ?? [])])]
+              : r.incompleto ?? [];
+            const resultado = conservar ? {
+              ...r,
+              evidencias: unirEvidencias([...anterior.evidencias, ...r.evidencias]),
+              avisos: [...new Set([...anterior.avisos, ...r.avisos])].slice(0, 8),
+              analizadas: [...new Set([...(anterior.analizadas ?? []), ...(r.analizadas ?? [])])].slice(0, 12),
+              ...(incompleto.length ? { incompleto } : {}),
+            } : r;
+            const sig = { ...prev, [n!.id]: resultado };
             guardarResultadosAuto(campana.id, sig);
             return sig;
           });
@@ -274,10 +292,15 @@ export default function RadarDigitalIT1() {
     setMensaje('Acción deshecha.');
     setDeshacer(null);
   };
-  /** Tecla 1–6: alterna la decisión del campo. Con propuesta → «Sí»; sin propuesta → «No tiene». */
+  /** Tecla 1–6: confirma una propuesta o abre la búsqueda; «No tiene» requiere pulsación expresa. */
   const resolverCampo = (campo: CampoRadar) => {
     if (!actual) return;
     const v = vistaCampo(campo, actual.r?.evidencias ?? [], actual.t);
+    if (!v.propuesta && !v.decision) {
+      window.open(enlacesBusquedaRadar(actual.n)[BUSQUEDA[campo]], '_blank', 'noopener,noreferrer');
+      setMensaje(`${CAMPOS_RADAR.find((c) => c.clave === campo)?.etiqueta}: sin propuesta que confirmar. Comprueba los resultados; «No tiene» solo se marca expresamente.`);
+      return;
+    }
     actualizar(actual.n.id, (t) => {
       const decisiones = { ...t.decisiones };
       if (decisiones[campo]) delete decisiones[campo];
@@ -479,7 +502,7 @@ export default function RadarDigitalIT1() {
 
         <div className="radar-campos" role="table" aria-label="Presencia digital">
           <div className="radar-campo cab" role="row">
-            <span role="columnheader">Campo</span><span role="columnheader">Excel</span>
+            <span role="columnheader">Campo</span><span role="columnheader" title="Dato recogido en el Excel original; no está verificado por el Radar">Excel original</span>
             <span role="columnheader">Propuesta y procedencia</span><span role="columnheader">Decisión</span>
           </div>
           {vistas.map((v, i) => {
@@ -537,7 +560,7 @@ export default function RadarDigitalIT1() {
           </button>
           {actual.t.estado === 'revisado' && <button type="button" className="btn s" onClick={() => actualizar(actual.n.id, (t) => ({ ...t, estado: 'pendiente' }))}>Reabrir</button>}
           {deshacer && <button type="button" className="btn s" onClick={deshacerUltimo}><Undo2 size={14}/> Deshacer <kbd>Z</kbd></button>}
-          <span className="radar-atajos"><kbd>1</kbd>–<kbd>6</kbd> decidir campo · <kbd>↑</kbd><kbd>↓</kbd> negocio · <kbd>G</kbd> Maps · <kbd>W</kbd> web · <kbd>I</kbd> Instagram · <kbd>F</kbd> Facebook · <kbd>Ctrl</kbd>+<kbd>V</kbd> pegar</span>
+          <span className="radar-atajos"><kbd>1</kbd>–<kbd>6</kbd> confirmar o buscar · <kbd>↑</kbd><kbd>↓</kbd> negocio · <kbd>G</kbd> Maps · <kbd>W</kbd> web · <kbd>I</kbd> Instagram · <kbd>F</kbd> Facebook · <kbd>Ctrl</kbd>+<kbd>V</kbd> pegar</span>
         </div>
         <p className="radar-mensaje" role="status" aria-live="polite">{deshacer?.texto ?? ''} {mensaje}</p>
         {actual.r?.avisos.length ? <p className="radar-falta">Avisos: {actual.r.avisos.join(' · ')}</p> : null}
