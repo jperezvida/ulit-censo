@@ -542,13 +542,28 @@ export function discrepaExcel(v: VistaCampo, excel: string): boolean {
   if (v.estado === 'confirmado') return (x === '1' && v.decision?.valor === 'no') || (x === '0' && v.decision?.valor === 'si');
   return x === '0' && v.estado === 'relacionado';
 }
+/** Si el Excel marcaba presencia, pero ninguna fuente aportó un enlace utilizable,
+ * esa contradicción requiere atención; NO se considera confirmación automática.
+ */
+export function camposExcelSinEnlace(
+  n: Pick<NegocioPiloto, 'datosExcel'>, r: ResultadoAuto | undefined, t: TrabajoRadar,
+): CampoRadar[] {
+  return CAMPOS_RADAR.flatMap(({ clave }) => {
+    if (n.datosExcel[clave]?.trim() !== '1' || t.decisiones[clave]) return [];
+    const propuestas = (r?.evidencias ?? []).some((e) =>
+      e.campo === clave && !t.descartadas.includes(`${clave}|${e.url}`));
+    const manual = !!t.manuales[clave];
+    return propuestas || manual ? [] : [clave];
+  });
+}
 export function bandejaDe(n: NegocioPiloto, r: ResultadoAuto | undefined, t: TrabajoRadar): BandejaRadar {
   if (t.estado === 'revisado') return 'revisado';
   if (!r) return 'sin-investigar';
   const vistas = CAMPOS_RADAR.map((c) => vistaCampo(c.clave, r.evidencias, t));
   if (vistas.some((v) => v.estado === 'encontrado' || discrepaExcel(v, n.datosExcel[v.campo]))) return 'intervencion';
   if (vistas.some((v) => v.estado === 'relacionado')) return 'listo';
-  return r.incompleto?.length ? 'incompleta' : 'sin-evidencias';
+  if (r.incompleto?.length) return 'incompleta';
+  return camposExcelSinEnlace(n, r, t).length ? 'intervencion' : 'sin-evidencias';
 }
 
 /**
