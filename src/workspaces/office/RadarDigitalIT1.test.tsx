@@ -88,9 +88,30 @@ describe('Radar Digital IT1 · bandeja de investigación automática',()=>{
     expect(acciones.filter(a=>a==='paginas')).toHaveLength(10);
     // 1: web relacionada pero el Excel dice No · 2: Instagram sin calle · 3: Instagram con nombre y calle.
     expect(screen.getByRole('button',{name:/^1 Listos para confirmar/})).toBeInTheDocument();
-    expect(screen.getByRole('button',{name:/^2 Requieren intervención/})).toBeInTheDocument();
-    expect(screen.getByRole('button',{name:/^7 Sin evidencias automáticas/})).toBeInTheDocument();
+    // Aunque OSM no devuelva perfiles, el Excel dice «Sí» para Google en 7 negocios.
+    // Esos casos se priorizan como intervención, no como «sin evidencias» irrelevantes.
+    expect(screen.getByRole('button',{name:/^9 Requieren intervención/})).toBeInTheDocument();
+    expect(screen.getByRole('button',{name:/^0 Sin evidencias automáticas/})).toBeInTheDocument();
     expect(JSON.stringify(db.registros)).toBe(original);
+  });
+
+  it('prioriza los Sí del Excel sin enlace y permite buscar el siguiente con un solo clic',async()=>{
+    servidor();
+    await investigarTodo();
+    fireEvent.click(fila(4));
+    const nota=within(foco()).getByRole('note');
+    expect(nota).toHaveTextContent('1 dato pendiente del Excel');
+    expect(nota).toHaveTextContent('Ficha de Google');
+    const abrir=vi.spyOn(window,'open').mockImplementation(()=>null);
+    fireEvent.click(within(nota).getByRole('button',{name:'Buscar siguiente: Ficha de Google'}));
+    expect(abrir).toHaveBeenCalledWith(
+      expect.stringContaining('https://www.google.com/maps/search/?api=1&query='),
+      '_blank','noopener,noreferrer');
+    expect(trabajo().reg4?.decisiones?.googleBusiness).toBeUndefined();
+    // Solo una decisión explícita elimina la necesidad de buscar ese campo.
+    fireEvent.click(within(within(foco()).getAllByRole('row')[2])
+      .getByRole('button',{name:'Ficha de Google: comprobado que no tiene'}));
+    expect(within(foco()).queryByRole('note')).not.toBeInTheDocument();
   });
 
   it('muestra procedencia verificable y criterios; Enter confirma solo lo relacionado, avanza y se deshace con Z',async()=>{
