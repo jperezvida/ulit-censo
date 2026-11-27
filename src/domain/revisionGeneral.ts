@@ -1,6 +1,6 @@
 import type { BaseDatos } from './db';
 import type { CorreccionRegistro, RegistroOrigen } from './types';
-import { PERFIL_CENSO_27, PERFIL_ITINERARIO_28 } from './xlsx/perfilesImportacion';
+import { PERFIL_CENSO_27, PERFIL_ITINERARIO_28 } from './xlsx/perfilesImportacion.js';
 
 /**
  * Fase 1 · auditoría no destructiva de las FILAS ORIGINALES de los Excel de la campaña.
